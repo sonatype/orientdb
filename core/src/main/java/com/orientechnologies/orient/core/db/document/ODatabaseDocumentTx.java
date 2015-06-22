@@ -81,10 +81,20 @@ import com.orientechnologies.orient.core.metadata.OMetadataDefault;
 import com.orientechnologies.orient.core.metadata.OMetadataInternal;
 import com.orientechnologies.orient.core.metadata.function.OFunctionTrigger;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
-import com.orientechnologies.orient.core.metadata.security.*;
+import com.orientechnologies.orient.core.metadata.security.OImmutableUser;
+import com.orientechnologies.orient.core.metadata.security.ORestrictedAccessHook;
+import com.orientechnologies.orient.core.metadata.security.ORole;
+import com.orientechnologies.orient.core.metadata.security.ORule;
+import com.orientechnologies.orient.core.metadata.security.OSecurity;
+import com.orientechnologies.orient.core.metadata.security.OSecurityTrackerHook;
+import com.orientechnologies.orient.core.metadata.security.OSecurityUser;
+import com.orientechnologies.orient.core.metadata.security.OToken;
+import com.orientechnologies.orient.core.metadata.security.OUser;
+import com.orientechnologies.orient.core.metadata.security.OUserTrigger;
 import com.orientechnologies.orient.core.query.OQuery;
 import com.orientechnologies.orient.core.record.ORecord;
 import com.orientechnologies.orient.core.record.ORecordInternal;
+import com.orientechnologies.orient.core.record.impl.ODirtyManager;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.record.impl.ODocumentInternal;
 import com.orientechnologies.orient.core.schedule.OSchedulerTrigger;
@@ -1784,7 +1794,23 @@ public class ODatabaseDocumentTx extends OListenerManger<ODatabaseListener> impl
       final ORecordCallback<? extends Number> recordCreatedCallback, ORecordCallback<ORecordVersion> recordUpdatedCallback) {
     checkOpeness();
     checkIfActive();
-
+    ORecord orignal = record;
+    ODirtyManager dirtyManager = ORecordInternal.getDirtyManager(orignal);
+    Set<ORecord> newRecord = dirtyManager.getNewRecord();
+    Set<ORecord> updatedRecord = dirtyManager.getUpdateRecord();
+    dirtyManager.cleanForSave();
+    if (newRecord != null) {
+      for (ORecord rec : newRecord) {
+        if (!rec.equals(orignal))
+          this.save(rec);
+      }
+    }
+    if (updatedRecord != null) {
+      for (ORecord rec : updatedRecord) {
+        if (!rec.equals(orignal))
+          this.save(rec);
+      }
+    }
     if (!record.isDirty())
       return (RET) record;
 
