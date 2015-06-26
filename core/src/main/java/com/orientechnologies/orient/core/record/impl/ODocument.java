@@ -2315,7 +2315,6 @@ public class ODocument extends ORecordAbstract implements Iterable<Entry<String,
   protected void convertAllMultiValuesToTrackedVersions() {
     if (_fields == null)
       return;
-
     for (Map.Entry<String, ODocumentEntry> fieldEntry : _fields.entrySet()) {
       final Object fieldValue = fieldEntry.getValue().value;
       if (!(fieldValue instanceof Collection<?>) && !(fieldValue instanceof Map<?, ?>) && !(fieldValue instanceof ODocument))
@@ -2325,7 +2324,7 @@ public class ODocument extends ORecordAbstract implements Iterable<Entry<String,
         continue;
       }
 
-      if (fieldValue instanceof ODocument && fieldValue != this) {
+      if (fieldValue instanceof ODocument && ((ODocument) fieldValue).isEmbedded()) {
         ((ODocument) fieldValue).convertAllMultiValuesToTrackedVersions();
         continue;
       }
@@ -2346,13 +2345,16 @@ public class ODocument extends ORecordAbstract implements Iterable<Entry<String,
               || OType.LINKSET.equals(fieldType) || OType.LINKLIST.equals(fieldType) || OType.LINKMAP.equals(fieldType)))
         continue;
       Object newValue = null;
-      if (fieldValue instanceof List && fieldType.equals(OType.EMBEDDEDLIST))
-        newValue = new OTrackedList<Object>(this, (List<?>) fieldValue, null);
-      else if (fieldValue instanceof Set && fieldType.equals(OType.EMBEDDEDSET))
-        newValue = new OTrackedSet<Object>(this, (Set<OIdentifiable>) fieldValue, null);
-      else if (fieldValue instanceof Map && fieldType.equals(OType.EMBEDDEDMAP))
-        newValue = new OTrackedMap<OIdentifiable>(this, (Map<Object, OIdentifiable>) fieldValue, null);
-      else if (fieldValue instanceof Set && fieldType.equals(OType.LINKSET))
+      if (fieldValue instanceof List && fieldType.equals(OType.EMBEDDEDLIST)) {
+        newValue = new OTrackedList<Object>(this);
+        fillTrackedCollection((Collection<Object>) newValue, (Collection<Object>) fieldValue);
+      } else if (fieldValue instanceof Set && fieldType.equals(OType.EMBEDDEDSET)) {
+        newValue = new OTrackedSet<Object>(this);
+        fillTrackedCollection((Collection<Object>) newValue, (Collection<Object>) fieldValue);
+      } else if (fieldValue instanceof Map && fieldType.equals(OType.EMBEDDEDMAP)) {
+        newValue = new OTrackedMap<Object>(this, (Map<Object, Object>) fieldValue, null);
+        fillTrackedMap((Map<Object, Object>) newValue, (Map<Object, Object>) fieldValue);
+      } else if (fieldValue instanceof Set && fieldType.equals(OType.LINKSET))
         newValue = new ORecordLazySet(this, (Collection<OIdentifiable>) fieldValue);
       else if (fieldValue instanceof List && fieldType.equals(OType.LINKLIST))
         newValue = new ORecordLazyList(this, (List<OIdentifiable>) fieldValue);
@@ -2370,6 +2372,49 @@ public class ODocument extends ORecordAbstract implements Iterable<Entry<String,
       }
     }
 
+  }
+
+  private void fillTrackedCollection(Collection<Object> dest, Collection<Object> source) {
+    for (Object cur : source) {
+      if (cur instanceof ODocument)
+        ((ODocument) cur).convertAllMultiValuesToTrackedVersions();
+      else if (cur instanceof List) {
+        List<Object> newList = new OTrackedList<Object>(this);
+        fillTrackedCollection(newList, (Collection<Object>) cur);
+        cur = newList;
+      } else if (cur instanceof Set) {
+        Set<Object> newSet = new OTrackedSet<Object>(this);
+        fillTrackedCollection(newSet, (Collection<Object>) cur);
+        cur = newSet;
+      } else if (cur instanceof Map) {
+        Map<Object, Object> newMap = new OTrackedMap<Object>(this);
+        fillTrackedMap(newMap, (Map<Object, Object>) cur);
+        cur = newMap;
+      }
+      dest.add(cur);
+    }
+  }
+
+  private void fillTrackedMap(Map<Object, Object> dest, Map<Object, Object> source) {
+    for (Entry<Object, Object> cur : source.entrySet()) {
+      Object value = cur.getValue();
+      if (value instanceof ODocument)
+        ((ODocument) value).convertAllMultiValuesToTrackedVersions();
+      else if (cur.getValue() instanceof List) {
+        List<Object> newList = new OTrackedList<Object>(this);
+        fillTrackedCollection(newList, (Collection<Object>) value);
+        value = newList;
+      } else if (value instanceof Set) {
+        Set<Object> newSet = new OTrackedSet<Object>(this);
+        fillTrackedCollection(newSet, (Collection<Object>) value);
+        value = newSet;
+      } else if (value instanceof Map) {
+        Map<Object, Object> newMap = new OTrackedMap<Object>(this);
+        fillTrackedMap(newMap, (Map<Object, Object>) value);
+        value = newMap;
+      }
+      dest.put(cur.getKey(), value);
+    }
   }
 
   protected void internalReset() {
