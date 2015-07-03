@@ -2354,16 +2354,13 @@ public class ODocument extends ORecordAbstract implements Iterable<Entry<String,
       } else if (fieldValue instanceof Map && fieldType.equals(OType.EMBEDDEDMAP)) {
         newValue = new OTrackedMap<Object>(this, (Map<Object, Object>) fieldValue, null);
         fillTrackedMap((Map<Object, Object>) newValue, (Map<Object, Object>) fieldValue);
-      } else if (fieldValue instanceof Set && fieldType.equals(OType.LINKSET)) {
-        newValue = new ORecordLazySet(this);
-        fillTrackedCollection((Collection<Object>) newValue, (Collection<Object>) fieldValue);
-      } else if (fieldValue instanceof List && fieldType.equals(OType.LINKLIST)) {
-        newValue = new ORecordLazyList(this);
-        fillTrackedCollection((Collection<Object>) newValue, (Collection<Object>) fieldValue);
-      } else if (fieldValue instanceof Map && fieldType.equals(OType.LINKMAP)) {
-        newValue = new ORecordLazyMap(this);
-        fillTrackedMap((Map<Object, Object>) newValue, (Map<Object, Object>) fieldValue);
-      }
+      } else if (fieldValue instanceof Set && fieldType.equals(OType.LINKSET))
+        newValue = new ORecordLazySet(this, (Collection<OIdentifiable>) fieldValue);
+      else if (fieldValue instanceof List && fieldType.equals(OType.LINKLIST))
+        newValue = new ORecordLazyList(this, (List<OIdentifiable>) fieldValue);
+      else if (fieldValue instanceof Map && fieldType.equals(OType.LINKMAP))
+        newValue = new ORecordLazyMap(this, (Map<Object, OIdentifiable>) fieldValue);
+
       if (newValue != null) {
         addCollectionChangeListener(fieldEntry.getKey(), fieldEntry.getValue(), (OTrackedMultiValue<Object, Object>) newValue);
         fieldEntry.getValue().value = newValue;
