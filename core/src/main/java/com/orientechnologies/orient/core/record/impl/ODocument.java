@@ -1339,8 +1339,10 @@ public class ODocument extends ORecordAbstract implements Iterable<Entry<String,
       return Collections.emptyList();
 
     final List<ORecordElement> result = new ArrayList<ORecordElement>();
-    for (WeakReference<ORecordElement> o : _owners)
-      result.add(o.get());
+    for (WeakReference<ORecordElement> o : _owners) {
+      if (o.get() != null)
+        result.add(o.get());
+    }
 
     return result;
   }
@@ -2273,6 +2275,8 @@ public class ODocument extends ORecordAbstract implements Iterable<Entry<String,
    * Internal.
    */
   protected void addOwner(final ORecordElement iOwner) {
+    if (iOwner == null)
+      return;
     if (_owners == null) {
       _owners = new ArrayList<WeakReference<ORecordElement>>();
       if (_dirtyManager != null && this.getIdentity().isNew())
@@ -2280,12 +2284,14 @@ public class ODocument extends ORecordAbstract implements Iterable<Entry<String,
     }
 
     boolean found = false;
-    for (WeakReference<ORecordElement> _owner : _owners) {
-      final ORecordElement e = _owner.get();
+    Iterator<WeakReference<ORecordElement>> ref = _owners.iterator();
+    while (ref.hasNext()) {
+      final ORecordElement e = ref.next().get();
       if (e == iOwner) {
         found = true;
         break;
-      }
+      } else if (e == null)
+        ref.remove();
     }
 
     if (!found)
