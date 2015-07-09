@@ -77,10 +77,6 @@ import com.orientechnologies.orient.core.exception.ORecordNotFoundException;
 import com.orientechnologies.orient.core.exception.OStorageException;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.id.ORecordId;
-import com.orientechnologies.orient.core.storage.cache.OCacheEntry;
-import com.orientechnologies.orient.core.storage.cache.OCachePointer;
-import com.orientechnologies.orient.core.storage.cache.OPageDataVerificationError;
-import com.orientechnologies.orient.core.storage.cache.OReadCache;
 import com.orientechnologies.orient.core.metadata.OMetadataDefault;
 import com.orientechnologies.orient.core.metadata.OMetadataInternal;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
@@ -100,6 +96,10 @@ import com.orientechnologies.orient.core.storage.ORecordCallback;
 import com.orientechnologies.orient.core.storage.ORecordMetadata;
 import com.orientechnologies.orient.core.storage.OStorageAbstract;
 import com.orientechnologies.orient.core.storage.OStorageOperationResult;
+import com.orientechnologies.orient.core.storage.cache.OCacheEntry;
+import com.orientechnologies.orient.core.storage.cache.OCachePointer;
+import com.orientechnologies.orient.core.storage.cache.OPageDataVerificationError;
+import com.orientechnologies.orient.core.storage.cache.OReadCache;
 import com.orientechnologies.orient.core.storage.cache.OWriteCache;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.OOfflineCluster;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.OOfflineClusterException;
@@ -1100,11 +1100,17 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract impleme
         if (toSave != null) {
           for (OIdentifiable oIdentifiable : toSave) {
             if (oIdentifiable.getIdentity().isNew()) {
-              if (oIdentifiable instanceof ORecord)
+              if (oIdentifiable instanceof ORecord) {
                 nextToInspect = (ORecord) oIdentifiable;
-              else
+                break;
+              } else {
                 nextToInspect = oIdentifiable.getRecord();
-              break;
+                if (nextToInspect.getIdentity().isNew())
+                  break;
+                else
+                  nextToInspect = null;
+              }
+
             }
           }
         }

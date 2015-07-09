@@ -19,7 +19,6 @@
  */
 package com.orientechnologies.orient.core.record.impl;
 
-
 import java.io.ByteArrayOutputStream;
 import java.io.Externalizable;
 import java.io.IOException;
@@ -1360,12 +1359,12 @@ public class ODocument extends ORecordAbstract implements Iterable<Entry<String,
         if (e != null)
           e.setDirty();
       }
-    }
+    } else if (!isDirty())
+      getDirtyManager().setDirty(this);
+    
     // THIS IS IMPORTANT TO BE SURE THAT FIELDS ARE LOADED BEFORE IT'S TOO LATE AND THE RECORD _SOURCE IS NULL
     checkForFields();
 
-    if (!isDirty())
-      getDirtyManager().setDirty(this);
     super.setDirty();
 
     boolean addToChangedList = false;
