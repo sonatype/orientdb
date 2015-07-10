@@ -284,7 +284,7 @@ public class ODocument extends ORecordAbstract implements Iterable<Entry<String,
       String defValue = p.getDefaultValue();
       if (defValue != null && defValue.length() > 0) {
         Object curFieldValue = OSQLHelper.parseDefaultValue(iRecord, defValue);
-        fieldValue = ODocumentHelper.convertField(iRecord, p.getName(), p.getType(), curFieldValue);
+        fieldValue = ODocumentHelper.convertField(iRecord, p.getName(), p.getType(), null, curFieldValue);
         iRecord.rawField(p.getName(), fieldValue, p.getType());
       } else {
         if (p.isMandatory()) {
@@ -842,7 +842,7 @@ public class ODocument extends ORecordAbstract implements Iterable<Entry<String,
     RET value = this.rawField(iFieldName);
 
     if (value != null)
-      value = ODocumentHelper.convertField(this, iFieldName, OType.getTypeByClass(iFieldType), value);
+      value = ODocumentHelper.convertField(this, iFieldName, OType.getTypeByClass(iFieldType), iFieldType, value);
 
     return value;
   }
@@ -873,11 +873,11 @@ public class ODocument extends ORecordAbstract implements Iterable<Entry<String,
       else if (iFieldType == OType.DATE && value instanceof Long)
         newValue = new Date((Long) value);
       else if ((iFieldType == OType.EMBEDDEDSET || iFieldType == OType.LINKSET) && value instanceof List)
-        newValue = Collections.unmodifiableSet((Set<?>) ODocumentHelper.convertField(this, iFieldName, iFieldType, value));
+        newValue = Collections.unmodifiableSet((Set<?>) ODocumentHelper.convertField(this, iFieldName, iFieldType, null, value));
       else if ((iFieldType == OType.EMBEDDEDLIST || iFieldType == OType.LINKLIST) && value instanceof Set)
-        newValue = Collections.unmodifiableList((List<?>) ODocumentHelper.convertField(this, iFieldName, iFieldType, value));
+        newValue = Collections.unmodifiableList((List<?>) ODocumentHelper.convertField(this, iFieldName, iFieldType, null, value));
       else if ((iFieldType == OType.EMBEDDEDMAP || iFieldType == OType.LINKMAP) && value instanceof Map)
-        newValue = Collections.unmodifiableMap((Map<?, ?>) ODocumentHelper.convertField(this, iFieldName, iFieldType, value));
+        newValue = Collections.unmodifiableMap((Map<?, ?>) ODocumentHelper.convertField(this, iFieldName, iFieldType, null, value));
       else
         newValue = OType.convert(value, iFieldType.getDefaultJavaType());
 
@@ -1029,7 +1029,7 @@ public class ODocument extends ORecordAbstract implements Iterable<Entry<String,
     }
     OType fieldType = deriveFieldType(iFieldName, entry, iFieldType);
     if (iPropertyValue != null && fieldType != null) {
-      iPropertyValue = ODocumentHelper.convertField(this, iFieldName, fieldType, iPropertyValue);
+      iPropertyValue = ODocumentHelper.convertField(this, iFieldName, fieldType, null, iPropertyValue);
     } else if (iPropertyValue instanceof Enum)
       iPropertyValue = iPropertyValue.toString();
 
@@ -2357,7 +2357,7 @@ public class ODocument extends ORecordAbstract implements Iterable<Entry<String,
         newValue = new OTrackedSet<Object>(this);
         fillTrackedCollection((Collection<Object>) newValue, (Collection<Object>) fieldValue);
       } else if (fieldValue instanceof Map && fieldType.equals(OType.EMBEDDEDMAP)) {
-        newValue = new OTrackedMap<Object>(this, (Map<Object, Object>) fieldValue, null);
+        newValue = new OTrackedMap<Object>(this);
         fillTrackedMap((Map<Object, Object>) newValue, (Map<Object, Object>) fieldValue);
       } else if (fieldValue instanceof Set && fieldType.equals(OType.LINKSET))
         newValue = new ORecordLazySet(this, (Collection<OIdentifiable>) fieldValue);
