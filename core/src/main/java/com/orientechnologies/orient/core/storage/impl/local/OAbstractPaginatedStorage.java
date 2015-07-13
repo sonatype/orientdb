@@ -2236,13 +2236,18 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract impleme
 
       case ORecordOperation.CREATED: {
         // CHECK 2 TIMES TO ASSURE THAT IT'S A CREATE OR AN UPDATE BASED ON RECURSIVE TO-STREAM METHOD
+        final ORecordId oldRID;
+        if (rid.isNew()) {
+          oldRID = rid.copy();
+          rid.clusterId = clusterId;
+        } else
+          oldRID = rid;
 
         final byte[] stream = rec.toStream();
         if (stream == null) {
           OLogManager.instance().warn(this, "Null serialization on committing new record %s in transaction", rid);
           break;
         }
-        final ORecordId oldRID = rid.isNew() ? rid.copy() : rid;
 
         if (rid.isNew()) {
           rid = rid.copy();
