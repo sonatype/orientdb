@@ -2177,6 +2177,8 @@ public class ODocument extends ORecordAbstract implements Iterable<Entry<String,
     entry.value = iFieldValue;
     entry.type = iFieldType;
     addCollectionChangeListener(iFieldName, entry, iFieldValue);
+    if(iFieldValue instanceof OIdentifiable && !((OIdentifiable) iFieldValue).getIdentity().isPersistent())
+      track((OIdentifiable) iFieldValue);
   }
 
   protected ODocumentEntry getOrCreate(String key) {
