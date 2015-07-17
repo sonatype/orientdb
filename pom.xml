@@ -117,30 +117,53 @@
         <module>distribution</module>
     </modules>
 
+    <!--<scm>-->
+        <!--<connection>scm:git:git@github.com:orientechnologies/orientdb.git</connection>-->
+        <!--<developerConnection>scm:git:git@github.com:orientechnologies/orientdb.git</developerConnection>-->
+        <!--<url>scm:git:git@github.com:orientechnologies/orientdb.git</url>-->
+    <!--</scm>-->
     <scm>
-        <connection>scm:git:git@github.com:orientechnologies/orientdb.git</connection>
-        <developerConnection>scm:git:git@github.com:orientechnologies/orientdb.git</developerConnection>
-        <url>scm:git:git@github.com:orientechnologies/orientdb.git</url>
+        <connection>scm:git:git@github.com:sonatype/orientdb.git</connection>
+        <developerConnection>scm:git:git@github.com:sonatype/orientdb.git</developerConnection>
+        <url>scm:git:git@github.com:sonatype/orientdb.git</url>
     </scm>
+
     <issueManagement>
         <system>GitHub Issues</system>
         <url>https://github.com/orientechnologies/orientdb/issues</url>
     </issueManagement>
+    <!--<ciManagement>-->
+        <!--<system>jenkins</system>-->
+        <!--<url>http://helios.orientdb.com/</url>-->
+    <!--</ciManagement>-->
+
     <ciManagement>
-        <system>jenkins</system>
-        <url>http://helios.orientdb.com/</url>
+        <system>bamboo</system>
+        <url>http://bamboo.s/browse/EXT-ORIENT</url>
     </ciManagement>
+
+    <!--<distributionManagement>-->
+        <!--<repository>-->
+            <!--<id>sonatype-nexus-staging</id>-->
+            <!--<name>OrientDB Maven2 Repository</name>-->
+            <!--<url>https://oss.sonatype.org/service/local/staging/deploy/maven2</url>-->
+        <!--</repository>-->
+        <!--<snapshotRepository>-->
+            <!--<id>sonatype-nexus-snapshots</id>-->
+            <!--<name>OrientDB Maven2 Snapshot Repository</name>-->
+            <!--<url>https://oss.sonatype.org/content/repositories/snapshots</url>-->
+            <!--<uniqueVersion>false</uniqueVersion>-->
+        <!--</snapshotRepository>-->
+    <!--</distributionManagement>-->
     <distributionManagement>
         <repository>
-            <id>sonatype-nexus-staging</id>
-            <name>OrientDB Maven2 Repository</name>
-            <url>https://oss.sonatype.org/service/local/staging/deploy/maven2</url>
+            <id>${public-release.serverId}</id>
+            <url>${public-release.url}</url>
         </repository>
+
         <snapshotRepository>
-            <id>sonatype-nexus-snapshots</id>
-            <name>OrientDB Maven2 Snapshot Repository</name>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-            <uniqueVersion>false</uniqueVersion>
+            <id>${public-snapshot.serverId}</id>
+            <url>${public-snapshot.url}</url>
         </snapshotRepository>
     </distributionManagement>
     <repositories>
