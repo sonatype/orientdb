@@ -132,11 +132,11 @@
         <system>GitHub Issues</system>
         <url>https://github.com/orientechnologies/orientdb/issues</url>
     </issueManagement>
+
     <!--<ciManagement>-->
         <!--<system>jenkins</system>-->
         <!--<url>http://helios.orientdb.com/</url>-->
     <!--</ciManagement>-->
-
     <ciManagement>
         <system>bamboo</system>
         <url>http://bamboo.s/browse/EXT-ORIENT</url>
@@ -207,8 +207,8 @@
         <osgi.private/>
         <!-- | shared build/report plugins version -->
         <surefire.version>2.19.1</surefire.version>
-        <sonatypeOssDistMgmtSnapshotsUrl>https://oss.sonatype.org/content/repositories/snapshots/
-        </sonatypeOssDistMgmtSnapshotsUrl>
+        <!--<sonatypeOssDistMgmtSnapshotsUrl>https://oss.sonatype.org/content/repositories/snapshots/-->
+        <!--</sonatypeOssDistMgmtSnapshotsUrl>-->
     </properties>
 
     <build>
