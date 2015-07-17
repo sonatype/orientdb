@@ -15,6 +15,10 @@
 
     <groupId>com.orientechnologies</groupId>
     <artifactId>orientdb-parent</artifactId>
+
+    <!--
+    SONATYPE: Custom version to avoid clobbering upstreams snapshots.
+    -->
     <version>2.2.SONATYPE-SNAPSHOT</version>
     <packaging>pom</packaging>
 
@@ -122,6 +126,10 @@
         <!--<developerConnection>scm:git:git@github.com:orientechnologies/orientdb.git</developerConnection>-->
         <!--<url>scm:git:git@github.com:orientechnologies/orientdb.git</url>-->
     <!--</scm>-->
+
+    <!--
+    SONATYPE: Fork configuration.
+    -->
     <scm>
         <connection>scm:git:git@github.com:sonatype/orientdb.git</connection>
         <developerConnection>scm:git:git@github.com:sonatype/orientdb.git</developerConnection>
@@ -137,6 +145,10 @@
         <!--<system>jenkins</system>-->
         <!--<url>http://helios.orientdb.com/</url>-->
     <!--</ciManagement>-->
+
+    <!--
+    SONATYPE: Zion configuration.
+    -->
     <ciManagement>
         <system>bamboo</system>
         <url>http://bamboo.s/browse/EXT-ORIENT</url>
@@ -155,6 +167,10 @@
             <!--<uniqueVersion>false</uniqueVersion>-->
         <!--</snapshotRepository>-->
     <!--</distributionManagement>-->
+
+    <!--
+    SONATYPE: Configuration to deploy to Zion.
+    -->
     <distributionManagement>
         <repository>
             <id>${public-release.serverId}</id>
@@ -207,8 +223,19 @@
         <osgi.private/>
         <!-- | shared build/report plugins version -->
         <surefire.version>2.19.1</surefire.version>
+
+        <!--
+        SONATYPE: Unsure what this does, comment just in case.
+        -->
         <!--<sonatypeOssDistMgmtSnapshotsUrl>https://oss.sonatype.org/content/repositories/snapshots/-->
         <!--</sonatypeOssDistMgmtSnapshotsUrl>-->
+
+        <!--
+        SONATYPE: Additional configuration for Zion, since we are not inheriting from buildsupport.
+        -->
+        <public.serverId>zion-nexus</public.serverId>
+        <public-release.serverId>${public.serverId}</public-release.serverId>
+        <public-snapshot.serverId>${public.serverId}</public-snapshot.serverId>
     </properties>
 
     <build>
