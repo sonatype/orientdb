@@ -1200,7 +1200,7 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract impleme
       return size;
 
     } catch (IOException ioe) {
-      throw new OStorageException("Can not calculate records size");
+      throw new OStorageException("Can not calculate records size", ioe);
     }
   }
 
@@ -2102,7 +2102,6 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract impleme
 
     // DOCUMENT UPDATE, NO VERSION CONTROL, NO VERSION UPDATE
     case -2:
-      iDatabaseVersion.setCounter(-2);
       break;
 
     default:
