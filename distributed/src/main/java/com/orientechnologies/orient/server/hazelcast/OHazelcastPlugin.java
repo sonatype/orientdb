@@ -49,7 +49,6 @@ import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.OCommandSQLParsingException;
 import com.orientechnologies.orient.core.storage.OStorage;
 import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
-import com.orientechnologies.orient.server.OClientConnectionManager;
 import com.orientechnologies.orient.server.OServer;
 import com.orientechnologies.orient.server.config.OServerConfiguration;
 import com.orientechnologies.orient.server.config.OServerHandlerConfiguration;
@@ -93,10 +92,11 @@ import java.util.concurrent.locks.Lock;
 public class OHazelcastPlugin extends ODistributedAbstractPlugin implements MembershipListener, EntryListener<String, Object>,
     OCommandOutputListener {
 
+  public static final String                    CONFIG_DATABASE_PREFIX = "database.";
+
   protected static final String                 NODE_NAME_ENV          = "ORIENTDB_NODE_NAME";
   protected static final String                 CONFIG_NODE_PREFIX     = "node.";
   protected static final String                 CONFIG_DBSTATUS_PREFIX = "dbstatus.";
-  protected static final String                 CONFIG_DATABASE_PREFIX = "database.";
   protected final static String                 BACKUP_DIR             = "../backup/databases";
   protected String                              nodeId;
   protected String                              hazelcastConfigFile    = "hazelcast.xml";
@@ -346,6 +346,13 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin implements Memb
           + req);
     }
 
+    if (db == null) {
+      ODistributedServerLog.error(this, getLocalNodeName(), null, DIRECTION.OUT, "Distributed database '%s' not found",
+          iDatabaseName);
+      throw new ODistributedException("Distributed database '" + iDatabaseName + "' not found on server '" + getLocalNodeName()
+          + "'");
+    }
+
     final ODistributedResponse response = db.send2Nodes(req, iClusterNames, iTargetNodes, iExecutionMode);
     if (response != null)
       return response.getPayload();
@@ -380,6 +387,9 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin implements Memb
 
     final ODatabaseDocumentInternal currDb = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
     try {
+
+      if (getConfigurationMap().containsKey(OHazelcastPlugin.CONFIG_DATABASE_PREFIX + iDatabase.getName()))
+        throw new ODistributedException("Cannot create a new database with the same name of one available distributed");
 
       final OHazelcastDistributedDatabase distribDatabase = messageService.registerDatabase(iDatabase.getName());
       distribDatabase.configureDatabase(false, false, null).setOnline();
@@ -460,8 +470,8 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin implements Memb
   }
 
   @Override
-  public void onDropClass(ODatabaseInternal iDatabase, OClass iClass) {
-    // NOT SUPPORTED YET
+  public void onDrop(final ODatabaseInternal iDatabase) {
+    super.onDrop(iDatabase);
   }
 
   @SuppressWarnings("unchecked")
@@ -580,7 +590,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin implements Memb
 
     }
 
-    OClientConnectionManager.instance().pushDistribCfg2Clients(getClusterConfiguration());
+    serverInstance.getClientConnectionManager().pushDistribCfg2Clients(getClusterConfiguration());
   }
 
   @Override
@@ -1171,7 +1181,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin implements Memb
 
     installNewDatabases(false);
     updateCachedDatabaseConfiguration(databaseName, (ODocument) iEvent.getValue(), true, false);
-    OClientConnectionManager.instance().pushDistribCfg2Clients(getClusterConfiguration());
+    serverInstance.getClientConnectionManager().pushDistribCfg2Clients(getClusterConfiguration());
 
     updateLastClusterChange();
   }

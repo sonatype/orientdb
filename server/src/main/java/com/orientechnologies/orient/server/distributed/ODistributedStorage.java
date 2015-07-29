@@ -19,19 +19,7 @@
  */
 package com.orientechnologies.orient.server.distributed;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.util.*;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.atomic.AtomicLong;
-
 import com.orientechnologies.common.concur.ONeedRetryException;
-import com.orientechnologies.common.concur.resource.OSharedResourceAdaptiveExternal;
 import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.util.OCallable;
@@ -88,6 +76,17 @@ import com.orientechnologies.orient.core.version.ORecordVersion;
 import com.orientechnologies.orient.server.OServer;
 import com.orientechnologies.orient.server.distributed.ODistributedRequest.EXECUTION_MODE;
 import com.orientechnologies.orient.server.distributed.task.*;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Distributed storage implementation that routes to the owner node the request.
@@ -1311,21 +1310,6 @@ public class ODistributedStorage implements OStorage, OFreezableStorage, OAutosh
   }
 
   @Override
-  public int getUsers() {
-    return wrapped.getUsers();
-  }
-
-  @Override
-  public int addUser() {
-    return wrapped.addUser();
-  }
-
-  @Override
-  public int removeUser() {
-    return wrapped.removeUser();
-  }
-
-  @Override
   public long[] getClusterDataRange(final int currentClusterId) {
     return wrapped.getClusterDataRange(currentClusterId);
   }
@@ -1349,6 +1333,14 @@ public class ODistributedStorage implements OStorage, OFreezableStorage, OAutosh
     return wrapped.higherPhysicalPositions(currentClusterId, entry);
   }
 
+  public OServer getServer() {
+    return serverInstance;
+  }
+
+  public ODistributedServerManager getDistributedManager() {
+    return dManager;
+  }
+
   @Override
   public OPhysicalPosition[] ceilingPhysicalPositions(int clusterId, OPhysicalPosition physicalPosition) {
     return wrapped.ceilingPhysicalPositions(clusterId, physicalPosition);
@@ -1362,11 +1354,6 @@ public class ODistributedStorage implements OStorage, OFreezableStorage, OAutosh
   @Override
   public OPhysicalPosition[] lowerPhysicalPositions(int currentClusterId, OPhysicalPosition entry) {
     return wrapped.lowerPhysicalPositions(currentClusterId, entry);
-  }
-
-  @Override
-  public OSharedResourceAdaptiveExternal getLock() {
-    return wrapped.getLock();
   }
 
   public OStorage getUnderlying() {
