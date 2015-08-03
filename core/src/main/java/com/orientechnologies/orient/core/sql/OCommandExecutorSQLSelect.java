@@ -56,11 +56,23 @@ import com.orientechnologies.orient.core.record.ORecordInternal;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.record.impl.ODocumentHelper;
 import com.orientechnologies.orient.core.serialization.serializer.OStringSerializerHelper;
-import com.orientechnologies.orient.core.sql.filter.*;
+import com.orientechnologies.orient.core.sql.filter.OFilterOptimizer;
+import com.orientechnologies.orient.core.sql.filter.OSQLFilter;
+import com.orientechnologies.orient.core.sql.filter.OSQLFilterCondition;
+import com.orientechnologies.orient.core.sql.filter.OSQLFilterItem;
+import com.orientechnologies.orient.core.sql.filter.OSQLFilterItemField;
+import com.orientechnologies.orient.core.sql.filter.OSQLFilterItemVariable;
 import com.orientechnologies.orient.core.sql.functions.OSQLFunctionRuntime;
 import com.orientechnologies.orient.core.sql.functions.coll.OSQLFunctionDistinct;
 import com.orientechnologies.orient.core.sql.functions.misc.OSQLFunctionCount;
-import com.orientechnologies.orient.core.sql.operator.*;
+import com.orientechnologies.orient.core.sql.operator.OQueryOperator;
+import com.orientechnologies.orient.core.sql.operator.OQueryOperatorAnd;
+import com.orientechnologies.orient.core.sql.operator.OQueryOperatorBetween;
+import com.orientechnologies.orient.core.sql.operator.OQueryOperatorIn;
+import com.orientechnologies.orient.core.sql.operator.OQueryOperatorMajor;
+import com.orientechnologies.orient.core.sql.operator.OQueryOperatorMajorEquals;
+import com.orientechnologies.orient.core.sql.operator.OQueryOperatorMinor;
+import com.orientechnologies.orient.core.sql.operator.OQueryOperatorMinorEquals;
 import com.orientechnologies.orient.core.sql.parser.OOrderBy;
 import com.orientechnologies.orient.core.sql.parser.OOrderByItem;
 import com.orientechnologies.orient.core.sql.query.OResultSet;
@@ -205,7 +217,7 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
     try {
       // System.out.println("NEW PARSER FROM: " + queryText);
       queryText = preParse(queryText, iRequest);
-      // System.out.println("NEW PARSER   TO: " + queryText);
+      // System.out.println("NEW PARSER TO: " + queryText);
       textRequest.setText(queryText);
 
       super.parse(iRequest);
@@ -476,7 +488,7 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
       throw new OCommandExecutionException("The select execution has been interrupted");
     }
 
-    if (!context.checkTimeout()) {
+    if (!checkInterruption()) {
       return false;
     }
 
@@ -685,7 +697,7 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
       List<String> nextFields = unwindFields.subList(1, unwindFields.size());
 
       Object fieldValue = doc.field(firstField);
-      if (fieldValue == null || !(fieldValue instanceof Iterable)) {
+      if (fieldValue == null || !(fieldValue instanceof Iterable) || fieldValue instanceof ODocument) {
         result.addAll(unwind(doc, nextFields));
       } else {
         for (Object o : (Iterable) fieldValue) {
@@ -1953,7 +1965,7 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
           key = index.getLastKey();
         }
 
-        if (key == null) {
+        if (index.getKeySize() == 0) {
           return null;
         }
 
@@ -1972,14 +1984,32 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
           idxNames.add(index.getName());
         }
 
-        final OIndexCursor cursor;
-        if (ascSortOrder) {
-          cursor = index.iterateEntriesMajor(key, true, true);
-        } else {
-          cursor = index.iterateEntriesMinor(key, true, false);
+        final List<OIndexCursor> cursors = new ArrayList<OIndexCursor>();
+
+        OIndexCursor cursor = null;
+
+        if (key != null) {
+          if (ascSortOrder) {
+            cursor = index.iterateEntriesMajor(key, true, true);
+          } else {
+            cursor = index.iterateEntriesMinor(key, true, false);
+          }
         }
 
-        return cursor;
+        if (cursor != null)
+          cursors.add(cursor);
+
+        if (index.getMetadata() != null && !index.getDefinition().isNullValuesIgnored()) {
+          Object nullValue = index.get(null);
+          if (nullValue != null) {
+            if (nullValue instanceof Collection)
+              cursors.add(new OIndexCursorCollectionValue(((Collection) nullValue).iterator(), null));
+            else
+              cursors.add(new OIndexCursorSingleValue((OIdentifiable) nullValue, null));
+          }
+        }
+
+        return new OCompositeIndexCursor(cursors);
       }
     }
 

@@ -106,7 +106,7 @@ public class ORemoteConnectionManager implements OChannelListener {
       throw e;
     } catch (Exception e) {
       // ERROR ON RETRIEVING THE INSTANCE FROM THE POOL
-      OLogManager.instance().error(this, "Error on retrieving the connection from pool: " + iServerURL, e);
+      OLogManager.instance().debug(this, "Error on retrieving the connection from pool: " + iServerURL, e);
     }
     return null;
   }
@@ -196,6 +196,8 @@ public class ORemoteConnectionManager implements OChannelListener {
     final List<OChannelBinaryAsynchClient> conns = new ArrayList<OChannelBinaryAsynchClient>(pool.getAllResources());
     for (OChannelBinaryAsynchClient c : conns)
       try {
+        //Unregister the listener that make the connection return to the closing pool.
+        c.unregisterListener(this);
         c.close();
       } catch (Exception e) {
         OLogManager.instance().debug(this, "Can not close binary channel", e);
