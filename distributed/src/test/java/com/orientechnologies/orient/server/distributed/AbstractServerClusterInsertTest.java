@@ -16,19 +16,7 @@
 
 package com.orientechnologies.orient.server.distributed;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-
-import junit.framework.Assert;
-
+import com.orientechnologies.common.concur.ONeedRetryException;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.exception.OQueryParsingException;
@@ -42,7 +30,20 @@ import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.core.sql.query.OSQLSynchQuery;
+import com.orientechnologies.orient.core.storage.ORecordDuplicatedException;
 import com.tinkerpop.blueprints.impls.orient.OrientBaseGraph;
+import junit.framework.Assert;
+
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Insert records concurrently against the cluster
@@ -72,7 +73,8 @@ public abstract class AbstractServerClusterInsertTest extends AbstractDistribute
       String name = Integer.toString(threadId);
 
       for (int i = 0; i < count; i++) {
-        final ODatabaseDocumentTx database = poolFactory.get(databaseUrl, "admin", "admin").acquire();
+        final ODatabaseDocumentTx database = new ODatabaseDocumentTx(databaseUrl).open("admin", "admin");
+
         try {
           final int id = baseCount + i;
 
@@ -88,7 +90,8 @@ public abstract class AbstractServerClusterInsertTest extends AbstractDistribute
               if ((i + 1) % 100 == 0)
                 System.out.println("\nWriter " + database.getURL() + " managed " + (i + 1) + "/" + count + " records so far");
 
-              Thread.sleep(delayWriter);
+              if (delayWriter > 0)
+                Thread.sleep(delayWriter);
 
               // OK
               break;
@@ -97,19 +100,29 @@ public abstract class AbstractServerClusterInsertTest extends AbstractDistribute
               System.out.println("Writer received interrupt (db=" + database.getURL());
               Thread.currentThread().interrupt();
               break;
-            } catch (Exception e) {
+            } catch (ORecordDuplicatedException e) {
+              // IGNORE IT
+            } catch (ONeedRetryException e) {
               System.out.println("Writer received exception (db=" + database.getURL());
 
               if (retry >= maxRetries)
                 e.printStackTrace();
 
               break;
+            } catch (ODistributedException e) {
+              if (!(e.getCause() instanceof ORecordDuplicatedException)) {
+                database.rollback();
+                throw e;
+              }
+            } catch (Throwable e) {
+              System.out.println("Writer received exception (db=" + database.getURL());
+              e.printStackTrace();
+              return null;
             }
           }
-
         } finally {
-          database.close();
           runningWriters.countDown();
+          database.close();
         }
       }
 
@@ -119,6 +132,8 @@ public abstract class AbstractServerClusterInsertTest extends AbstractDistribute
 
     private ODocument createRecord(ODatabaseDocumentTx database, int i) {
       final String uniqueId = serverId + "-" + threadId + "-" + i;
+
+      // System.out.println("Creating person " + uniqueId);
 
       ODocument person = new ODocument("Person").fields("id", UUID.randomUUID().toString(), "name", "Billy" + uniqueId, "surname",
           "Mayes" + uniqueId, "birthday", new Date(), "children", uniqueId);
@@ -176,7 +191,9 @@ public abstract class AbstractServerClusterInsertTest extends AbstractDistribute
         while (runningWriters.getCount() > 0) {
           try {
             printStats(databaseUrl);
-            Thread.sleep(delayReader);
+
+            if (delayReader > 0)
+              Thread.sleep(delayReader);
 
           } catch (Exception e) {
             break;
@@ -424,6 +441,7 @@ public abstract class AbstractServerClusterInsertTest extends AbstractDistribute
   private void printStats(final String databaseUrl) {
     final ODatabaseDocumentTx database = poolFactory.get(databaseUrl, "admin", "admin").acquire();
     try {
+      database.reload();
       List<ODocument> result = database.query(new OSQLSynchQuery<OIdentifiable>("select count(*) from Person"));
 
       final String name = database.getURL();

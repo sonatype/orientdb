@@ -216,7 +216,11 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract i
     synchronized (cachedDatabaseConfiguration) {
       storages.remove(iDatabase.getURL());
     }
-    getMessageService().unregisterDatabase(iDatabase.getName());
+
+    final ODistributedMessageService msgService = getMessageService();
+    if (msgService != null) {
+      msgService.unregisterDatabase(iDatabase.getName());
+    }
   }
 
   @Override
@@ -250,7 +254,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract i
 
       if (oldCfg != null && oldVersion > currVersion) {
         // NO CHANGE, SKIP IT
-        OLogManager.instance().warn(this,
+        OLogManager.instance().debug(this,
             "Skip saving of distributed configuration file for database '%s' because is unchanged (version %d)", iDatabaseName,
             (Integer) cfg.field("version"));
         return false;
