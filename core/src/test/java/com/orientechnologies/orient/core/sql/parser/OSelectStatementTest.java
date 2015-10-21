@@ -68,6 +68,25 @@ public class OSelectStatementTest {
   }
 
   @Test
+  public void testComments() {
+    checkRightSyntax("select from Foo");
+
+    checkRightSyntax("select /* aaa bbb ccc*/from Foo");
+    checkRightSyntax("select /* aaa bbb \nccc*/from Foo");
+    checkRightSyntax("select /** aaa bbb ccc**/from Foo");
+    checkRightSyntax("select /** aaa bbb ccc*/from Foo");
+
+    checkRightSyntax("/* aaa bbb ccc*/select from Foo");
+    checkRightSyntax("select from Foo/* aaa bbb ccc*/");
+    checkRightSyntax("/* aaa bbb ccc*/select from Foo/* aaa bbb ccc*/");
+
+    checkWrongSyntax("select /** aaa bbb */ccc*/from Foo");
+
+    checkWrongSyntax("select /**  /*aaa bbb */ccc*/from Foo");
+    checkWrongSyntax("*/ select from Foo");
+  }
+
+  @Test
   public void testSimpleSelect() {
     checkRightSyntax("select from Foo");
     checkRightSyntax("select * from Foo");
@@ -573,6 +592,12 @@ public class OSelectStatementTest {
   public void testDefined() {
     checkRightSyntax("select from foo where bar is defined");
     checkRightSyntax("select from foo where bar is not defined");
+
+  }
+
+  @Test
+  public void testRecordAttributeAsAlias() {
+    checkRightSyntax("select @rid as @rid from foo ");
 
   }
 
