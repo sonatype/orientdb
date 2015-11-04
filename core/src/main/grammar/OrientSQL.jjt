@@ -409,7 +409,7 @@ TOKEN :
 
 TOKEN :
 {
-  < IDENTIFIER: ( (<DOLLAR>)? <LETTER> (<PART_LETTER>)* ) >
+  < IDENTIFIER: ( ((<DOLLAR>) | <LETTER>) (<PART_LETTER>)* ) >
 |
   < QUOTED_IDENTIFIER: ( "`" (~["`"]) (~["`"])*  "`") >
 |
@@ -2252,7 +2252,13 @@ OBooleanExpression InstanceofCondition():
 }
 {
     (
-        jjtThis.left = Expression() <INSTANCEOF> ( jjtThis.right = Identifier() | token = <STRING_LITERAL> { jjtThis.rightString = token.image; } )
+        jjtThis.left = Expression() <INSTANCEOF> (
+           jjtThis.right = Identifier()
+           |
+           token = <STRING_LITERAL> { jjtThis.rightString = token.image; }
+           |
+           token = <CHARACTER_LITERAL> { jjtThis.rightString = token.image; }
+        )
     )
     {return jjtThis;}
 }
