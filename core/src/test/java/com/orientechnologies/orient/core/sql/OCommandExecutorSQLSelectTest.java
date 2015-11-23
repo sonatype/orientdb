@@ -6,6 +6,7 @@ import com.orientechnologies.orient.core.db.ODatabaseInternal;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.intent.OIntentMassiveInsert;
 import com.orientechnologies.orient.core.iterator.ORecordIteratorClass;
+import com.orientechnologies.orient.core.metadata.schema.OClass;
 import com.orientechnologies.orient.core.metadata.schema.OSchema;
 import com.orientechnologies.orient.core.record.ORecord;
 import com.orientechnologies.orient.core.record.impl.ODocument;
@@ -154,12 +155,22 @@ public class OCommandExecutorSQLSelectTest {
     initDatesSet(db);
 
     initMatchesWithRegex(db);
+    initDistinctLimit(db);
   }
 
   private void initMatchesWithRegex(ODatabaseInternal<ORecord> db) {
     db.command(new OCommandSQL("CREATE class matchesstuff")).execute();
 
     db.command(new OCommandSQL("insert into matchesstuff (name, foo) values ('admin[name]', 1)")).execute();
+  }
+
+  private void initDistinctLimit(ODatabaseInternal<ORecord> db) {
+    db.command(new OCommandSQL("CREATE class DistinctLimit")).execute();
+
+    db.command(new OCommandSQL("insert into DistinctLimit (name, foo) values ('one', 1)")).execute();
+    db.command(new OCommandSQL("insert into DistinctLimit (name, foo) values ('one', 1)")).execute();
+    db.command(new OCommandSQL("insert into DistinctLimit (name, foo) values ('two', 2)")).execute();
+    db.command(new OCommandSQL("insert into DistinctLimit (name, foo) values ('two', 2)")).execute();
   }
 
   private void initDatesSet(ODatabaseDocumentTx db) {
@@ -932,6 +943,34 @@ public class OCommandExecutorSQLSelectTest {
 
     params.put("param1",  Pattern.quote("adm") + ".*");
     results = db.query(sql, params);
+    assertEquals(results.size(), 1);
+  }
+
+  @Test
+  public void testDistinctLimit(){
+    OSQLSynchQuery sql = new OSQLSynchQuery("select distinct(name) from DistinctLimit limit 1");
+    List<ODocument> results = db.query(sql);
+    assertEquals(results.size(), 1);
+
+    sql = new OSQLSynchQuery("select distinct(name) from DistinctLimit limit 2");
+    results = db.query(sql);
+    assertEquals(results.size(), 2);
+
+    sql = new OSQLSynchQuery("select distinct(name) from DistinctLimit limit 3");
+    results = db.query(sql);
+    assertEquals(results.size(), 2);
+
+    sql = new OSQLSynchQuery("select distinct(name) from DistinctLimit limit -1");
+    results = db.query(sql);
+    assertEquals(results.size(), 2);
+  }
+
+  @Test
+  public void testSelectFromClusterNumber() {
+    OClass clazz = db.getMetadata().getSchema().getClass("DistinctLimit");
+    int firstCluster = clazz.getClusterIds()[0];
+    OSQLSynchQuery sql = new OSQLSynchQuery("select from cluster:" + firstCluster + " limit 1");
+    List<ODocument> results = db.query(sql);
     assertEquals(results.size(), 1);
   }
 
