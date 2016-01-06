@@ -109,6 +109,7 @@ public class OCSVExtractor extends OAbstractSourceExtractor {
         }
       }
 
+      log(OETLProcessor.LOG_LEVELS.INFO, "column types: %s", columnTypes);
       csvFormat = csvFormat.withHeader(columnNames.toArray(new String[] {}));
 
     }
@@ -140,6 +141,7 @@ public class OCSVExtractor extends OAbstractSourceExtractor {
     try {
 
       CSVParser parser = new CSVParser(iReader, csvFormat);
+
       recordIterator = parser.iterator();
     } catch (IOException e) {
       throw new OExtractorException(e);

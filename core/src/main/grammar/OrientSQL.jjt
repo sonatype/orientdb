@@ -427,6 +427,8 @@ TOKEN :
 |
   < METADATA_IDENTIFIER: "metadata:" <IDENTIFIER>  >
 |
+  < NAMED_PARAMETER:  <COLON> <LETTER> (<PART_LETTER>)*  >
+|
   < #LETTER:
       [  "A"-"Z",
          "_",
@@ -1010,25 +1012,14 @@ ODeleteEdgeStatement DeleteEdgeWhereStatement():
 }
 
 OUpdateStatement UpdateStatement():
-{ OUpdateOperations lastOperations; }
+{
+    OUpdateOperations lastOperations;
+    ORid lastRid;
+ }
 {
     (
     	<UPDATE>
-    	(
-    	    jjtThis.targetRid = Rid()
-    	    |
-    		jjtThis.targetClass = Identifier()
-    		|
-    		jjtThis.targetCluster = Cluster()
-    		|
-    		jjtThis.targetIndex = IndexIdentifier()
-    		|
-    		(
-    		    <LPAREN>
-    		    jjtThis.targetQuery = QueryStatement()
-    		    <RPAREN>
-    		)
-    	)
+    	jjtThis.target = FromClause()
     	( lastOperations = UpdateOperations() { jjtThis.operations.add(lastOperations); } )+
     	[ <UPSERT> { jjtThis.upsert = true; } ]
     	[
@@ -1427,12 +1418,15 @@ OPositionalParameter PositionalParameter():
 }
 
 ONamedParameter NamedParameter():
-{}
+{
+    Token token;
+}
 {
     (
-	    <COLON> jjtThis.paramName = Identifier()
+	    token = <NAMED_PARAMETER>
 	)
 	{
+	 jjtThis.paramName = token.image.substring(1);
 	 jjtThis.paramNumber = inputParamCount;
      inputParamCount++;
 	 return jjtThis;

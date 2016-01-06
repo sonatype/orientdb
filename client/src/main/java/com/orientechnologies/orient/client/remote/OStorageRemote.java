@@ -1421,6 +1421,7 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy {
         handleDBFreeze();
       } catch (Exception e) {
         handleException(network, "Error on commit", e);
+        iTx.restore();
 
       } finally {
         OStorageRemoteThreadLocal.INSTANCE.get().commandExecuting = false;
@@ -1659,20 +1660,21 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy {
     // TEMPORARY FIX: DISTRIBUTED MODE DOESN'T SUPPORT TREE BONSAI, KEEP ALWAYS EMBEDDED RIDS
     OGlobalConfiguration.RID_BAG_EMBEDDED_TO_SBTREEBONSAI_THRESHOLD.setValue(Integer.MAX_VALUE);
 
+    final List<ODocument> members;
+    synchronized (clusterConfiguration) {
+      clusterConfiguration.fromStream(obj);
+      clusterConfiguration.toString();
+      members = clusterConfiguration.field("members");
+    }
+
     // UPDATE IT
     synchronized (serverURLs) {
-      clusterConfiguration.fromStream(obj);
 
-      clusterConfiguration.toString();
-
-      final List<ODocument> members = clusterConfiguration.field("members");
       if (members != null) {
-        serverURLs.clear();
+        // serverURLs.clear();
 
         // ADD CURRENT SERVER AS FIRST
         addHost(iConnectedURL);
-
-        // parseServerURLs();
 
         for (ODocument m : members)
           if (m != null && !serverURLs.contains((String) m.field("name"))) {
@@ -1752,12 +1754,12 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy {
    * @param exception
    *          cause of the error
    */
-  protected void handleException(final OChannelBinaryAsynchClient iNetwork, final String message, Exception exception) {
+  protected void handleException(final OChannelBinaryAsynchClient iNetwork, final String message, final Exception exception) {
 
     final Throwable firstCause = OException.getFirstCause(exception);
 
     // CHECK IF THE EXCEPTION SHOULD BE JUST PROPAGATED
-    if (!(firstCause instanceof IOException)) {
+    if (!(firstCause instanceof IOException) && !(firstCause instanceof OIOException)) {
       if (exception instanceof OException)
         // NOT AN IO CAUSE, JUST PROPAGATE IT
         throw (OException) exception;
@@ -2057,8 +2059,10 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy {
       host = host.substring(0, host.indexOf("/"));
 
     synchronized (serverURLs) {
-      if (!serverURLs.contains(host))
+      if (!serverURLs.contains(host)) {
         serverURLs.add(host);
+        OLogManager.instance().debug(this, "Registered the new available server '%s'", host);
+      }
     }
 
     return host;
