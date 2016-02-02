@@ -214,6 +214,10 @@ TOKEN:
 	|
 	< EXCEPTION: ( "e" | "E" ) ( "x" | "X" ) ( "c" | "C" ) ( "e" | "E" ) ( "p" | "P" ) ( "t" | "T" ) ( "i" | "I" ) ( "o" | "O" ) ( "n" | "N" ) >
 	|
+	< FIND: ( "f" | "F" ) ( "i" | "I" ) ( "n" | "N" ) ( "d" | "D" ) >
+	|
+	< REFERENCES: ( "r" | "R" ) ( "e" | "E" ) ( "f" | "F" ) ( "e" | "E" ) ( "r" | "R" ) ( "e" | "E" ) ( "n" | "N" ) ( "c" | "C" ) ( "e" | "E" ) ( "s" | "S" ) >
+	|
 	< THIS: "@" ( ( "t" | "T" ) ( "h" | "H" ) ( "i" | "I" ) ( "s" | "S" ) ) >
 	|
 	< RECORD_ATTRIBUTE: <RID_ATTR> | <CLASS_ATTR> | <VERSION_ATTR> | <SIZE_ATTR> | <TYPE_ATTR> | <RAW_ATTR> | <RID_ID_ATTR> | <RID_POS_ATTR> | <FIELDS_ATTR> >
@@ -427,8 +431,6 @@ TOKEN :
 |
   < METADATA_IDENTIFIER: "metadata:" <IDENTIFIER>  >
 |
-  < NAMED_PARAMETER:  <COLON> <LETTER> (<PART_LETTER>)*  >
-|
   < #LETTER:
       [  "A"-"Z",
          "_",
@@ -511,6 +513,10 @@ OIdentifier Identifier():
     token = <WITHIN>
     |
     token = <EXCEPTION>
+    |
+    token = <FIND>
+    |
+    token = <REFERENCES>
     |
     quotedToken = <QUOTED_IDENTIFIER>
 ) {
@@ -608,6 +614,9 @@ OStatement Statement():
         result = CreateEdgeStatement()
         |
 		result = UpdateStatement()
+		|
+		LOOKAHEAD(FindReferencesStatement())
+		result = FindReferencesStatement()
 
 	) [ <SEMICOLON> ]
 	{
@@ -638,6 +647,13 @@ OSelectWithoutTargetStatement SelectWithoutTargetStatement():
         jjtThis.projection = Projection()
     	[ jjtThis.letClause = LetClause() ]
     	[ jjtThis.unwind = Unwind() ]
+    	(
+			[
+				jjtThis.skip = Skip() [ jjtThis.limit = Limit() ]
+				|
+				jjtThis.limit = Limit() [ jjtThis.skip = Skip() ]
+			]
+		)
     	[ jjtThis.fetchPlan = FetchPlan() ]
     	[ jjtThis.timeout = Timeout() ]
         [ <LOCK>  <RECORD> {jjtThis.lockRecord = true;} ]
@@ -1419,19 +1435,27 @@ OPositionalParameter PositionalParameter():
 
 ONamedParameter NamedParameter():
 {
-    Token token;
+OIdentifier identifierParam;
+Token token;
 }
 {
     (
-	    token = <NAMED_PARAMETER>
+	    <COLON>
+	    (
+	    	identifierParam = Identifier() { jjtThis.paramName = identifierParam.toString(); }
+	    	|
+	    	token = <SKIP2> {jjtThis.paramName = token.image;}
+	    	|
+            token = <LIMIT> {jjtThis.paramName = token.image;}
+	    )
 	)
 	{
-	 jjtThis.paramName = token.image.substring(1);
 	 jjtThis.paramNumber = inputParamCount;
      inputParamCount++;
 	 return jjtThis;
 	}
 }
+
 
 OProjection Projection():
 {
@@ -1901,6 +1925,8 @@ OFromItem FromItem():
     	            LOOKAHEAD(SelectWithoutTargetStatement()) jjtThis.statement = SelectWithoutTargetStatement()
     	            |
     	            jjtThis.statement = TraverseStatement()
+    	            |
+    	            jjtThis.statement = FindReferencesStatement()
     	) <RPAREN>
     	|
     	jjtThis.inputParam = InputParameter()
@@ -2794,5 +2820,36 @@ OJson Json():
 }
 
 
-
+OFindReferencesStatement FindReferencesStatement():
+{ SimpleNode lastTarget; }
+{
+    <FIND> <REFERENCES>
+    (
+        jjtThis.rid = Rid()
+        |
+        (
+            <LPAREN>
+            jjtThis.subQuery = Statement()
+            <RPAREN>
+        )
+    )
+    [
+    	<LBRACKET> { jjtThis.targets = new ArrayList<SimpleNode>(); }
+    	(
+    		lastTarget = Identifier()
+    		|
+    		lastTarget = IndexIdentifier()
+    	){ jjtThis.targets.add(lastTarget); }
+    	(
+    		<COMMA>
+    		(
+				lastTarget = Identifier()
+				|
+				lastTarget = Cluster()
+			){ jjtThis.targets.add(lastTarget); }
+    	)*
+    	<RBRACKET>
+    ]
+    { return jjtThis; }
+}
 
