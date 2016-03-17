@@ -25,6 +25,7 @@ import com.orientechnologies.orient.core.index.OIndexDefinition;
 import com.orientechnologies.orient.core.index.OIndexMultiValues;
 import com.orientechnologies.orient.core.index.OIndexNotUnique;
 import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.storage.OStorage;
 import org.apache.lucene.search.IndexSearcher;
 
 import java.io.IOException;
@@ -36,8 +37,8 @@ import java.util.Set;
 public class OLuceneIndexNotUnique extends OIndexNotUnique implements OLuceneIndex {
 
   public OLuceneIndexNotUnique(String name, String typeId, String algorithm, OLuceneIndexEngine engine,
-      String valueContainerAlgorithm, ODocument metadata) {
-    super(name, typeId, algorithm, engine, valueContainerAlgorithm, metadata);
+      String valueContainerAlgorithm, ODocument metadata, OStorage storage) {
+    super(name, typeId, algorithm, engine, valueContainerAlgorithm, metadata, storage);
 
     engine.setIndexMetadata(metadata);
   }
@@ -53,13 +54,12 @@ public class OLuceneIndexNotUnique extends OIndexNotUnique implements OLuceneInd
 
   @Override
   public OIndexMultiValues put(Object key, OIdentifiable iSingleValue) {
-    checkForRebuild();
-
     key = getCollatingValue(key);
 
-    modificationLock.requestModificationLock();
+    if (modificationLock != null)
+      modificationLock.requestModificationLock();
     try {
-      acquireExclusiveLock();
+      acquireSharedLock();
       try {
         checkForKeyType(key);
         Set<OIdentifiable> values = new HashSet<OIdentifiable>();
@@ -68,10 +68,11 @@ public class OLuceneIndexNotUnique extends OIndexNotUnique implements OLuceneInd
         return this;
 
       } finally {
-        releaseExclusiveLock();
+        releaseSharedLock();
       }
     } finally {
-      modificationLock.releaseModificationLock();
+      if (modificationLock != null)
+        modificationLock.releaseModificationLock();
     }
   }
 
@@ -100,8 +101,6 @@ public class OLuceneIndexNotUnique extends OIndexNotUnique implements OLuceneInd
 
   @Override
   public Set<OIdentifiable> get(Object key) {
-    checkForRebuild();
-
     key = getCollatingValue(key);
 
     acquireSharedLock();
@@ -154,8 +153,6 @@ public class OLuceneIndexNotUnique extends OIndexNotUnique implements OLuceneInd
 
   @Override
   public boolean remove(Object key, OIdentifiable value) {
-    checkForRebuild();
-
     key = getCollatingValue(key);
     modificationLock.requestModificationLock();
     try {
@@ -201,13 +198,12 @@ public class OLuceneIndexNotUnique extends OIndexNotUnique implements OLuceneInd
   public IndexSearcher searcher() throws IOException {
     return ((OLuceneIndexEngine) indexEngine).searcher();
 
-
   }
 
-
-  protected OLuceneIndexEngine getIndexEngine(){
+  protected OLuceneIndexEngine getIndexEngine() {
     return (OLuceneIndexEngine) indexEngine;
   }
+
   @Override
   public boolean canBeUsedInEqualityOperators() {
     return false;

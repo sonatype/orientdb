@@ -31,6 +31,8 @@ import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.serialization.serializer.stream.OStreamSerializer;
 import com.orientechnologies.orient.core.serialization.serializer.stream.OStreamSerializerListRID;
 import com.orientechnologies.orient.core.serialization.serializer.stream.OStreamSerializerSBTreeIndexRIDContainer;
+import com.orientechnologies.orient.core.storage.OStorage;
+import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
 import com.orientechnologies.orient.core.type.tree.OMVRBTreeRIDSet;
 
 import java.util.ArrayList;
@@ -45,19 +47,16 @@ import java.util.Set;
 
 /**
  * Abstract index implementation that supports multi-values for the same key.
- * 
+ *
  * @author Luca Garulli
- * 
  */
 public abstract class OIndexMultiValues extends OIndexAbstract<Set<OIdentifiable>> {
   public OIndexMultiValues(String name, final String type, String algorithm, OIndexEngine<Set<OIdentifiable>> indexEngine,
-      String valueContainerAlgorithm, final ODocument metadata) {
-    super(name, type, algorithm, indexEngine, valueContainerAlgorithm, metadata);
+      String valueContainerAlgorithm, final ODocument metadata, OStorage storage) {
+    super(name, type, algorithm, indexEngine, valueContainerAlgorithm, metadata, storage);
   }
 
   public Set<OIdentifiable> get(Object key) {
-    checkForRebuild();
-
     key = getCollatingValue(key);
 
     final ODatabase database = getDatabase();
@@ -87,8 +86,6 @@ public abstract class OIndexMultiValues extends OIndexAbstract<Set<OIdentifiable
   }
 
   public long count(Object key) {
-    checkForRebuild();
-
     key = getCollatingValue(key);
 
     final ODatabase database = getDatabase();
@@ -117,8 +114,6 @@ public abstract class OIndexMultiValues extends OIndexAbstract<Set<OIdentifiable
   }
 
   public OIndexMultiValues put(Object key, final OIdentifiable iSingleValue) {
-    checkForRebuild();
-
     key = getCollatingValue(key);
 
     final ODatabase database = getDatabase();
@@ -127,7 +122,8 @@ public abstract class OIndexMultiValues extends OIndexAbstract<Set<OIdentifiable
     if (!txIsActive)
       keyLockManager.acquireExclusiveLock(key);
     try {
-      modificationLock.requestModificationLock();
+      if (modificationLock != null)
+        modificationLock.requestModificationLock();
       try {
         checkForKeyType(key);
         acquireSharedLock();
@@ -164,7 +160,8 @@ public abstract class OIndexMultiValues extends OIndexAbstract<Set<OIdentifiable
           releaseSharedLock();
         }
       } finally {
-        modificationLock.releaseModificationLock();
+        if (modificationLock != null)
+          modificationLock.releaseModificationLock();
       }
     } finally {
       if (!txIsActive)
@@ -174,8 +171,6 @@ public abstract class OIndexMultiValues extends OIndexAbstract<Set<OIdentifiable
 
   @Override
   public boolean remove(Object key, final OIdentifiable value) {
-    checkForRebuild();
-
     key = getCollatingValue(key);
 
     final ODatabase database = getDatabase();
@@ -185,7 +180,8 @@ public abstract class OIndexMultiValues extends OIndexAbstract<Set<OIdentifiable
       keyLockManager.acquireExclusiveLock(key);
 
     try {
-      modificationLock.requestModificationLock();
+      if (modificationLock != null)
+        modificationLock.requestModificationLock();
       try {
         acquireSharedLock();
         startStorageAtomicOperation();
@@ -220,7 +216,8 @@ public abstract class OIndexMultiValues extends OIndexAbstract<Set<OIdentifiable
           releaseSharedLock();
         }
       } finally {
-        modificationLock.releaseModificationLock();
+        if (modificationLock != null)
+          modificationLock.releaseModificationLock();
       }
     } finally {
       if (!txIsActive)
@@ -232,14 +229,14 @@ public abstract class OIndexMultiValues extends OIndexAbstract<Set<OIdentifiable
   public OIndexMultiValues create(final String name, final OIndexDefinition indexDefinition, final String clusterIndexName,
       final Set<String> clustersToIndex, boolean rebuild, final OProgressListener progressListener) {
 
-    return (OIndexMultiValues) super.create(indexDefinition, clusterIndexName, clustersToIndex, rebuild, progressListener,
-        determineValueSerializer());
+    return (OIndexMultiValues) super
+        .create(indexDefinition, clusterIndexName, clustersToIndex, rebuild, progressListener, determineValueSerializer());
   }
 
   protected OStreamSerializer determineValueSerializer() {
     if (ODefaultIndexFactory.SBTREEBONSAI_VALUE_CONTAINER.equals(valueContainerAlgorithm))
-      return (OStreamSerializer) getDatabase().getSerializerFactory().getObjectSerializer(
-          OStreamSerializerSBTreeIndexRIDContainer.ID);
+      return (OStreamSerializer) getDatabase().getSerializerFactory()
+          .getObjectSerializer(OStreamSerializerSBTreeIndexRIDContainer.ID);
     else
       return OStreamSerializerListRID.INSTANCE;
   }
@@ -247,15 +244,13 @@ public abstract class OIndexMultiValues extends OIndexAbstract<Set<OIdentifiable
   @Override
   public OIndexCursor iterateEntriesBetween(Object fromKey, boolean fromInclusive, Object toKey, boolean toInclusive,
       boolean ascOrder) {
-    checkForRebuild();
-
     fromKey = getCollatingValue(fromKey);
     toKey = getCollatingValue(toKey);
 
     acquireSharedLock();
     try {
-      return indexEngine.iterateEntriesBetween(fromKey, fromInclusive, toKey, toInclusive, ascOrder,
-          MultiValuesTransformer.INSTANCE);
+      return indexEngine
+          .iterateEntriesBetween(fromKey, fromInclusive, toKey, toInclusive, ascOrder, MultiValuesTransformer.INSTANCE);
     } finally {
       releaseSharedLock();
     }
@@ -263,8 +258,6 @@ public abstract class OIndexMultiValues extends OIndexAbstract<Set<OIdentifiable
 
   @Override
   public OIndexCursor iterateEntriesMajor(Object fromKey, boolean fromInclusive, boolean ascOrder) {
-    checkForRebuild();
-
     fromKey = getCollatingValue(fromKey);
 
     acquireSharedLock();
@@ -278,8 +271,6 @@ public abstract class OIndexMultiValues extends OIndexAbstract<Set<OIdentifiable
 
   @Override
   public OIndexCursor iterateEntriesMinor(Object toKey, boolean toInclusive, boolean ascOrder) {
-    checkForRebuild();
-
     toKey = getCollatingValue(toKey);
 
     acquireSharedLock();
@@ -292,8 +283,6 @@ public abstract class OIndexMultiValues extends OIndexAbstract<Set<OIdentifiable
 
   @Override
   public OIndexCursor iterateEntries(Collection<?> keys, boolean ascSortOrder) {
-    checkForRebuild();
-
     final List<Object> sortedKeys = new ArrayList<Object>(keys);
     final Comparator<Object> comparator;
     if (ascSortOrder)
@@ -304,10 +293,10 @@ public abstract class OIndexMultiValues extends OIndexAbstract<Set<OIdentifiable
     Collections.sort(sortedKeys, comparator);
 
     return new OIndexAbstractCursor() {
-      private Iterator<?>             keysIterator    = sortedKeys.iterator();
+      private Iterator<?> keysIterator = sortedKeys.iterator();
 
       private Iterator<OIdentifiable> currentIterator = OEmptyIterator.IDENTIFIABLE_INSTANCE;
-      private Object                  currentKey;
+      private Object currentKey;
 
       @Override
       public Map.Entry<Object, OIdentifiable> nextEntry() {
@@ -361,7 +350,6 @@ public abstract class OIndexMultiValues extends OIndexAbstract<Set<OIdentifiable
   }
 
   public long getSize() {
-    checkForRebuild();
     acquireSharedLock();
     try {
       return indexEngine.size(MultiValuesTransformer.INSTANCE);
@@ -372,7 +360,6 @@ public abstract class OIndexMultiValues extends OIndexAbstract<Set<OIdentifiable
   }
 
   public long getKeySize() {
-    checkForRebuild();
     acquireSharedLock();
     try {
       return indexEngine.size(null);
@@ -383,8 +370,6 @@ public abstract class OIndexMultiValues extends OIndexAbstract<Set<OIdentifiable
 
   @Override
   public OIndexCursor cursor() {
-    checkForRebuild();
-
     acquireSharedLock();
     try {
       return indexEngine.cursor(MultiValuesTransformer.INSTANCE);
@@ -395,8 +380,6 @@ public abstract class OIndexMultiValues extends OIndexAbstract<Set<OIdentifiable
 
   @Override
   public OIndexCursor descCursor() {
-    checkForRebuild();
-
     acquireSharedLock();
     try {
       return indexEngine.descCursor(MultiValuesTransformer.INSTANCE);

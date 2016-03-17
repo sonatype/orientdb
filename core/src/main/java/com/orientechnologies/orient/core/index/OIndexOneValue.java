@@ -26,6 +26,8 @@ import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.serialization.serializer.stream.OStreamSerializer;
 import com.orientechnologies.orient.core.serialization.serializer.stream.OStreamSerializerRID;
+import com.orientechnologies.orient.core.storage.OStorage;
+import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -44,13 +46,11 @@ import java.util.Set;
  */
 public abstract class OIndexOneValue extends OIndexAbstract<OIdentifiable> {
   public OIndexOneValue(String name, final String type, String algorithm, OIndexEngine<OIdentifiable> engine,
-      String valueContainerAlgorithm, ODocument metadata) {
-    super(name, type, algorithm, engine, valueContainerAlgorithm, metadata);
+      String valueContainerAlgorithm, ODocument metadata, OStorage storage) {
+    super(name, type, algorithm, engine, valueContainerAlgorithm, metadata, storage);
   }
 
   public OIdentifiable get(Object iKey) {
-    checkForRebuild();
-
     iKey = getCollatingValue(iKey);
 
     final ODatabase database = getDatabase();
@@ -72,8 +72,6 @@ public abstract class OIndexOneValue extends OIndexAbstract<OIdentifiable> {
   }
 
   public long count(Object iKey) {
-    checkForRebuild();
-
     iKey = getCollatingValue(iKey);
 
     final ODatabase database = getDatabase();
@@ -96,8 +94,6 @@ public abstract class OIndexOneValue extends OIndexAbstract<OIdentifiable> {
 
   @Override
   public ODocument checkEntry(final OIdentifiable record, Object key) {
-    checkForRebuild();
-
     key = getCollatingValue(key);
 
     final ODatabase database = getDatabase();
@@ -131,8 +127,6 @@ public abstract class OIndexOneValue extends OIndexAbstract<OIdentifiable> {
 
   @Override
   public OIndexCursor iterateEntries(Collection<?> keys, boolean ascSortOrder) {
-    checkForRebuild();
-
     final List<Object> sortedKeys = new ArrayList<Object>(keys);
     final Comparator<Object> comparator;
 
@@ -191,8 +185,6 @@ public abstract class OIndexOneValue extends OIndexAbstract<OIdentifiable> {
   @Override
   public OIndexCursor iterateEntriesBetween(Object fromKey, boolean fromInclusive, Object toKey, boolean toInclusive,
       boolean ascOrder) {
-    checkForRebuild();
-
     fromKey = getCollatingValue(fromKey);
     toKey = getCollatingValue(toKey);
 
@@ -206,8 +198,6 @@ public abstract class OIndexOneValue extends OIndexAbstract<OIdentifiable> {
 
   @Override
   public OIndexCursor iterateEntriesMajor(Object fromKey, boolean fromInclusive, boolean ascOrder) {
-    checkForRebuild();
-
     fromKey = getCollatingValue(fromKey);
     acquireSharedLock();
     try {
@@ -219,8 +209,6 @@ public abstract class OIndexOneValue extends OIndexAbstract<OIdentifiable> {
 
   @Override
   public OIndexCursor iterateEntriesMinor(Object toKey, boolean toInclusive, boolean ascOrder) {
-    checkForRebuild();
-
     toKey = getCollatingValue(toKey);
     acquireSharedLock();
     try {
@@ -231,8 +219,6 @@ public abstract class OIndexOneValue extends OIndexAbstract<OIdentifiable> {
   }
 
   public long getSize() {
-    checkForRebuild();
-
     acquireSharedLock();
     try {
       return indexEngine.size(null);
@@ -242,8 +228,6 @@ public abstract class OIndexOneValue extends OIndexAbstract<OIdentifiable> {
   }
 
   public long getKeySize() {
-    checkForRebuild();
-
     acquireSharedLock();
     try {
       return indexEngine.size(null);
@@ -254,8 +238,6 @@ public abstract class OIndexOneValue extends OIndexAbstract<OIdentifiable> {
 
   @Override
   public OIndexCursor cursor() {
-    checkForRebuild();
-
     acquireSharedLock();
     try {
       return indexEngine.cursor(null);
@@ -266,8 +248,6 @@ public abstract class OIndexOneValue extends OIndexAbstract<OIdentifiable> {
 
   @Override
   public OIndexCursor descCursor() {
-    checkForRebuild();
-
     acquireSharedLock();
     try {
       return indexEngine.descCursor(null);

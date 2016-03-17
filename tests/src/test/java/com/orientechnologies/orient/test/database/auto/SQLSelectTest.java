@@ -27,6 +27,7 @@ import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.record.ORecordInternal;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.record.impl.ODocumentHelper;
+import com.orientechnologies.orient.core.record.impl.ORecordBytes;
 import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.core.sql.OCommandSQLParsingException;
 import com.orientechnologies.orient.core.sql.query.OSQLAsynchQuery;
@@ -123,6 +124,7 @@ public class SQLSelectTest extends AbstractSelectTest {
 
   @Test
   public void testQueryCount() {
+    database.getMetadata().reload();
     final long vertexesCount = database.countClass("V");
     List<ODocument> result = database.query(new OSQLSynchQuery<ODocument>("select count(*) from V"));
     Assert.assertEquals(result.get(0).field("count"), vertexesCount);
@@ -1653,6 +1655,25 @@ public class SQLSelectTest extends AbstractSelectTest {
     }
   }
 
+  public void testOutFilterInclude() {
+    database.command(new OCommandSQL("create class TestOutFilterInclude extends V")).execute();
+    database.command(new OCommandSQL("create class linkedToOutFilterInclude extends E")).execute();
+    database.command(new OCommandSQL("insert into TestOutFilterInclude content { \"name\": \"one\" }")).execute();
+    database.command(new OCommandSQL("insert into TestOutFilterInclude content { \"name\": \"two\" }")).execute();
+    database.command(new OCommandSQL("create edge linkedToOutFilterInclude from (select from TestOutFilterInclude where name = 'one') to (select from TestOutFilterInclude where name = 'two')")).execute();
+
+
+
+    final List<OIdentifiable> result = database.query(
+        new OSQLSynchQuery<OIdentifiable>("select expand(out('linkedToOutFilterInclude')[@class='TestOutFilterInclude'].include('@rid')) from TestOutFilterInclude where name = 'one'"));
+
+    Assert.assertEquals(result.size(), 1);
+
+    for (OIdentifiable r : result) {
+      Assert.assertEquals(((ODocument) r.getRecord()).field("name"), null);
+    }
+  }
+
   private List<Long> getValidPositions(int clusterId) {
     final List<Long> positions = new ArrayList<Long>();
 
@@ -1667,5 +1688,27 @@ public class SQLSelectTest extends AbstractSelectTest {
     }
     return positions;
   }
+
+  public void testBinaryClusterSelect() {
+    database.command(new OCommandSQL("create cluster binarycluster")).execute();
+    database.reload();
+    ORecordBytes bytes = new ORecordBytes(new byte[]{1,2,3});
+    database.save(bytes, "binarycluster");
+
+
+    List<OIdentifiable> result = database.query(
+        new OSQLSynchQuery<OIdentifiable>("select from cluster:binarycluster"));
+
+    Assert.assertEquals(result.size(), 1);
+
+    database.command(
+        new OCommandSQL("delete from cluster:binarycluster")).execute();
+
+    result = database.query(
+        new OSQLSynchQuery<OIdentifiable>("select from cluster:binarycluster"));
+
+    Assert.assertEquals(result.size(), 0);
+  }
+
 
 }

@@ -24,23 +24,22 @@ import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.record.ORecord;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.storage.ORecordDuplicatedException;
+import com.orientechnologies.orient.core.storage.OStorage;
+import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
 
 /**
  * Index implementation that allows only one value for a key.
- * 
+ *
  * @author Luca Garulli
- * 
  */
 public class OIndexUnique extends OIndexOneValue {
   public OIndexUnique(String name, String typeId, String algorithm, OIndexEngine<OIdentifiable> engine,
-      String valueContainerAlgorithm, ODocument metadata) {
-    super(name, typeId, algorithm, engine, valueContainerAlgorithm, metadata);
+      String valueContainerAlgorithm, ODocument metadata, OStorage storage) {
+    super(name, typeId, algorithm, engine, valueContainerAlgorithm, metadata, storage);
   }
 
   @Override
   public OIndexOneValue put(Object key, final OIdentifiable iSingleValue) {
-    checkForRebuild();
-
     key = getCollatingValue(key);
 
     final ODatabase database = getDatabase();
@@ -50,7 +49,8 @@ public class OIndexUnique extends OIndexOneValue {
       keyLockManager.acquireExclusiveLock(key);
 
     try {
-      modificationLock.requestModificationLock();
+      if (modificationLock != null)
+        modificationLock.requestModificationLock();
       try {
         checkForKeyType(key);
         acquireSharedLock();
@@ -65,9 +65,9 @@ public class OIndexUnique extends OIndexOneValue {
                 // IGNORE IT, THE EXISTENT KEY HAS BEEN MERGED
                 ;
               else
-                throw new ORecordDuplicatedException(String.format(
-                    "Cannot index record %s: found duplicated key '%s' in index '%s' previously assigned to the record %s",
-                    iSingleValue.getIdentity(), key, getName(), value.getIdentity()), value.getIdentity());
+                throw new ORecordDuplicatedException(String
+                    .format("Cannot index record %s: found duplicated key '%s' in index '%s' previously assigned to the record %s",
+                        iSingleValue.getIdentity(), key, getName(), value.getIdentity()), value.getIdentity());
             } else
               return this;
           }
@@ -84,7 +84,8 @@ public class OIndexUnique extends OIndexOneValue {
           releaseSharedLock();
         }
       } finally {
-        modificationLock.releaseModificationLock();
+        if (modificationLock != null)
+          modificationLock.releaseModificationLock();
       }
 
     } finally {
