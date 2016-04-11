@@ -124,8 +124,6 @@ public class ONetworkProtocolBinary extends OBinaryNetworkProtocolAbstract {
   @Override
   public void config(final OServerNetworkListener iListener, final OServer iServer, final Socket iSocket,
       final OContextConfiguration iConfig) throws IOException {
-    // CREATE THE CLIENT CONNECTION
-    connection = iServer.getClientConnectionManager().connect(this);
 
     super.config(iListener, iServer, iSocket, iConfig);
 
@@ -423,14 +421,6 @@ public class ONetworkProtocolBinary extends OBinaryNetworkProtocolAbstract {
 
       case OChannelBinaryProtocol.REQUEST_DB_RELEASE:
         releaseDatabase();
-        break;
-
-      case OChannelBinaryProtocol.REQUEST_DATACLUSTER_FREEZE:
-        freezeCluster();
-        break;
-
-      case OChannelBinaryProtocol.REQUEST_DATACLUSTER_RELEASE:
-        releaseCluster();
         break;
 
       case OChannelBinaryProtocol.REQUEST_RECORD_CLEAN_OUT:
@@ -782,8 +772,12 @@ public class ONetworkProtocolBinary extends OBinaryNetworkProtocolAbstract {
     final String user = channel.readString();
     final String passwd = channel.readString();
 
-    connection.database = (ODatabaseDocumentTx) server.openDatabase(dbType, dbURL, user, passwd, connection.data);
-
+    try {
+      connection.database = (ODatabaseDocumentTx) server.openDatabase(dbType, dbURL, user, passwd, connection.data);
+    } catch (OException e) {
+      server.getClientConnectionManager().disconnect(connection);
+      throw e;
+    }
     if (connection.database.getStorage() instanceof OStorageProxy && !loadUserFromSchema(user, passwd)) {
       sendErrorOrDropConnection(clientTxId, new OSecurityAccessException(connection.database.getName(),
           "User or password not valid for database: '" + connection.database.getName() + "'"));
@@ -1129,8 +1123,7 @@ public class ONetworkProtocolBinary extends OBinaryNetworkProtocolAbstract {
         // OLD CLIENTS WAIT FOR A OK
         sendOk(clientTxId);
 
-      if (Boolean.FALSE.equals(connection.tokenBased) && server.getClientConnectionManager().disconnect(connection.id))
-        sendShutdown();
+      server.getClientConnectionManager().disconnect(connection.id);
     }
   }
 
@@ -1169,7 +1162,7 @@ public class ONetworkProtocolBinary extends OBinaryNetworkProtocolAbstract {
   }
 
   protected void configSet() throws IOException {
-    setDataCommandInfo("Get config");
+    setDataCommandInfo("Set config");
 
     checkServerAccess("server.config.set");
 
@@ -1923,77 +1916,6 @@ public class ONetworkProtocolBinary extends OBinaryNetworkProtocolAbstract {
         openDatabase(connection.database, connection.serverUser.name, connection.serverUser.password);
 
       connection.database.release();
-    } else {
-      throw new OStorageException("Database with name '" + dbName + "' does not exist");
-    }
-
-    beginResponse();
-    try {
-      sendOk(clientTxId);
-    } finally {
-      endResponse();
-    }
-  }
-
-  protected void freezeCluster() throws IOException {
-    setDataCommandInfo("Freeze cluster");
-    final String dbName = channel.readString();
-    final int clusterId = channel.readShort();
-
-    checkServerAccess("database.freeze");
-
-    final String storageType;
-
-    if (connection.data.protocolVersion >= 16)
-      storageType = channel.readString();
-    else
-      storageType = "local";
-
-    connection.database = getDatabaseInstance(dbName, ODatabaseDocument.TYPE, storageType);
-
-    if (connection.database.exists()) {
-      OLogManager.instance().info(this, "Freezing database '%s' cluster %d", connection.database.getURL(), clusterId);
-
-      if (connection.database.isClosed()) {
-        openDatabase(connection.database, connection.serverUser.name, connection.serverUser.password);
-      }
-
-      connection.database.freezeCluster(clusterId);
-    } else {
-      throw new OStorageException("Database with name '" + dbName + "' does not exist");
-    }
-
-    beginResponse();
-    try {
-      sendOk(clientTxId);
-    } finally {
-      endResponse();
-    }
-  }
-
-  protected void releaseCluster() throws IOException {
-    setDataCommandInfo("Release database");
-    final String dbName = channel.readString();
-    final int clusterId = channel.readShort();
-
-    checkServerAccess("database.release");
-
-    final String storageType;
-    if (connection.data.protocolVersion >= 16)
-      storageType = channel.readString();
-    else
-      storageType = "local";
-
-    connection.database = getDatabaseInstance(dbName, ODatabaseDocument.TYPE, storageType);
-
-    if (connection.database.exists()) {
-      OLogManager.instance().info(this, "Realising database '%s' cluster %d", connection.database.getURL(), clusterId);
-
-      if (connection.database.isClosed()) {
-        openDatabase(connection.database, connection.serverUser.name, connection.serverUser.password);
-      }
-
-      connection.database.releaseCluster(clusterId);
     } else {
       throw new OStorageException("Database with name '" + dbName + "' does not exist");
     }
