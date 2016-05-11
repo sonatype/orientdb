@@ -202,7 +202,7 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
       if (indexDefinition instanceof OIndexDefinitionMultiValue)
         return ((OIndexDefinitionMultiValue) indexDefinition).createSingleValue(OSQLHelper.getValue(value));
       else
-        return indexDefinition.createValue(OSQLHelper.getValue(value));
+        return indexDefinition.createValue(OSQLHelper.getValue(value, null, context));
     }
   }
 
@@ -538,7 +538,7 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
     if (record == null)
       // SKIP IT
       return true;
-    if ((projections != null || expandTarget != null) && ORecordInternal.getRecordType(record) != ODocument.RECORD_TYPE)
+    if (ORecordInternal.getRecordType(record) != ODocument.RECORD_TYPE && checkSkipBlob())
       //SKIP binary records in case of projection.
       return true;
 
@@ -571,6 +571,19 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
       }
     }
     return true;
+  }
+
+  private boolean checkSkipBlob() {
+    if (expandTarget != null)
+      return true;
+    if (projections != null) {
+      if(projections.size() > 1){
+        return true;
+      }
+      if(projections.containsKey("@rid"))
+        return false;
+    }
+    return false;
   }
 
   /**
@@ -1531,18 +1544,10 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
           .debug(this, "Parallel query '%s' split in %d jobs, waiting for completion...", parserText, jobs.size());
     }
 
-    int processed = 0;
-    int total = jobs.size();
+
     try {
       for (Future<?> j : jobs) {
         j.get();
-        processed++;
-
-        if (OLogManager.instance().isDebugEnabled()) {
-          if (processed % (total / 10) == 0) {
-            OLogManager.instance().debug(this, "Executed parallel query %d/%d", processed, total);
-          }
-        }
       }
     } catch (Exception e) {
       OLogManager.instance().error(this, "Error on executing parallel query: %s", e, parserText);
