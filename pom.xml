@@ -171,6 +171,10 @@
             <url>${public-snapshot.url}</url>
         </snapshotRepository>
     </distributionManagement>
+
+    <!--
+    SONATYPE: Defer to Zion's Nexus instance.
+    -->
     <!--<repositories>-->
         <!--<repository>-->
             <!--<id>sonatype-nexus-snapshots</id>-->
