@@ -126,7 +126,7 @@ public class OPartitionedLockManager<T> implements OLockManager<T> {
       OReadersWriterSpinLock[] lcks = new OReadersWriterSpinLock[concurrencyLevel];
 
       for (int i = 0; i < lcks.length; i++)
-        lcks[i] = new OReadersWriterSpinLock(concurrencyLevel);
+        lcks[i] = new OReadersWriterSpinLock();
 
       spinLocks = lcks;
       locks = null;
@@ -283,15 +283,18 @@ public class OPartitionedLockManager<T> implements OLockManager<T> {
     return locks;
   }
 
-  public void acquireExclusiveLocksInBatch(Collection<T> values) {
+  public Lock[] acquireExclusiveLocksInBatch(Collection<T> values) {
     if (values == null || values.isEmpty())
-      return;
+      return new Lock[0];
 
     final Collection<T> valCopy = getOrderedValues(values);
 
+    final Lock[] locks = new Lock[values.size()];
+    int i = 0;
     for (T val : valCopy) {
-      acquireExclusiveLock(val);
+      locks[i++] = acquireExclusiveLock(val);
     }
+    return locks;
   }
 
   public Lock acquireSharedLock(long value) {

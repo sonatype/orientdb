@@ -43,11 +43,7 @@ import com.orientechnologies.orient.server.OServer;
 import com.orientechnologies.orient.server.config.OServerParameterConfiguration;
 import com.orientechnologies.orient.server.distributed.*;
 import com.orientechnologies.orient.server.distributed.ODistributedServerLog.DIRECTION;
-import com.orientechnologies.orient.server.distributed.impl.OClusterHealthChecker;
-import com.orientechnologies.orient.server.distributed.impl.ODistributedAbstractPlugin;
-import com.orientechnologies.orient.server.distributed.impl.ODistributedDatabaseImpl;
-import com.orientechnologies.orient.server.distributed.impl.ODistributedMessageServiceImpl;
-import com.orientechnologies.orient.server.distributed.impl.ODistributedStorage;
+import com.orientechnologies.orient.server.distributed.impl.*;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -79,6 +75,11 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin implements Memb
   protected OHazelcastDistributedMap   configurationMap;
 
   public OHazelcastPlugin() {
+  }
+
+  // Must be set before config() is called.
+  public void setNodeName(String nodeName) {
+    this.nodeName = nodeName;
   }
 
   @Override
