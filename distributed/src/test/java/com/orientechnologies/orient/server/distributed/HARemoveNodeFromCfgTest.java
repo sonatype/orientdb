@@ -74,8 +74,8 @@ public class HARemoveNodeFromCfgTest extends AbstractServerClusterTxTest {
     Assert.assertFalse(serverInstance.get(0).getServerInstance().getDistributedManager().getDatabaseConfiguration(getDatabaseName())
         .getAllConfiguredServers().contains(removedServer));
 
-    Assert.assertFalse(serverInstance.get(0).getServerInstance().getDistributedManager().getConfigurationMap()
-        .containsKey("dbstatus." + removedServer + "." + getDatabaseName()));
+    Assert.assertEquals(serverInstance.get(0).getServerInstance().getDistributedManager().getConfigurationMap()
+        .get("dbstatus." + removedServer + "." + getDatabaseName()), ODistributedServerManager.DB_STATUS.OFFLINE);
 
     serverInstance.get(SERVERS - 1).startServer(getDistributedServerConfiguration(serverInstance.get(SERVERS - 1)));
     if (serverInstance.get(SERVERS - 1).server.getPluginByClass(OHazelcastPlugin.class) != null)
@@ -106,7 +106,7 @@ public class HARemoveNodeFromCfgTest extends AbstractServerClusterTxTest {
     waitFor(2, new OCallable<Boolean, ODatabaseDocumentTx>() {
       @Override
       public Boolean call(ODatabaseDocumentTx db) {
-        final int node2Expected = lastNodeIsUp.get() ? expected : expected - (count * writerCount * (SERVERS - 1));
+        final long node2Expected = lastNodeIsUp.get() ? expected : expected - (count * writerCount * (SERVERS - 1));
 
         final boolean ok = db.countClass("Person") >= node2Expected;
         if (!ok)

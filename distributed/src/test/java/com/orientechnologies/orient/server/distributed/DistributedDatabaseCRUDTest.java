@@ -7,9 +7,11 @@ import com.orientechnologies.orient.core.metadata.schema.OClass;
 import com.orientechnologies.orient.core.metadata.schema.OClass.INDEX_TYPE;
 import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.sql.OCommandSQL;
+import com.orientechnologies.orient.server.distributed.impl.OLocalClusterWrapperStrategy;
 import com.tinkerpop.blueprints.Parameter;
 import com.tinkerpop.blueprints.Vertex;
 import com.tinkerpop.blueprints.impls.orient.*;
+import org.junit.Assert;
 
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -77,6 +79,9 @@ public final class DistributedDatabaseCRUDTest {
         if ((i % 100) == 0) {
           log("Created " + i + " nodes");
         }
+
+        if (!graph.getRawGraph().getURL().startsWith("remote:"))
+          Assert.assertTrue(graph.getVertexType("TestNode").getClusterSelection() instanceof OLocalClusterWrapperStrategy);
       }
     }
     int edgeCounter = 1;
@@ -111,6 +116,9 @@ public final class DistributedDatabaseCRUDTest {
           edgeCounter = 1;
         }
         graph.command(new OCommandSQL(edgeSQL)).execute();
+
+        if (!graph.getRawGraph().getURL().startsWith("remote:"))
+          Assert.assertTrue(graph.getVertexType("TestNode").getClusterSelection() instanceof OLocalClusterWrapperStrategy);
       }
       System.out.println();
     }
@@ -210,6 +218,10 @@ public final class DistributedDatabaseCRUDTest {
               st = System.currentTimeMillis();
             }
             OrientGraph graph = graphFactory.getTx();
+
+            if (!graph.getRawGraph().getURL().startsWith("remote:"))
+              Assert.assertTrue(graph.getVertexType("TestNode").getClusterSelection() instanceof OLocalClusterWrapperStrategy);
+
             try {
               boolean update = true;
               boolean isException = false;
@@ -323,6 +335,10 @@ public final class DistributedDatabaseCRUDTest {
                   Exception tex = null;
                   int k = 1;
                   for (; k <= 100 && retry; k++) {
+                    if (!graph.getRawGraph().getURL().startsWith("remote:"))
+                      Assert.assertTrue(
+                          graph.getVertexType("TestNode").getClusterSelection() instanceof OLocalClusterWrapperStrategy);
+
                     OrientVertex vtx1 = (OrientVertex) vtx;
                     try {
                       vtx1.setProperty("prop5", "prop55");

@@ -25,7 +25,6 @@ import com.orientechnologies.orient.server.hazelcast.OHazelcastPlugin;
 import com.tinkerpop.blueprints.impls.orient.OrientGraphFactory;
 import com.tinkerpop.blueprints.impls.orient.OrientGraphNoTx;
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.File;
@@ -81,16 +80,12 @@ public class WWConflictAndNodeInDeadlockScenarioTest extends AbstractScenarioTes
     put("lastName", "Vader");
   }};
 
-  @Ignore
   @Test
   public void test() throws Exception {
 
     maxRetries = 10;
     init(SERVERS);
     prepare(false);
-
-    // execute writes only on server3
-    executeWritesOnServers.addAll(serverInstance);
 
     execute();
   }

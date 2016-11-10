@@ -51,7 +51,6 @@ public class OClusterHealthChecker extends TimerTask {
     try {
 
       checkServerStatus();
-      checkDatabaseStatuses();
       checkServerInStall();
       checkServerList();
 
@@ -76,18 +75,25 @@ public class OClusterHealthChecker extends TimerTask {
         ODistributedServerLog.info(this, manager.getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
             "Server '%s' was not found in the list of registered servers. Reloading configuration from cluster...", server);
 
-        ((OHazelcastPlugin) manager).reloadRegisteredNodes();
+        ((OHazelcastPlugin) manager).reloadRegisteredNodes(null);
         id = manager.getNodeIdByName(server);
         if (id == -1) {
-          ODistributedServerLog.warn(this, manager.getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
-              "Server '%s' was not found in the list of registered servers after the update, setting the server as OFFLINE...",
-              server);
-
-          try {
-            ((OHazelcastPlugin) manager).restartNode(server);
-          } catch (IOException e) {
+          if (server.equals(manager.getLocalNodeName())) {
+            // LOCAL NODE
             ODistributedServerLog.warn(this, manager.getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
-                "Error on restarting server '%s' (error=%s)", server, e);
+                "Local server was not found in the list of registered servers after the update", server);
+
+          } else {
+            // REMOTE NODE
+            ODistributedServerLog.warn(this, manager.getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
+                "Server '%s' was not found in the list of registered servers after the update, restarting the server...", server);
+
+            try {
+              ((OHazelcastPlugin) manager).restartNode(server);
+            } catch (IOException e) {
+              ODistributedServerLog.warn(this, manager.getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
+                  "Error on restarting server '%s' (error=%s)", server, e);
+            }
           }
         }
         break;
@@ -102,8 +108,8 @@ public class OClusterHealthChecker extends TimerTask {
 
     for (String dbName : manager.getMessageService().getDatabases()) {
       final ODistributedServerManager.DB_STATUS localNodeStatus = manager.getDatabaseStatus(manager.getLocalNodeName(), dbName);
-      if (localNodeStatus != ODistributedServerManager.DB_STATUS.OFFLINE)
-        // ONLY OFFLINE NODE/DB CAN BE RECOVERED
+      if (localNodeStatus != ODistributedServerManager.DB_STATUS.NOT_AVAILABLE)
+        // ONLY NOT_AVAILABLE NODE/DB CAN BE RECOVERED
         continue;
 
       final List<String> servers = manager.getOnlineNodes(dbName);
@@ -121,7 +127,7 @@ public class OClusterHealthChecker extends TimerTask {
             "Trying to recover current server for database '%s'...", dbName);
 
         final boolean result = manager.installDatabase(true, dbName,
-            ((ODistributedStorage) manager.getStorage(dbName)).getDistributedConfiguration().getDocument());
+            ((ODistributedStorage) manager.getStorage(dbName)).getDistributedConfiguration().getDocument(), false, true);
 
         if (result)
           ODistributedServerLog.info(this, manager.getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
@@ -158,7 +164,7 @@ public class OClusterHealthChecker extends TimerTask {
         final ODistributedResponse response = manager.sendRequest(dbName, null, servers, new OHeartbeatTask(),
             manager.getNextMessageIdCounter(), ODistributedRequest.EXECUTION_MODE.RESPONSE, null, null);
 
-        final Object payload = response.getPayload();
+        final Object payload = response != null ? response.getPayload() : null;
         if (payload instanceof Map) {
           final Map<String, Object> responses = (Map<String, Object>) payload;
           servers.removeAll(responses.keySet());
@@ -174,42 +180,22 @@ public class OClusterHealthChecker extends TimerTask {
     }
   }
 
-  private void setAllDatabasesOffline(final String server) {
-    for (String dbName : manager.getMessageService().getDatabases()) {
-      manager.setDatabaseStatus(server, dbName, ODistributedServerManager.DB_STATUS.OFFLINE);
-    }
-  }
-
   private void setDatabaseOffline(final String dbName, final String server) {
     if (manager.getDatabaseStatus(server, dbName) != ODistributedServerManager.DB_STATUS.ONLINE)
       return;
 
     if (OGlobalConfiguration.DISTRIBUTED_CHECK_HEALTH_CAN_OFFLINE_SERVER.getValueAsBoolean()) {
       ODistributedServerLog.warn(this, manager.getLocalNodeName(), server, ODistributedServerLog.DIRECTION.OUT,
-          "Server '%s' did not respond to the heartbeat message (db=%s, timeout=%dms). Setting the database as OFFLINE", server,
+          "Server '%s' did not respond to the heartbeat message (db=%s, timeout=%dms). Setting the database as NOT_AVAILABLE", server,
           dbName, OGlobalConfiguration.DISTRIBUTED_HEARTBEAT_TIMEOUT.getValueAsLong());
 
-      manager.setDatabaseStatus(server, dbName, ODistributedServerManager.DB_STATUS.OFFLINE);
+      manager.setDatabaseStatus(server, dbName, ODistributedServerManager.DB_STATUS.NOT_AVAILABLE);
 
     } else {
 
       ODistributedServerLog.warn(this, manager.getLocalNodeName(), server, ODistributedServerLog.DIRECTION.OUT,
           "Server '%s' did not respond to the heartbeat message (db=%s, timeout=%dms), but cannot be set OFFLINE by configuration",
           server, dbName, OGlobalConfiguration.DISTRIBUTED_HEARTBEAT_TIMEOUT.getValueAsLong());
-    }
-  }
-
-  private void checkDatabaseStatuses() {
-    for (String dbName : manager.getMessageService().getDatabases()) {
-      final ODistributedServerManager.DB_STATUS status = (ODistributedServerManager.DB_STATUS) manager.getConfigurationMap()
-          .get(OHazelcastPlugin.CONFIG_DBSTATUS_PREFIX + manager.getLocalNodeName() + "." + dbName);
-      if (status == null) {
-        OLogManager.instance().warn(this, "Status of database '%s' on server '%s' is missing, republishing it...", dbName,
-            manager.getLocalNodeName());
-        final ODistributedDatabase ddb = manager.getMessageService().getDatabase(dbName);
-        if (ddb != null)
-          ddb.setOnline();
-      }
     }
   }
 }

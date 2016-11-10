@@ -62,7 +62,7 @@ public abstract class OCommandExecutorSQLSetAware extends OCommandExecutorSQLAbs
       }
 
       parserNextChars(false, true, "=");
-      fieldValue = parserRequiredWord(false, "Value expected", " =><,\r\n");
+      fieldValue = parserRequiredWord(false, "Value expected", " =><,\r\n", true);
 
       // INSERT TRANSFORMED FIELD VALUE
       final Object v = convertValue(iClass, fieldName, getFieldValueCountingParameters(fieldValue));
@@ -85,7 +85,7 @@ public abstract class OCommandExecutorSQLSetAware extends OCommandExecutorSQLAbs
         iTarget = iTarget.substring(OCommandExecutorSQLAbstract.CLASS_PREFIX.length());
 
       if (iTarget.charAt(0) == ORID.PREFIX)
-        return getDatabase().getMetadata().getSchema().getClassByClusterId(new ORecordId(iTarget).clusterId);
+        return getDatabase().getMetadata().getSchema().getClassByClusterId(new ORecordId(iTarget).getClusterId());
 
       return getDatabase().getMetadata().getSchema().getClass(iTarget);
     }

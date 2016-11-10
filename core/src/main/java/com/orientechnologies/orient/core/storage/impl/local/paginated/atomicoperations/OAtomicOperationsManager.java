@@ -27,7 +27,6 @@ import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.util.OPair;
 import com.orientechnologies.orient.core.OOrientListenerAbstract;
-import com.orientechnologies.orient.core.OUncompletedCommit;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.exception.OStorageException;
@@ -50,8 +49,7 @@ import java.io.StringWriter;
 import java.lang.management.ManagementFactory;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
@@ -88,7 +86,7 @@ public class OAtomicOperationsManager implements OAtomicOperationsMangerMXBean {
   /**
    * Flag which indicates whether we work in unsafe mode for current thread. Unsafe mode means that all operations in this thread
    * may violate violate ACID properties but system performance will be faster.
-   *
+   * <p>
    * <p>To start unsafe mode call {@link #switchOnUnsafeMode()}, to stop unsafe mode call {@link #switchOffUnsafeMode()}.
    */
   private static final ThreadLocal<Boolean> unsafeMode = new ThreadLocal<Boolean>() {
@@ -120,7 +118,7 @@ public class OAtomicOperationsManager implements OAtomicOperationsMangerMXBean {
   private final OReadCache  readCache;
   private final OWriteCache writeCache;
 
-  private final Map<OOperationUnitId, OPair<String, StackTraceElement[]>> activeAtomicOperations = new ConcurrentHashMap<OOperationUnitId, OPair<String, StackTraceElement[]>>();
+  private final Map<OOperationUnitId, OPair<String, Deque<OPair<String, StackTraceElement[]>>>> activeAtomicOperations = new ConcurrentHashMap<OOperationUnitId, OPair<String, Deque<OPair<String, StackTraceElement[]>>>>();
 
   public OAtomicOperationsManager(OAbstractPaginatedStorage storage) {
     this.storage = storage;
@@ -147,13 +145,13 @@ public class OAtomicOperationsManager implements OAtomicOperationsMangerMXBean {
    * Starts atomic operation inside of current thread. If atomic operation has been already started, current atomic operation
    * instance will be returned. All durable components have to call this method at the beginning of any data modification
    * operation.
-   *
+   * <p>
    * <p>In current implementation of atomic operation, each component which is participated in atomic operation is hold under
    * exclusive lock till atomic operation will not be completed (committed or rollbacked).
-   *
+   * <p>
    * <p>If other thread is going to read data from component it has to acquire read lock inside of atomic operation manager {@link
    * #acquireReadLock(ODurableComponent)}, otherwise data consistency will be compromised.
-   *
+   * <p>
    * <p>Atomic operation may be delayed if start of atomic operations is prohibited by call of {@link
    * #freezeAtomicOperations(Class, String)} method. If mentioned above method is called then execution of current method will be
    * stopped till call of {@link #releaseAtomicOperations(long)} method or exception will be thrown. Concrete behaviour depends on
@@ -164,13 +162,24 @@ public class OAtomicOperationsManager implements OAtomicOperationsMangerMXBean {
    *                             During storage restore procedure this record is monitored and if given record is present then
    *                             rebuild of all indexes is performed.
    * @param lockName             Name of lock (usually name of component) which is going participate in atomic operation.
-   *
    * @return Instance of active atomic operation.
    */
   public OAtomicOperation startAtomicOperation(String lockName, boolean trackNonTxOperations) throws IOException {
     OAtomicOperation operation = currentOperation.get();
     if (operation != null) {
       operation.incrementCounter();
+
+      if (trackAtomicOperations) {
+        final OPair<String, Deque<OPair<String, StackTraceElement[]>>> atomicPair = activeAtomicOperations
+            .get(operation.getOperationUnitId());
+
+        if (atomicPair == null) {
+          throw new IllegalStateException("Atomic operation is not registered in manager");
+        }
+
+        final Deque<OPair<String, StackTraceElement[]>> stack = atomicPair.getValue();
+        stack.push(new OPair<String, StackTraceElement[]>(lockName, Thread.currentThread().getStackTrace()));
+      }
 
       if (lockName != null)
         acquireExclusiveLockTillOperationComplete(operation, lockName);
@@ -209,7 +218,11 @@ public class OAtomicOperationsManager implements OAtomicOperationsMangerMXBean {
 
     if (trackAtomicOperations) {
       final Thread thread = Thread.currentThread();
-      activeAtomicOperations.put(unitId, new OPair<String, StackTraceElement[]>(thread.getName(), thread.getStackTrace()));
+      final Deque<OPair<String, StackTraceElement[]>> lockStack = new LinkedList<OPair<String, StackTraceElement[]>>();
+      final OPair<String, StackTraceElement[]> lockPair = new OPair<String, StackTraceElement[]>(lockName, thread.getStackTrace());
+      lockStack.push(lockPair);
+
+      activeAtomicOperations.put(unitId, new OPair<String, Deque<OPair<String, StackTraceElement[]>>>(thread.getName(), lockStack));
     }
 
     if (useWal && trackNonTxOperations && storage.getStorageTransaction() == null)
@@ -224,7 +237,7 @@ public class OAtomicOperationsManager implements OAtomicOperationsMangerMXBean {
   /**
    * Switch off unsafe mode. During this mode it is not guaranteed that operations will support ACID properties but system
    * performance will be faster.
-   *
+   * <p>
    * <p>To switch off unsafe mode call {@link #switchOffUnsafeMode()}
    */
   public void switchOnUnsafeMode() {
@@ -385,9 +398,38 @@ public class OAtomicOperationsManager implements OAtomicOperationsMangerMXBean {
     return currentOperation.get();
   }
 
-  public OAtomicOperation endAtomicOperation(boolean rollback, Exception exception) throws IOException {
+  public OAtomicOperation endAtomicOperation(boolean rollback, Exception exception, ODurableComponent component)
+      throws IOException {
+    if (component != null)
+      return endAtomicOperation(rollback, exception, component.getLockName());
+
+    return endAtomicOperation(rollback, exception, (String) null);
+  }
+
+  public OAtomicOperation endAtomicOperation(boolean rollback, Exception exception, String lockName) throws IOException {
     final OAtomicOperation operation = currentOperation.get();
     assert operation != null;
+
+    if (trackAtomicOperations) {
+      final OPair<String, Deque<OPair<String, StackTraceElement[]>>> atomicPair = activeAtomicOperations
+          .get(operation.getOperationUnitId());
+
+      if (atomicPair == null)
+        throw new IllegalStateException("Atomic operation is not registered inside manager");
+
+      final Deque<OPair<String, StackTraceElement[]>> atomicStack = atomicPair.getValue();
+      final OPair<String, StackTraceElement[]> stackPair = atomicStack.peek();
+      if (lockName == null) {
+        if (stackPair.getKey() != null)
+          throw new IllegalStateException(
+              "Lock name stored inside of stack of atomic operation is different from provided lock name");
+      } else if (!lockName.equals(stackPair.getKey())) {
+        throw new IllegalStateException(
+            "Lock name stored inside of stack of atomic operation is different from provided lock name");
+      }
+
+      atomicStack.poll();
+    }
 
     if (rollback) {
       operation.rollback(exception);
@@ -438,19 +480,6 @@ public class OAtomicOperationsManager implements OAtomicOperationsMangerMXBean {
       operation.decrementCounter();
 
     return operation;
-  }
-
-  public OUncompletedCommit<OAtomicOperation> initiateCommit() throws IOException {
-    final OAtomicOperation operation = currentOperation.get();
-    assert operation != null;
-
-    final int counter = operation.decrementCounter();
-    assert counter >= 0;
-
-    if (counter > 0)
-      return new OUncompletedCommit.NoOperation<OAtomicOperation>(operation);
-
-    return new UncompletedCommit(operation, operation.initiateCommit(useWal() ? writeAheadLog : null));
   }
 
   /**
@@ -556,17 +585,24 @@ public class OAtomicOperationsManager implements OAtomicOperationsMangerMXBean {
     final StringWriter writer = new StringWriter();
     writer.append("List of active atomic operations: \r\n");
     writer.append("------------------------------------------------------------------------------------------------\r\n");
-    for (Map.Entry<OOperationUnitId, OPair<String, StackTraceElement[]>> entry : activeAtomicOperations.entrySet()) {
+    for (Map.Entry<OOperationUnitId, OPair<String, Deque<OPair<String, StackTraceElement[]>>>> entry : activeAtomicOperations
+        .entrySet()) {
       writer.append("Operation unit id :").append(entry.getKey().toString()).append("\r\n");
       writer.append("Started at thread : ").append(entry.getValue().getKey()).append("\r\n");
-      writer.append("Stack trace of method which started this operation : \r\n");
+      writer.append("Stack trace of methods which participated in this operation : \r\n");
 
-      StackTraceElement[] stackTraceElements = entry.getValue().getValue();
-      for (int i = 1; i < stackTraceElements.length; i++) {
-        writer.append("\tat ").append(stackTraceElements[i].toString()).append("\r\n");
+      for (OPair<String, StackTraceElement[]> pair : entry.getValue().getValue()) {
+        writer.append("------------------------------------------------------------------------------------------------\r\n");
+        writer.append("Lock name :").append(pair.getKey()).append("\r\n");
+        StackTraceElement[] stackTraceElements = pair.getValue();
+        for (int i = 1; i < stackTraceElements.length; i++) {
+          writer.append("\tat ").append(stackTraceElements[i].toString()).append("\r\n");
+        }
       }
 
-      writer.append("\r\n\r\n");
+      writer.append("------------------------------------------------------------------------------------------------\r\n");
+
+      writer.append("\r\n\r\n\r\n\r\n\r\n\r\n");
     }
     writer.append("-------------------------------------------------------------------------------------------------\r\n");
     return writer.toString();
@@ -614,65 +650,5 @@ public class OAtomicOperationsManager implements OAtomicOperationsMangerMXBean {
 
     final OStorageTransaction storageTransaction = storage.getStorageTransaction();
     return storageTransaction == null || storageTransaction.getClientTx().isUsingLog();
-  }
-
-  private class UncompletedCommit implements OUncompletedCommit<OAtomicOperation> {
-    private final OAtomicOperation         operation;
-    private final OUncompletedCommit<Void> nestedCommit;
-
-    public UncompletedCommit(OAtomicOperation operation, OUncompletedCommit<Void> nestedCommit) {
-      this.operation = operation;
-      this.nestedCommit = nestedCommit;
-    }
-
-    @Override
-    public OAtomicOperation complete() {
-      nestedCommit.complete();
-
-      try {
-        if (useWal())
-          writeAheadLog
-              .logAtomicOperationEndRecord(operation.getOperationUnitId(), false, operation.getStartLSN(), operation.getMetadata());
-      } catch (IOException e) {
-        throw OException.wrapException(new OStorageException("Error while completing an uncompleted commit."), e);
-      }
-
-      currentOperation.set(null);
-
-      if (trackAtomicOperations)
-        activeAtomicOperations.remove(operation.getOperationUnitId());
-
-      for (String lockObject : operation.lockedObjects())
-        lockManager.releaseLock(this, lockObject, OOneEntryPerKeyLockManager.LOCK.EXCLUSIVE);
-
-      atomicOperationsCount.decrement();
-
-      return operation;
-    }
-
-    @Override
-    public void rollback() {
-      operation.rollback(null);
-
-      nestedCommit.rollback();
-
-      try {
-        if (useWal())
-          writeAheadLog
-              .logAtomicOperationEndRecord(operation.getOperationUnitId(), true, operation.getStartLSN(), operation.getMetadata());
-      } catch (IOException e) {
-        throw OException.wrapException(new OStorageException("Error while rollbacking an uncompleted commit."), e);
-      }
-
-      currentOperation.set(null);
-
-      if (trackAtomicOperations)
-        activeAtomicOperations.remove(operation.getOperationUnitId());
-
-      for (String lockObject : operation.lockedObjects())
-        lockManager.releaseLock(this, lockObject, OOneEntryPerKeyLockManager.LOCK.EXCLUSIVE);
-
-      atomicOperationsCount.decrement();
-    }
   }
 }

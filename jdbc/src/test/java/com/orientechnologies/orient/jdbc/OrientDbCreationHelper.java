@@ -21,7 +21,12 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.List;
+import java.util.Random;
+import java.util.TimeZone;
 
 public class OrientDbCreationHelper {
 
@@ -96,6 +101,8 @@ public class OrientDbCreationHelper {
     OrientVertexType writer = graph.createVertexType("Writer");
     writer.createProperty("uuid", OType.LONG).createIndex(INDEX_TYPE.UNIQUE);
     writer.createProperty("name", OType.STRING);
+    writer.createProperty("is_active", OType.BOOLEAN);
+    writer.createProperty("isActive", OType.BOOLEAN);
 
     graph.createEdgeType("Writes");
 
@@ -154,8 +161,8 @@ public class OrientDbCreationHelper {
         article.field("date", time, OType.DATE);
 
         article.field("uuid", articleSerial++);
-        article.field("title", "the title");
-        article.field("content", "the content");
+        article.field("title", "the title for article " + articleSerial);
+        article.field("content", "the content for article " + articleSerial);
         article.field("attachment", loadFile(db, "./src/test/resources/file.pdf"));
 
         articles.add(article);
@@ -171,6 +178,8 @@ public class OrientDbCreationHelper {
       OrientVertex writer = db.addVertex("class:Writer");
       writer.setProperty("uuid", a);
       writer.setProperty("name", "happy writer");
+      writer.setProperty("is_active", Boolean.TRUE);
+      writer.setProperty("isActive", Boolean.TRUE);
 
       for (int i = 1; i <= totArticles; ++i) {
 
@@ -192,6 +201,8 @@ public class OrientDbCreationHelper {
     OrientVertex writer = db.addVertex("class:Writer");
     writer.setProperty("uuid", totAuthors * 2);
     writer.setProperty("name", "happy writer");
+    writer.setProperty("is_active", Boolean.TRUE);
+    writer.setProperty("isActive", Boolean.TRUE);
 
     OrientVertex post = db.addVertex("class:Post");
 

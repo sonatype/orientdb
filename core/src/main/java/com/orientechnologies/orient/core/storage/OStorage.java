@@ -20,7 +20,6 @@
 package com.orientechnologies.orient.core.storage;
 
 import com.orientechnologies.common.concur.resource.OSharedContainer;
-import com.orientechnologies.orient.core.OUncompletedCommit;
 import com.orientechnologies.orient.core.command.OCommandRequestText;
 import com.orientechnologies.orient.core.config.OStorageConfiguration;
 import com.orientechnologies.orient.core.conflict.ORecordConflictStrategy;
@@ -85,7 +84,7 @@ public interface OStorage extends OBackupable, OSharedContainer {
   OStorageOperationResult<OPhysicalPosition> createRecord(ORecordId iRecordId, byte[] iContent, int iRecordVersion,
       byte iRecordType, int iMode, ORecordCallback<Long> iCallback);
 
-  OStorageOperationResult<ORawBuffer> readRecord(ORecordId iRid, String iFetchPlan, boolean iIgnoreCache,
+  OStorageOperationResult<ORawBuffer> readRecord(ORecordId iRid, String iFetchPlan, boolean iIgnoreCache, boolean prefetchRecords,
       ORecordCallback<ORawBuffer> iCallback);
 
   OStorageOperationResult<ORawBuffer> readRecordIfVersionIsNotLatest(ORecordId rid, String fetchPlan, boolean ignoreCache,
@@ -107,8 +106,6 @@ public interface OStorage extends OBackupable, OSharedContainer {
 
   // TX OPERATIONS
   List<ORecordOperation> commit(OTransaction iTx, Runnable callback);
-
-  OUncompletedCommit<List<ORecordOperation>> initiateCommit(OTransaction iTx, Runnable callback);
 
   // TX OPERATIONS
   void rollback(OTransaction iTx);

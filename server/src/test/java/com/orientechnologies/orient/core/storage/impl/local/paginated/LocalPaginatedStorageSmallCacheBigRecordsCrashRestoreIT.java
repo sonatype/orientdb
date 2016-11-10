@@ -51,7 +51,7 @@ public class LocalPaginatedStorageSmallCacheBigRecordsCrashRestoreIT {
     buildDir = new File(buildDirectory);
 
     if (buildDir.exists())
-      OFileUtils.deleteFolderIfEmpty(buildDir);
+      OFileUtils.deleteRecursively(buildDir);
 
     buildDir.mkdir();
 
@@ -185,7 +185,7 @@ public class LocalPaginatedStorageSmallCacheBigRecordsCrashRestoreIT {
 
       for (OPhysicalPosition physicalPosition : physicalPositions) {
 
-        rid.clusterPosition = physicalPosition.clusterPosition;
+        rid.setClusterPosition(physicalPosition.clusterPosition);
 
         baseDocumentTx.activateOnCurrentThread();
         ODocument baseDocument = baseDocumentTx.load(rid);

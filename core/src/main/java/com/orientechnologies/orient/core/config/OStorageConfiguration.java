@@ -199,7 +199,7 @@ public class OStorageConfiguration implements OSerializableStream {
       // SAVE ENCRYPTION KEY IN CONFIGURATION
       configuration.setValue(OGlobalConfiguration.STORAGE_ENCRYPTION_KEY, encryptionKey);
 
-    final byte[] record = storage.readRecord(CONFIG_RID, null, false, null).getResult().buffer;
+    final byte[] record = storage.readRecord(CONFIG_RID, null, false, false, null).getResult().buffer;
 
     if (record == null)
       throw new OStorageException("Cannot load database configuration. The database seems corrupted");
@@ -659,12 +659,6 @@ public class OStorageConfiguration implements OSerializableStream {
   public void close() throws IOException {
     clear();
     initConfiguration();
-  }
-
-  public void setCluster(final OStorageClusterConfiguration config) {
-    while (config.getId() >= clusters.size())
-      clusters.add(null);
-    clusters.set(config.getId(), config);
   }
 
   public void dropCluster(final int iClusterId) {

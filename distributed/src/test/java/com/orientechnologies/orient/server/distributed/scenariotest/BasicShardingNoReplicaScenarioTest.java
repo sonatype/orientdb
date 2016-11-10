@@ -22,6 +22,7 @@ import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.server.distributed.ODistributedConfiguration;
+import com.orientechnologies.orient.server.distributed.ServerRun;
 import com.orientechnologies.orient.server.hazelcast.OHazelcastPlugin;
 import com.tinkerpop.blueprints.Vertex;
 import com.tinkerpop.blueprints.impls.orient.OrientGraphFactory;
@@ -30,6 +31,7 @@ import com.tinkerpop.blueprints.impls.orient.OrientVertex;
 import com.tinkerpop.blueprints.impls.orient.OrientVertexType;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -46,7 +48,7 @@ import static org.junit.Assert.*;
  * - restart server3
  * - check availability no-replica (you can retry records of all the shards)
  * - this test checks also the full restore of database that doesn't overwrite the client_asia
- *   cluster because owned only by asia server
+ * cluster because owned only by asia server
  *
  * @author Gabriele Ponzi
  * @email <gabriele.ponzi--at--gmail.com>
@@ -58,7 +60,9 @@ public class BasicShardingNoReplicaScenarioTest extends AbstractShardingScenario
   public void test() throws Exception {
     init(SERVERS);
     prepare(false);
-    super.executeWritesOnServers.addAll(super.serverInstance);
+
+    executeTestsOnServers = new ArrayList<ServerRun>(serverInstance);
+
     execute();
   }
 
@@ -100,22 +104,22 @@ public class BasicShardingNoReplicaScenarioTest extends AbstractShardingScenario
       graphNoTx.getRawGraph().close();
 
       // writes on the three clusters
-      executeMultipleWritesOnShards(executeWritesOnServers, "plocal");
+      executeMultipleWritesOnShards(executeTestsOnServers, "plocal");
 
       // check consistency (no-replica)
-      checkAvailabilityOnShardsNoReplica(serverInstance, executeWritesOnServers);
+      checkAvailabilityOnShardsNoReplica(serverInstance, executeTestsOnServers);
 
       // network fault on server3
       System.out.println("Shutdown on server3.\n");
       simulateServerFault(serverInstance.get(2), "shutdown");
       assertFalse(serverInstance.get(2).isActive());
 
-      waitForDatabaseIsOffline(executeWritesOnServers.get(2).getServerInstance().getDistributedManager().getLocalNodeName(),
+      waitForDatabaseIsOffline(executeTestsOnServers.get(2).getServerInstance().getDistributedManager().getLocalNodeName(),
           getDatabaseName(), 10000);
 
       // check consistency (no-replica)
-      executeWritesOnServers.remove(2);
-      checkAvailabilityOnShardsNoReplica(executeWritesOnServers, executeWritesOnServers);
+      executeTestsOnServers.remove(2);
+      checkAvailabilityOnShardsNoReplica(executeTestsOnServers, executeTestsOnServers);
 
       // this query doesn't return any result
       try {
@@ -166,8 +170,8 @@ public class BasicShardingNoReplicaScenarioTest extends AbstractShardingScenario
       }
 
       // check consistency (no-replica)
-      executeWritesOnServers.add(serverInstance.get(2));
-      checkAvailabilityOnShardsNoReplica(serverInstance, executeWritesOnServers);
+      executeTestsOnServers.add(serverInstance.get(2));
+      checkAvailabilityOnShardsNoReplica(serverInstance, executeTestsOnServers);
 
     } catch (Exception e) {
       e.printStackTrace();

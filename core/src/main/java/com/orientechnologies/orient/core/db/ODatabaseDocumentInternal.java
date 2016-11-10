@@ -70,4 +70,10 @@ public interface ODatabaseDocumentInternal extends ODatabaseDocument, ODatabaseI
 
   @Override
   OMetadataInternal getMetadata();
+
+  boolean isPrefetchRecords();
+
+  void setPrefetchRecords(boolean prefetchRecords);
+  
+  public ODatabaseDocumentInternal copy();
 }

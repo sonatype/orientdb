@@ -24,6 +24,7 @@ import com.orientechnologies.common.util.OCommonConst;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
+import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.index.*;
 import com.orientechnologies.orient.core.index.hashindex.local.OHashIndexBucket;
 import com.orientechnologies.orient.core.index.hashindex.local.OHashTable;
@@ -91,6 +92,8 @@ public final class OAutoShardingIndexEngine implements OIndexEngine {
     this.strategy = new OAutoShardingMurmurStrategy(keySerializer);
     this.hashFunction.setValueSerializer(keySerializer);
     this.partitionSize = clustersToIndex.size();
+    if (metadata != null && metadata.containsField("partitions"))
+      this.partitionSize = metadata.field("partitions");
 
     engineProperties.put("partitions", "" + partitionSize);
 
@@ -198,6 +201,12 @@ public final class OAutoShardingIndexEngine implements OIndexEngine {
     getPartition(key).put(key, value);
   }
 
+  @SuppressWarnings("unchecked")
+  @Override
+  public boolean validatedPut(Object key, OIdentifiable value, Validator<Object, OIdentifiable> validator) {
+    return getPartition(key).validatedPut(key, value, (Validator) validator);
+  }
+
   @Override
   public long size(final ValuesTransformer transformer) {
     long counter = 0;
@@ -294,8 +303,8 @@ public final class OAutoShardingIndexEngine implements OIndexEngine {
   }
 
   @Override
-  public OIndexCursor iterateEntriesBetween(final Object rangeFrom, final boolean fromInclusive,final  Object rangeTo,final  boolean toInclusive,
-      boolean ascSortOrder, ValuesTransformer transformer) {
+  public OIndexCursor iterateEntriesBetween(final Object rangeFrom, final boolean fromInclusive, final Object rangeTo,
+      final boolean toInclusive, boolean ascSortOrder, ValuesTransformer transformer) {
     throw new UnsupportedOperationException("iterateEntriesBetween");
   }
 
@@ -327,7 +336,7 @@ public final class OAutoShardingIndexEngine implements OIndexEngine {
   }
 
   @Override
-  public String getIndexNameByKey(final Object key ){
+  public String getIndexNameByKey(final Object key) {
     return getPartition(key).getName();
   }
 

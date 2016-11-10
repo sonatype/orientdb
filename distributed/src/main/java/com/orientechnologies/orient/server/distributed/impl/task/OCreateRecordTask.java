@@ -74,7 +74,7 @@ public class OCreateRecordTask extends OAbstractRecordReplicatedTask {
       ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.INSTANCE.get();
       clusterId = db.assignAndCheckCluster(record, null);
       // RESETTING FOR AVOID DESERIALIZATION ISSUE.
-      ((ORecordId) record.getIdentity()).clusterId = ORID.CLUSTER_ID_INVALID;
+      ((ORecordId) record.getIdentity()).setClusterId(ORID.CLUSTER_ID_INVALID);
     }
   }
 
@@ -108,8 +108,8 @@ public class OCreateRecordTask extends OAbstractRecordReplicatedTask {
       throw new ODistributedException("Record " + rid + " has not been saved on owner node first (temporary rid)");
 
     final OPaginatedCluster cluster = (OPaginatedCluster) ODatabaseRecordThreadLocal.INSTANCE.get().getStorage()
-        .getClusterById(rid.clusterId);
-    final OPaginatedCluster.RECORD_STATUS recordStatus = cluster.getRecordStatus(rid.clusterPosition);
+        .getClusterById(rid.getClusterId());
+    final OPaginatedCluster.RECORD_STATUS recordStatus = cluster.getRecordStatus(rid.getClusterPosition());
 
     switch (recordStatus) {
     case REMOVED:
@@ -125,7 +125,7 @@ public class OCreateRecordTask extends OAbstractRecordReplicatedTask {
     case ALLOCATED:
     case PRESENT:
       final OStorageOperationResult<ORawBuffer> loadedRecord = ODatabaseRecordThreadLocal.INSTANCE.get().getStorage()
-          .readRecord(rid, null, true, null);
+          .readRecord(rid, null, true, false, null);
 
       if (loadedRecord.getResult() != null) {
         // ALREADY PRESENT
@@ -149,14 +149,14 @@ public class OCreateRecordTask extends OAbstractRecordReplicatedTask {
             record.save();
 
           newRid = (ORecordId) record.getIdentity();
-          if (newRid.getClusterPosition() >= rid.clusterPosition)
+          if (newRid.getClusterPosition() >= rid.getClusterPosition())
             break;
 
           // CREATE AN HOLE
           record.delete();
           record = null;
 
-        } while (newRid.getClusterPosition() < rid.clusterPosition);
+        } while (newRid.getClusterPosition() < rid.getClusterPosition());
 
         if (!rid.equals(newRid)) {
           ODistributedServerLog.warn(this, iManager.getLocalNodeName(), getNodeSource(), DIRECTION.IN,
@@ -260,7 +260,7 @@ public class OCreateRecordTask extends OAbstractRecordReplicatedTask {
             toUpdateRecord = toUpdateRid.getRecord();
 
           if (toUpdateRecord != null)
-            result = new OUpdateRecordTask(toUpdateRid, toUpdateRecord.toStream(), toUpdateRecord.getVersion(),
+            result = new OFixUpdateRecordTask(toUpdateRid, toUpdateRecord.toStream(), toUpdateRecord.getVersion(),
                 ORecordInternal.getRecordType(toUpdateRecord));
         }
 
@@ -272,7 +272,7 @@ public class OCreateRecordTask extends OAbstractRecordReplicatedTask {
 
       } else
         // ANY OTHER CASE JUST DELETE IT
-        result = new ODeleteRecordTask(new ORecordId(badResult.getIdentity()), badResult.getVersion());
+        result = new OFixCreateRecordTask(new ORecordId(badResult.getIdentity()), badResult.getVersion());
     }
 
     return result;
@@ -280,7 +280,7 @@ public class OCreateRecordTask extends OAbstractRecordReplicatedTask {
 
   @Override
   public ODeleteRecordTask getUndoTask(ODistributedRequestId reqId) {
-    final ODeleteRecordTask task = new ODeleteRecordTask(rid, -1);
+    final ODeleteRecordTask task = new OFixCreateRecordTask(rid, -1);
     task.setLockRecords(false);
     return task;
   }

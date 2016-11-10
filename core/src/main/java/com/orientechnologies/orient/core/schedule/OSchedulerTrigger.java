@@ -21,6 +21,7 @@ import com.orientechnologies.orient.core.db.document.ODatabaseDocument;
 import com.orientechnologies.orient.core.exception.ODatabaseException;
 import com.orientechnologies.orient.core.exception.OValidationException;
 import com.orientechnologies.orient.core.hook.ODocumentHookAbstract;
+import com.orientechnologies.orient.core.hook.ORecordHook;
 import com.orientechnologies.orient.core.metadata.schema.OImmutableClass;
 import com.orientechnologies.orient.core.record.ORecord;
 import com.orientechnologies.orient.core.record.impl.ODocument;
@@ -33,16 +34,23 @@ import java.util.Set;
 
 /**
  * Keeps synchronized the scheduled events in memory.
- * 
+ *
  * @author Luca Garulli
  * @author henryzhao81-at-gmail.com
  * @since Mar 28, 2013
  */
 
-public class OSchedulerTrigger extends ODocumentHookAbstract {
+public class OSchedulerTrigger extends ODocumentHookAbstract implements ORecordHook.Scoped {
+
+  private static final SCOPE[] SCOPES = { SCOPE.CREATE, SCOPE.UPDATE, SCOPE.DELETE };
 
   public OSchedulerTrigger(ODatabaseDocument database) {
     super(database);
+  }
+
+  @Override
+  public SCOPE[] getScopes() {
+    return SCOPES;
   }
 
   public DISTRIBUTED_EXECUTION_MODE getDistributedExecutionMode() {
@@ -80,7 +88,7 @@ public class OSchedulerTrigger extends ODocumentHookAbstract {
   public RESULT onRecordBeforeUpdate(final ODocument iDocument) {
     try {
       final String schedulerName = iDocument.field(OScheduledEvent.PROP_NAME);
-      final OScheduledEvent event = database.getMetadata().getScheduler().getEvent(schedulerName);
+      OScheduledEvent event = database.getMetadata().getScheduler().getEvent(schedulerName);
 
       if (event != null) {
         // UPDATED EVENT
@@ -91,12 +99,11 @@ public class OSchedulerTrigger extends ODocumentHookAbstract {
 
         if (dirtyFields.contains(OScheduledEvent.PROP_RULE)) {
           // RULE CHANGED, STOP CURRENT EVENT AND RESCHEDULE IT
-          database.getMetadata().getScheduler().removeEvent(event.getName());
-          database.getMetadata().getScheduler().scheduleEvent(new OScheduledEvent(iDocument));
+          database.getMetadata().getScheduler().updateEvent(new OScheduledEvent(iDocument));
+        } else {
+          iDocument.field(OScheduledEvent.PROP_STATUS, STATUS.STOPPED.name());
+          event.fromStream(iDocument);
         }
-
-        iDocument.field(OScheduledEvent.PROP_STATUS, STATUS.STOPPED.name());
-        event.fromStream(iDocument);
 
         return RESULT.RECORD_CHANGED;
       }
@@ -108,12 +115,8 @@ public class OSchedulerTrigger extends ODocumentHookAbstract {
   }
 
   @Override
-  public RESULT onRecordBeforeDelete(final ODocument iDocument) {
+  public void onRecordAfterDelete(final ODocument iDocument) {
     final String eventName = iDocument.field(OScheduledEvent.PROP_NAME);
-    OScheduledEvent scheduler = database.getMetadata().getScheduler().getEvent(eventName);
-    if (scheduler != null) {
-      database.getMetadata().getScheduler().removeEvent(eventName);
-    }
-    return RESULT.RECORD_CHANGED;
+    database.getMetadata().getScheduler().removeEvent(eventName);
   }
 }

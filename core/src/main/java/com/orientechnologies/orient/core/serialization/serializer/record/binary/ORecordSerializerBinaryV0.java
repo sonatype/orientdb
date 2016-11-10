@@ -54,11 +54,11 @@ import java.util.Map.Entry;
 
 public class ORecordSerializerBinaryV0 implements ODocumentSerializer {
 
-  private static final   String    CHARSET_UTF_8    = "UTF-8";
-  private static final   ORecordId NULL_RECORD_ID   = new ORecordId(-2, ORID.CLUSTER_POS_INVALID);
-  protected static final long      MILLISEC_PER_DAY = 86400000;
+  private static final String       CHARSET_UTF_8    = "UTF-8";
+  private static final ORecordId    NULL_RECORD_ID   = new ORecordId(-2, ORID.CLUSTER_POS_INVALID);
+  protected static final long       MILLISEC_PER_DAY = 86400000;
 
-  private final OBinaryComparatorV0 comparator = new OBinaryComparatorV0();
+  private final OBinaryComparatorV0 comparator       = new OBinaryComparatorV0();
 
   public ORecordSerializerBinaryV0() {
   }
@@ -288,15 +288,12 @@ public class ORecordSerializerBinaryV0 implements ODocumentSerializer {
   }
 
   @Override
-  public String[] getFieldNames(final BytesContainer bytes) {
+  public String[] getFieldNames(ODocument reference, final BytesContainer bytes) {
     // SKIP CLASS NAME
     final int classNameLen = OVarIntSerializer.readAsInteger(bytes);
     bytes.skip(classNameLen);
 
     final List<String> result = new ArrayList<String>();
-
-    final OMetadataInternal metadata = (OMetadataInternal) ODatabaseRecordThreadLocal.INSTANCE.get().getMetadata();
-    final OImmutableSchema _schema = metadata.getImmutableSchemaSnapshot();
 
     String fieldName;
     while (true) {
@@ -315,7 +312,10 @@ public class ORecordSerializerBinaryV0 implements ODocumentSerializer {
       } else {
         // LOAD GLOBAL PROPERTY BY ID
         final int id = (len * -1) - 1;
-        prop = _schema.getGlobalPropertyById(id);
+        prop = ODocumentInternal.getGlobalPropertyById(reference, id);
+        if (prop == null) {
+          throw new OSerializationException("Missing property definition for property id '" + id + "'");
+        }
         result.add(prop.getName());
 
         // SKIP THE REST
@@ -382,6 +382,10 @@ public class ORecordSerializerBinaryV0 implements ODocumentSerializer {
         if (values[i].getValue().property == null || values[i].getValue().property.getType() == OType.ANY)
           writeOType(bytes, (pos[i] + OIntegerSerializer.INT_SIZE), type);
       }
+    }
+
+    if (clazz != null && clazz.getOverSize() > 1) {
+      bytes.alloc((int) ((float) bytes.bytes.length * clazz.getOverSize()));
     }
   }
 
@@ -778,8 +782,8 @@ public class ORecordSerializerBinaryV0 implements ODocumentSerializer {
   }
 
   private int writeLinkMap(final BytesContainer bytes, final Map<Object, OIdentifiable> map) {
-    final boolean disabledAutoConversion =
-        map instanceof ORecordLazyMultiValue && ((ORecordLazyMultiValue) map).isAutoConvertToRecord();
+    final boolean disabledAutoConversion = map instanceof ORecordLazyMultiValue
+        && ((ORecordLazyMultiValue) map).isAutoConvertToRecord();
 
     if (disabledAutoConversion)
       // AVOID TO FETCH RECORD
@@ -854,10 +858,10 @@ public class ORecordSerializerBinaryV0 implements ODocumentSerializer {
         if (real != null)
           link = real;
       } catch (ORecordNotFoundException ex) {
-        //IGNORE IT WILL FAIL THE ASSERT IN CASE
+        // IGNORE IT WILL FAIL THE ASSERT IN CASE
       }
     }
-    if(link.getIdentity().getClusterId() < 0 && ORecordSerializationContext.getContext() != null )
+    if (link.getIdentity().getClusterId() < 0 && ORecordSerializationContext.getContext() != null)
       throw new ODatabaseException("Impossible to serialize invalid link " + link.getIdentity());
 
     final int pos = OVarIntSerializer.write(bytes, link.getIdentity().getClusterId());
@@ -868,8 +872,8 @@ public class ORecordSerializerBinaryV0 implements ODocumentSerializer {
   private int writeLinkCollection(final BytesContainer bytes, final Collection<OIdentifiable> value) {
     final int pos = OVarIntSerializer.write(bytes, value.size());
 
-    final boolean disabledAutoConversion =
-        value instanceof ORecordLazyMultiValue && ((ORecordLazyMultiValue) value).isAutoConvertToRecord();
+    final boolean disabledAutoConversion = value instanceof ORecordLazyMultiValue
+        && ((ORecordLazyMultiValue) value).isAutoConvertToRecord();
 
     if (disabledAutoConversion)
       // AVOID TO FETCH RECORD
@@ -912,7 +916,7 @@ public class ORecordSerializerBinaryV0 implements ODocumentSerializer {
         serializeValue(bytes, itemValue, type, null);
       } else {
         throw new OSerializationException(
-            "Impossible serialize value of type " + value.getClass() + " with the ODocument binary serializer");
+            "Impossible serialize value of type " + itemValue.getClass() + " with the ODocument binary serializer");
       }
     }
     return pos;

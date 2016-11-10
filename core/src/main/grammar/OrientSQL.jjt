@@ -348,6 +348,16 @@ TOKEN:
 	|
 	< COUNT: ( "C" | "c") ( "O" | "o") ( "U" | "u") ( "N" | "n") ( "T" | "t") >
 	|
+	< HA: ( "H" | "h") ( "A" | "a") >
+	|
+	< STATUS: ( "S" | "s") ( "T" | "t") ( "A" | "a") ( "T" | "t") ( "U" | "u") ( "S" | "s") >
+	|
+	< SERVER: ( "S" | "s") ( "E" | "e") ( "R" | "r") ( "V" | "v") ( "E" | "e") ( "R" | "r") >
+	|
+	< SYNC: ( "S" | "s") ( "Y" | "y") ( "N" | "n") ( "C" | "c") >
+	|
+	< EXISTS: ( "E" | "e") ( "X" | "x") ( "I" | "i") ( "S" | "s") ( "T" | "t") ( "S" | "s") >
+	|
 	< THIS: "@" ( ( "t" | "T" ) ( "h" | "H" ) ( "i" | "I" ) ( "s" | "S" ) ) >
 	|
 	< RECORD_ATTRIBUTE: <RID_ATTR> | <CLASS_ATTR> | <VERSION_ATTR> | <SIZE_ATTR> | <TYPE_ATTR> | <RAW_ATTR> | <RID_ID_ATTR> | <RID_POS_ATTR> | <FIELDS_ATTR> >
@@ -797,6 +807,16 @@ OIdentifier Identifier():
     |
     token = <COUNT>
     |
+    token = <HA>
+    |
+    token = <STATUS>
+    |
+    token = <SERVER>
+    |
+    token = <SYNC>
+    |
+    token = <EXISTS>
+    |
     quotedToken = <QUOTED_IDENTIFIER>
 ) {
 
@@ -998,6 +1018,18 @@ OStatement StatementInternal():
                 result = ConsoleStatement()
                 |
                 result = IfStatement()
+                |
+                LOOKAHEAD(2)
+                result = HaStatusStatement()
+                |
+                LOOKAHEAD(2)
+                result = HaRemoveServerStatement()
+                |
+                LOOKAHEAD(3)
+                result = HaSyncDatabaseStatement()
+                |
+                LOOKAHEAD(3)
+                result = HaSyncClusterStatement()
             )
         )
         |
@@ -1637,7 +1669,9 @@ OUpdateRemoveItem UpdateRemoveItem():
 {}
 {
     (
-	    jjtThis.left = Identifier() [ <EQ> jjtThis.right = Expression() ]
+	    jjtThis.left = Identifier()
+	    [ jjtThis.leftModifier = Modifier() ]
+	    [ <EQ> jjtThis.right = Expression() ]
 	)
     { return jjtThis; }
 }
@@ -2301,9 +2335,21 @@ OLetItem LetItem():
     	        )
     	        <RPAREN>
     	    )
-    	)
+    	){
+    	    if(jjtThis.varName.getStringValue().equalsIgnoreCase("$root")||
+               jjtThis.varName.getStringValue().equalsIgnoreCase("root")||
+               jjtThis.varName.getStringValue().equalsIgnoreCase("$parent")||
+               jjtThis.varName.getStringValue().equalsIgnoreCase("parent")||
+               jjtThis.varName.getStringValue().equalsIgnoreCase("$current")||
+               jjtThis.varName.getStringValue().equalsIgnoreCase("current")){
+               throw new OCommandSQLParsingException("invalid LET statement: "+jjtThis.varName+" is a reserved keyword");
+            }
+
+    	}
     )
-    { return jjtThis; }
+    {
+        return jjtThis;
+    }
 }
 
 
@@ -3721,6 +3767,7 @@ OCreateClassStatement CreateClassStatement():
 	<CREATE> <CLASS>
 	(
 		jjtThis.name = Identifier()
+		[ <IF> <NOT> <EXISTS> {jjtThis.ifNotExists = true;} ]
 		[
 			<EXTENDS> lastIdentifier = Identifier() { jjtThis.superclasses = new ArrayList<OIdentifier>(); jjtThis.superclasses.add(lastIdentifier); }
 			 (
@@ -3810,13 +3857,7 @@ OAlterClassStatement AlterClassStatement():
 		(
 			<STRICTMODE> { jjtThis.property = com.orientechnologies.orient.core.metadata.schema.OClass.ATTRIBUTES.STRICTMODE; }
 			(
-				(
-					<TRUE> { jjtThis.booleanValue = true; }
-				)
-				|
-				(
-					<FALSE> { jjtThis.booleanValue = false; }
-				)
+				jjtThis.expression = Expression()
 			)
 		)
 		|
@@ -3850,13 +3891,7 @@ OAlterClassStatement AlterClassStatement():
 		(
 			<ABSTRACT> { jjtThis.property = com.orientechnologies.orient.core.metadata.schema.OClass.ATTRIBUTES.ABSTRACT; }
 			(
-				(
-					<TRUE> { jjtThis.booleanValue = true; }
-				)
-				|
-				(
-					<FALSE> { jjtThis.booleanValue = false; }
-				)
+				jjtThis.expression = Expression()
 			)
 		)
 		|
@@ -3899,10 +3934,15 @@ ODropClassStatement DropClassStatement():
 {
 	<DROP> <CLASS>
 	jjtThis.name = Identifier()
+	[ <IF> <EXISTS> { jjtThis.ifExists = true; } ]
 	[ <UNSAFE> { jjtThis.unsafe = true; } ]
 	{ return jjtThis; }
 }
 
+void IfNotExists():{}
+{
+    <IF> <NOT> <EXISTS>
+}
 OCreatePropertyStatement CreatePropertyStatement():
 {
 	OCreatePropertyAttributeStatement lastAttribute;
@@ -3913,6 +3953,9 @@ OCreatePropertyStatement CreatePropertyStatement():
 		jjtThis.className = Identifier()
 		<DOT>
 		jjtThis.propertyName = Identifier()
+
+		    [ LOOKAHEAD(3) IfNotExists() { jjtThis.ifNotExists = true; }]
+
 		jjtThis.propertyType = Identifier()
 		[
 			jjtThis.linkedType = Identifier()
@@ -3984,6 +4027,7 @@ ODropPropertyStatement DropPropertyStatement():
 	jjtThis.className = Identifier()
 	<DOT>
 	jjtThis.propertyName = Identifier()
+	[ <IF> <EXISTS> { jjtThis.ifExists = true; } ]
 	[ <FORCE> { jjtThis.force = true; }]
 	{ return jjtThis; }
 }
@@ -4528,6 +4572,75 @@ ODropSequenceStatement DropSequenceStatement():
     (
         <DROP> <SEQUENCE>
         jjtThis.name = Identifier()
+    )
+    { return jjtThis; }
+}
+
+
+
+OHaStatusStatement HaStatusStatement():
+{
+ Token token;
+}
+{
+    (
+        <HA> <STATUS>
+        (
+            token = "-servers" { jjtThis.servers = true; }
+            |
+            token = "-db" { jjtThis.db = true; }
+            |
+            token = "-latency" { jjtThis.latency = true; }
+            |
+            token = "-messages" { jjtThis.messages = true; }
+            |
+            token = "-all" {
+                jjtThis.servers = true;
+                jjtThis.db = true;
+                jjtThis.latency = true;
+                jjtThis.messages = true;
+            }
+            |
+            token = "-output=text" { jjtThis.outputText = true; }
+        )*
+    )
+    { return jjtThis; }
+}
+
+OHaRemoveServerStatement HaRemoveServerStatement():
+{}
+{
+    (
+        <HA> <REMOVE> <SERVER>
+        jjtThis.serverName = Identifier()
+    )
+    { return jjtThis; }
+}
+
+OHaSyncDatabaseStatement HaSyncDatabaseStatement():
+{}
+{
+    (
+        <HA> <SYNC> <DATABASE>
+    )
+    { return jjtThis; }
+}
+
+OHaSyncClusterStatement HaSyncClusterStatement():
+{}
+{
+    (
+        <HA> <SYNC> <CLUSTER>
+        jjtThis.clusterName = Identifier()
+        [
+            (
+                "-full_replace" {jjtThis.modeFull = true;}
+            )
+            |
+            (
+                "-merge" {jjtThis.modeMerge = true;}
+            )
+        ]
     )
     { return jjtThis; }
 }

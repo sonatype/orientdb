@@ -262,7 +262,7 @@ public class PostponedEngineStartTest {
 
         @Override
         public OStorageOperationResult<ORawBuffer> readRecord(ORecordId iRid, String iFetchPlan, boolean iIgnoreCache,
-            ORecordCallback<ORawBuffer> iCallback) {
+            boolean prefetchRecords, ORecordCallback<ORawBuffer> iCallback) {
           return null;
         }
 
@@ -302,11 +302,6 @@ public class PostponedEngineStartTest {
 
         @Override
         public List<ORecordOperation> commit(OTransaction iTx, Runnable callback) {
-          return null;
-        }
-
-        @Override
-        public OUncompletedCommit<List<ORecordOperation>> initiateCommit(OTransaction iTx, Runnable callback) {
           return null;
         }
 

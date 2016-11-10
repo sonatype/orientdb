@@ -21,6 +21,7 @@
 package com.orientechnologies.orient.core.index.sbtreebonsai.local;
 
 import com.orientechnologies.common.comparator.ODefaultComparator;
+import com.orientechnologies.common.concur.lock.OLockManager;
 import com.orientechnologies.common.concur.lock.OPartitionedLockManager;
 import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.log.OLogManager;
@@ -56,7 +57,7 @@ import java.util.concurrent.locks.Lock;
  * @since 1.6.0
  */
 public class OSBTreeBonsaiLocal<K, V> extends ODurableComponent implements OSBTreeBonsai<K, V> {
-  private static final OPartitionedLockManager<Integer> fileLockManager = new OPartitionedLockManager<Integer>();
+  OLockManager<Long> fileLockManager = new OPartitionedLockManager<Long>();
 
   private static final int                  PAGE_SIZE             =
       OGlobalConfiguration.DISK_CACHE_PAGE_SIZE.getValueAsInteger() * 1024;
@@ -68,7 +69,7 @@ public class OSBTreeBonsaiLocal<K, V> extends ODurableComponent implements OSBTr
 
   private final Comparator<? super K> comparator = ODefaultComparator.INSTANCE;
 
-  private volatile long fileId = -1;
+  private volatile Long fileId = -1l;
 
   private OBinarySerializer<K> keySerializer;
   private OBinarySerializer<V> valueSerializer;
@@ -87,7 +88,7 @@ public class OSBTreeBonsaiLocal<K, V> extends ODurableComponent implements OSBTr
         throw OException.wrapException(new OSBTreeBonsaiLocalException("Error during sbtree creation", this), e);
       }
 
-      Lock lock = fileLockManager.acquireExclusiveLock(-1);
+      Lock lock = fileLockManager.acquireExclusiveLock(-1l);
       try {
         this.keySerializer = keySerializer;
         this.valueSerializer = valueSerializer;

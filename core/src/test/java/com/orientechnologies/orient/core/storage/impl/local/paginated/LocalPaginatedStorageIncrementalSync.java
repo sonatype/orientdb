@@ -322,9 +322,9 @@ public class LocalPaginatedStorageIncrementalSync {
 
       while (physicalPositions.length > 0) {
         for (OPhysicalPosition physicalPosition : physicalPositions) {
-          rid.clusterPosition = physicalPosition.clusterPosition;
-          final ORawBuffer originalBuffer = originalStorage.readRecord(rid, null, true, null).getResult();
-          final ORawBuffer syncBuffer = syncedStorage.readRecord(rid, null, true, null).getResult();
+          rid.setClusterPosition(physicalPosition.clusterPosition);
+          final ORawBuffer originalBuffer = originalStorage.readRecord(rid, null, true, false, null).getResult();
+          final ORawBuffer syncBuffer = syncedStorage.readRecord(rid, null, true, false, null).getResult();
 
           Assert.assertEquals(originalBuffer.recordType, syncBuffer.recordType);
           Assert.assertEquals(originalBuffer.version, syncBuffer.version);

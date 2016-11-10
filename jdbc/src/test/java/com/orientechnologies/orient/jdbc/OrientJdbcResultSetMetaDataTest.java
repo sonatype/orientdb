@@ -1,5 +1,6 @@
 package com.orientechnologies.orient.jdbc;
 
+import com.orientechnologies.orient.core.id.ORecordId;
 import org.junit.Test;
 
 import java.math.BigDecimal;
@@ -97,23 +98,32 @@ public class OrientJdbcResultSetMetaDataTest extends OrientJdbcBaseTest {
 
     assertThat(conn.isClosed()).isFalse();
     Statement stmt = conn.createStatement();
-    ResultSet rs = stmt.executeQuery("SELECT stringKey, intKey, text, length, date FROM Item");
+    ResultSet rs = stmt.executeQuery("SELECT @rid, @class, stringKey, intKey, text, length, date FROM Item");
 
     rs.next();
     ResultSetMetaData metaData = rs.getMetaData();
-    assertThat(metaData.getColumnCount()).isEqualTo(5);
+    assertThat(metaData.getColumnCount()).isEqualTo(7);
 
-    assertThat(metaData.getColumnName(1)).isEqualTo("stringKey");
+    assertThat(metaData.getColumnName(1)).isEqualTo("rid");
+    assertThat(new ORecordId(rs.getString(1)).isPersistent()).isEqualTo(true);
+
     assertThat(rs.getObject(1)).isInstanceOf(String.class);
 
-    assertThat(metaData.getColumnName(2)).isEqualTo("intKey");
+    assertThat(metaData.getColumnName(2)).isEqualTo("class");
+    assertThat(rs.getString(2)).isEqualTo("Item");
+    assertThat(rs.getObject(2)).isInstanceOf(String.class);
 
-    assertThat(metaData.getColumnName(3)).isEqualTo("text");
+    assertThat(metaData.getColumnName(3)).isEqualTo("stringKey");
     assertThat(rs.getObject(3)).isInstanceOf(String.class);
 
-    assertThat(metaData.getColumnName(4)).isEqualTo("length");
+    assertThat(metaData.getColumnName(4)).isEqualTo("intKey");
 
-    assertThat(metaData.getColumnName(5)).isEqualTo("date");
+    assertThat(metaData.getColumnName(5)).isEqualTo("text");
+    assertThat(rs.getObject(5)).isInstanceOf(String.class);
+
+    assertThat(metaData.getColumnName(6)).isEqualTo("length");
+
+    assertThat(metaData.getColumnName(7)).isEqualTo("date");
 
   }
 
@@ -157,5 +167,17 @@ public class OrientJdbcResultSetMetaDataTest extends OrientJdbcBaseTest {
     assertThat(metaData.getColumnTypeName(1)).isEqualTo("STRING");
     assertThat(rs.getObject(1)).isInstanceOf(String.class);
 
+  }
+
+  @Test
+  public void shouldReadBoolean() throws Exception {
+
+    Statement stmt = conn.createStatement();
+    ResultSet rs = stmt.executeQuery("SELECT  isActive, is_active FROM Writer");
+
+    while (rs.next()) {
+
+      System.out.println("bool:: " + rs.getBoolean(1) + " - " + rs.getBoolean(2));
+    }
   }
 }

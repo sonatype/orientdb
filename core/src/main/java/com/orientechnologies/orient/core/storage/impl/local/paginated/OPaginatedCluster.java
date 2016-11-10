@@ -619,8 +619,13 @@ public class OPaginatedCluster extends ODurableComponent implements OCluster {
   }
 
   @SuppressFBWarnings(value = "PZLA_PREFER_ZERO_LENGTH_ARRAYS")
-  public ORawBuffer readRecord(final long clusterPosition) throws IOException {
-    return readRecord(clusterPosition, 1);
+  public ORawBuffer readRecord(final long clusterPosition, boolean prefetchRecords) throws IOException {
+    int pagesCount = 1;
+    if (prefetchRecords) {
+      pagesCount = OGlobalConfiguration.QUERY_SCAN_PREFETCH_PAGES.getValueAsInteger();
+    }
+
+    return readRecord(clusterPosition, pagesCount);
   }
 
   private ORawBuffer readRecord(final long clusterPosition, final int pageCount) throws IOException {
@@ -727,7 +732,7 @@ public class OPaginatedCluster extends ODurableComponent implements OCluster {
           }
 
           if (loadedRecordVersion > recordVersion)
-            return readRecord(clusterPosition);
+            return readRecord(clusterPosition, false);
 
           return null;
         } finally {
@@ -769,6 +774,7 @@ public class OPaginatedCluster extends ODurableComponent implements OCluster {
         int removedContentSize = 0;
 
         do {
+          boolean cacheEntryReleased = false;
           OCacheEntry cacheEntry = loadPage(atomicOperation, fileId, pageIndex, false);
           cacheEntry.acquireExclusiveLock();
           int initialFreePageIndex;
@@ -778,7 +784,13 @@ public class OPaginatedCluster extends ODurableComponent implements OCluster {
 
             if (localPage.isDeleted(recordPosition)) {
               if (removedContentSize == 0) {
-                endAtomicOperation(false, null);
+                cacheEntryReleased = true;
+                try {
+                  cacheEntry.releaseExclusiveLock();
+                  releasePage(atomicOperation, cacheEntry);
+                } finally {
+                  endAtomicOperation(false, null);
+                }
                 return false;
               } else
                 throw new OPaginatedClusterException("Content of record " + new ORecordId(id, clusterPosition) + " was broken",
@@ -801,8 +813,10 @@ public class OPaginatedCluster extends ODurableComponent implements OCluster {
             removedContentSize += localPage.getFreeSpace() - initialFreeSpace;
             nextPagePointer = OLongSerializer.INSTANCE.deserializeNative(content, content.length - OLongSerializer.LONG_SIZE);
           } finally {
-            cacheEntry.releaseExclusiveLock();
-            releasePage(atomicOperation, cacheEntry);
+            if (!cacheEntryReleased) {
+              cacheEntry.releaseExclusiveLock();
+              releasePage(atomicOperation, cacheEntry);
+            }
           }
 
           updateFreePagesIndex(initialFreePageIndex, pageIndex, atomicOperation);
@@ -1288,7 +1302,6 @@ public class OPaginatedCluster extends ODurableComponent implements OCluster {
   public void truncate() throws IOException {
     startOperation();
     try {
-      storageLocal.checkForClusterPermissions(getName());
 
       OAtomicOperation atomicOperation = startAtomicOperation(true);
 
@@ -1649,66 +1662,6 @@ public class OPaginatedCluster extends ODurableComponent implements OCluster {
     return recordConflictStrategy;
   }
 
-  /**
-   * Scans records in both orders (ascending or descending) between a range of records.
-   *
-   * @return The last cluster position or -1 if the end was reached
-   * @throws IOException
-   */
-  @SuppressFBWarnings(value = "PZLA_PREFER_ZERO_LENGTH_ARRAYS")
-  public long scan(final boolean ascendingOrder, final long from, final long to, final long limit,
-      final OCallable<Boolean, ORecord> callback) throws IOException {
-    long browsed = 0;
-    try {
-      final long firstPos = from > -1 ? from : getFirstPosition();
-      final long lastPos = to > -1 ? to : getLastPosition();
-      final long recordsToScan = lastPos - firstPos;
-      final long progressDump = recordsToScan / 10;
-      final int prefetchPages = OGlobalConfiguration.QUERY_SCAN_PREFETCH_PAGES.getValueAsInteger();
-
-      long clusterPosition = ascendingOrder ? firstPos : lastPos;
-
-      for (; ascendingOrder ? clusterPosition <= lastPos : clusterPosition >= firstPos; clusterPosition += (ascendingOrder ?
-          1 :
-          -1)) {
-        final ORawBuffer buffer = readRecord(clusterPosition, Math.max(prefetchPages, 1));
-
-        if (buffer == null)
-          continue;
-
-        if (progressDump > 1 && OLogManager.instance().isDebugEnabled()) {
-          final long recordsScanned = clusterPosition - firstPos;
-
-          if ((recordsScanned + 1) % progressDump == 0) {
-            OLogManager.instance().debug(this, "Scan cluster id=%d read %d/%d %.2f%%", id, recordsScanned, recordsToScan,
-                ((float) recordsScanned * 100 / recordsToScan));
-          }
-        }
-
-        final ORecord rec = Orient.instance().getRecordFactoryManager().newInstance(buffer.recordType);
-        ORecordInternal.fill(rec, new ORecordId(id, clusterPosition), buffer.version, buffer.buffer, false);
-
-        if (callback.call(rec).equals(Boolean.FALSE))
-          break;
-
-        if (Thread.currentThread().isInterrupted()) {
-          Thread.currentThread().interrupt();
-          break;
-        }
-
-        if (++browsed == limit) {
-          // LIMIT REACHED
-          return clusterPosition;
-        }
-      }
-
-      return -1;
-    } finally {
-      storageLocal.getRecordScanned().addAndGet(browsed);
-      OLogManager.instance().debug(this, "Scan cluster id=%d completed", id);
-    }
-  }
-
   private void setRecordConflictStrategy(final String stringValue) {
     recordConflictStrategy = Orient.instance().getRecordConflictStrategy().getStrategy(stringValue);
     config.conflictStrategy = stringValue;
@@ -1964,23 +1917,31 @@ public class OPaginatedCluster extends ODurableComponent implements OCluster {
 
       if (freePageIndex < FREE_LIST_SIZE) {
         OCacheEntry cacheEntry = loadPage(atomicOperation, fileId, pageIndex, false);
-        cacheEntry.acquireSharedLock();
-        int realFreePageIndex;
-        try {
-          OClusterPage localPage = new OClusterPage(cacheEntry, false, getChanges(atomicOperation, cacheEntry));
-          realFreePageIndex = calculateFreePageIndex(localPage);
-        } finally {
-          cacheEntry.releaseSharedLock();
-          releasePage(atomicOperation, cacheEntry);
-        }
 
-        if (realFreePageIndex != freePageIndex) {
-          OLogManager.instance()
-              .warn(this, "Page in file %s with index %d was placed in wrong free list, this error will be fixed automatically",
-                  getFullName(), pageIndex);
+        //free list may be corrupted automatically fix it
+        if (cacheEntry == null) {
+          updateFreePagesList(freePageIndex, -1, atomicOperation);
+          freePageIndex = FREE_LIST_SIZE;
+          pageIndex = getFilledUpTo(atomicOperation, fileId);
+        } else {
+          cacheEntry.acquireSharedLock();
+          int realFreePageIndex;
+          try {
+            OClusterPage localPage = new OClusterPage(cacheEntry, false, getChanges(atomicOperation, cacheEntry));
+            realFreePageIndex = calculateFreePageIndex(localPage);
+          } finally {
+            cacheEntry.releaseSharedLock();
+            releasePage(atomicOperation, cacheEntry);
+          }
 
-          updateFreePagesIndex(freePageIndex, pageIndex, atomicOperation);
-          continue;
+          if (realFreePageIndex != freePageIndex) {
+            OLogManager.instance()
+                .warn(this, "Page in file %s with index %d was placed in wrong free list, this error will be fixed automatically",
+                    getFullName(), pageIndex);
+
+            updateFreePagesIndex(freePageIndex, pageIndex, atomicOperation);
+            continue;
+          }
         }
       }
 

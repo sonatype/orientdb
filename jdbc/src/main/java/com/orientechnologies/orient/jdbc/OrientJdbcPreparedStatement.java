@@ -59,7 +59,6 @@ import java.util.Map;
  */
 public class OrientJdbcPreparedStatement extends OrientJdbcStatement implements PreparedStatement {
 
-  protected final String               sql;
   protected final Map<Integer, Object> params;
 
   public OrientJdbcPreparedStatement(OrientJdbcConnection iConnection, String sql) {
@@ -80,6 +79,10 @@ public class OrientJdbcPreparedStatement extends OrientJdbcStatement implements 
 
   @SuppressWarnings("unchecked")
   public ResultSet executeQuery() throws SQLException {
+
+    //    return super.executeQuery(sql);
+    sql = mayCleanForSpark(sql);
+
     if (sql.equalsIgnoreCase("select 1")) {
       // OPTIMIZATION
       documents = new ArrayList<ODocument>();

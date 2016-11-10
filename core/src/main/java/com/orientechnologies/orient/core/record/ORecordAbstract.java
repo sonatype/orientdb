@@ -77,6 +77,7 @@ public abstract class ORecordAbstract implements ORecord {
 
   protected ORecordAbstract setIdentity(final ORecordId iIdentity) {
     _recordId = iIdentity;
+    getDirtyManager().setDirty(this);
     return this;
   }
 
@@ -380,8 +381,8 @@ public abstract class ORecordAbstract implements ORecord {
   }
 
   protected ORecordAbstract fill(final ORID iRid, final int iVersion, final byte[] iBuffer, boolean iDirty) {
-    _recordId.clusterId = iRid.getClusterId();
-    _recordId.clusterPosition = iRid.getClusterPosition();
+    _recordId.setClusterId(iRid.getClusterId());
+    _recordId.setClusterPosition(iRid.getClusterPosition());
     _recordVersion = iVersion;
     _status = ORecordElement.STATUS.LOADED;
     _source = iBuffer;
@@ -400,8 +401,8 @@ public abstract class ORecordAbstract implements ORecord {
     if (_recordId == null || _recordId == ORecordId.EMPTY_RECORD_ID)
       _recordId = new ORecordId(iClusterId, iClusterPosition);
     else {
-      _recordId.clusterId = iClusterId;
-      _recordId.clusterPosition = iClusterPosition;
+      _recordId.setClusterId(iClusterId);
+      _recordId.setClusterPosition(iClusterPosition);
     }
     return this;
   }

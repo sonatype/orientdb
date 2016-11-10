@@ -43,6 +43,10 @@ public class ORecordIteratorClassDescendentOrder<REC extends ORecord> extends OR
     updateClusterRange();
   }
 
+  @Override protected void sortClusters(int[] clusterIds) {
+    super.sortClusters(clusterIds);
+  }
+
   @Override
   public ORecordIteratorClusters<REC> begin() {
     return super.last();

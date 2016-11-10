@@ -123,7 +123,7 @@ public class OPerformanceStatisticManager {
   /**
    * Indicates whether gathering of performance data for whole system is switched on/off.
    */
-  private boolean enabled = false;
+  private volatile boolean enabled = false;
 
   /**
    * Indicates whether gathering of performance data for single thread is switched on/off.
@@ -258,6 +258,7 @@ public class OPerformanceStatisticManager {
   /**
    * @param intervalBetweenSnapshots Interval between snapshots of performance data for each thread statistic.
    * @param cleanUpInterval          Interval between time series of performance data.
+   *
    * @see OSessionStoragePerformanceStatistic
    */
   public OPerformanceStatisticManager(OAbstractPaginatedStorage storage, long intervalBetweenSnapshots, long cleanUpInterval) {
@@ -365,10 +366,10 @@ public class OPerformanceStatisticManager {
       if (!statistics.isEmpty() && !enabled)
         throw new IllegalStateException("Monitoring is already started on thread level and can not be started on system level");
 
-      enabled = true;
-
       deadThreadsStatistic = null;
       postMeasurementStatistic = null;
+
+      enabled = true;
     } finally {
       switchLock.releaseWriteLock();
     }
@@ -416,6 +417,7 @@ public class OPerformanceStatisticManager {
    *
    * @param storageName Name of storage of given manager
    * @param storageId   Id of storage of given manager
+   *
    * @see OStorage#getName()
    * @see OIdentifiableStorage#getId()
    */
@@ -454,6 +456,7 @@ public class OPerformanceStatisticManager {
    *
    * @param storageName Name of storage of given manager
    * @param storageId   Id of storage of given manager
+   *
    * @see OStorage#getName()
    * @see OIdentifiableStorage#getId()
    */
@@ -494,6 +497,9 @@ public class OPerformanceStatisticManager {
    * <code>null</code> if none of both methods {@link #startMonitoring()} or {@link #startThreadMonitoring()} are called.
    */
   public OSessionStoragePerformanceStatistic getSessionPerformanceStatistic() {
+    if (!enabled && !enabledForCurrentThread.get())
+      return null;
+
     switchLock.acquireReadLock();
     try {
       if (!enabled && !enabledForCurrentThread.get())
@@ -522,6 +528,7 @@ public class OPerformanceStatisticManager {
    * If null value is passed or data for component with passed in name does not exist then <code>-1</code> will be returned.
    *
    * @param componentName Name of component data of which should be returned. Name is case sensitive.
+   *
    * @return Average amount of pages which were read from cache for component with given name during single data operation or value
    * which is less than 0, which means that value cannot be calculated.
    */
@@ -577,6 +584,7 @@ public class OPerformanceStatisticManager {
    * system will be returned. If data for component with passed in name does not exist then <code>-1</code> will be returned.
    *
    * @param componentName Name of component data of which should be returned. Name is case sensitive.
+   *
    * @return Percent of cache hits or value which is less than 0, which means that value cannot be calculated.
    */
   public int getCacheHits(String componentName) {
@@ -654,6 +662,7 @@ public class OPerformanceStatisticManager {
    * <code>-1</code> will be returned.
    *
    * @param componentName Name of component data of which should be returned. Name is case sensitive.
+   *
    * @return Read speed of data in pages per second on cache level or value which is less than 0, which means that value cannot be
    * calculated.
    */
@@ -710,6 +719,7 @@ public class OPerformanceStatisticManager {
    * will be returned.
    *
    * @param componentName Name of component data of which should be returned. Name is case sensitive.
+   *
    * @return Read speed of data from file system in pages per second or value which is less than 0, which means that value cannot be
    * calculated.
    */
@@ -766,6 +776,7 @@ public class OPerformanceStatisticManager {
    * <code>-1</code> will be returned.
    *
    * @param componentName Name of component data of which should be returned. Name is case sensitive.
+   *
    * @return Write speed of data in pages per second on cache level or value which is less than 0, which means that value cannot be
    * calculated.
    */

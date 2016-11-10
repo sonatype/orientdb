@@ -15,11 +15,11 @@ import static com.orientechnologies.orient.jdbc.OrientDbCreationHelper.loadDB;
 public abstract class OrientJdbcBaseTest {
 
   protected OrientJdbcConnection conn;
-  private   ODatabaseDocumentTx  db;
+  protected ODatabaseDocumentTx  db;
 
   @Before
   public void prepareDatabase() throws Exception {
-    String dbUrl = "memory:test";
+    String dbUrl = "memory:" + getClass().getSimpleName();
     db = new ODatabaseDocumentTx(dbUrl);
 
     String username = "admin";

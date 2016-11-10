@@ -56,11 +56,11 @@ public class ThreeClientsRecordDeleteWithTransactionsOnMultipleServersScenarioTe
                                         };
 
   @Test
+  @Ignore
   public void test() throws Exception {
     maxRetries = 10;
     init(SERVERS);
     prepare(false);
-    executeWritesOnServers.addAll(serverInstance);
     execute();
   }
 

@@ -23,6 +23,7 @@ import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.serialization.types.OBinarySerializer;
 import com.orientechnologies.common.util.OCommonConst;
 import com.orientechnologies.orient.core.exception.OStorageException;
+import com.orientechnologies.orient.core.index.OIndexEngine;
 import com.orientechnologies.orient.core.index.OIndexEngineException;
 import com.orientechnologies.orient.core.index.OIndexException;
 import com.orientechnologies.orient.core.metadata.schema.OType;
@@ -382,32 +383,23 @@ public class OLocalHashTable20<K, V> extends ODurableComponent implements OHashT
   }
 
   @Override
-  public void put(K key, V value) {
-    final OAtomicOperation atomicOperation;
+  public boolean isNullKeyIsSupported() {
+    acquireSharedLock();
     try {
-      atomicOperation = startAtomicOperation(true);
-    } catch (IOException e) {
-      throw OException.wrapException(new OIndexException("Error during hash table entry put"), e);
-    }
-    acquireExclusiveLock();
-    try {
-
-      checkNullSupport(key);
-
-      key = keySerializer.preprocess(key, (Object[]) keyTypes);
-
-      doPut(key, value, atomicOperation);
-
-      endAtomicOperation(false, null);
-    } catch (IOException e) {
-      rollback();
-      throw OException.wrapException(new OIndexException("Error during index update"), e);
-    } catch (Exception e) {
-      rollback();
-      throw OException.wrapException(new OStorageException("Error during index update"), e);
+      return nullKeyIsSupported;
     } finally {
-      releaseExclusiveLock();
+      releaseSharedLock();
     }
+  }
+
+  @Override
+  public void put(K key, V value) {
+    put(key, value, null);
+  }
+
+  @Override
+  public boolean validatedPut(K key, V value, OIndexEngine.Validator<K, V> validator) {
+    return put(key, value, validator);
   }
 
   @Override
@@ -435,6 +427,7 @@ public class OLocalHashTable20<K, V> extends ODurableComponent implements OHashT
         final long pageIndex = getPageIndex(bucketPointer);
         final int fileLevel = getFileLevel(bucketPointer);
         final V removed;
+        final boolean found;
 
         final OCacheEntry cacheEntry = loadPageEntry(pageIndex, fileLevel, atomicOperation);
         cacheEntry.acquireExclusiveLock();
@@ -442,30 +435,32 @@ public class OLocalHashTable20<K, V> extends ODurableComponent implements OHashT
           final OHashIndexBucket<K, V> bucket = new OHashIndexBucket<K, V>(cacheEntry, keySerializer, valueSerializer, keyTypes,
               getChanges(atomicOperation, cacheEntry));
           final int positionIndex = bucket.getIndex(hashCode, key);
-          if (positionIndex < 0) {
-            endAtomicOperation(false, null);
-            return null;
-          }
+          found = positionIndex >= 0;
 
-          removed = bucket.deleteEntry(positionIndex).value;
-          sizeDiff--;
+          if (found) {
+            removed = bucket.deleteEntry(positionIndex).value;
+            sizeDiff--;
 
-          mergeBucketsAfterDeletion(nodePath, bucket, atomicOperation);
+            mergeBucketsAfterDeletion(nodePath, bucket, atomicOperation);
+          } else
+            removed = null;
         } finally {
           cacheEntry.releaseExclusiveLock();
           releasePage(atomicOperation, cacheEntry);
         }
 
-        if (nodePath.parent != null) {
-          final int hashMapSize = 1 << nodePath.nodeLocalDepth;
+        if (found) {
+          if (nodePath.parent != null) {
+            final int hashMapSize = 1 << nodePath.nodeLocalDepth;
 
-          final boolean allMapsContainSameBucket = checkAllMapsContainSameBucket(directory.getNode(nodePath.nodeIndex),
-              hashMapSize);
-          if (allMapsContainSameBucket)
-            mergeNodeToParent(nodePath);
+            final boolean allMapsContainSameBucket = checkAllMapsContainSameBucket(directory.getNode(nodePath.nodeIndex),
+                hashMapSize);
+            if (allMapsContainSameBucket)
+              mergeNodeToParent(nodePath);
+          }
+
+          changeSize(sizeDiff, atomicOperation);
         }
-
-        changeSize(sizeDiff, atomicOperation);
 
         endAtomicOperation(false, null);
         return removed;
@@ -1535,7 +1530,37 @@ public class OLocalHashTable20<K, V> extends ODurableComponent implements OHashT
     atomicOperationsManager.acquireExclusiveLockTillOperationComplete(this);
   }
 
-  private void doPut(K key, V value, OAtomicOperation atomicOperation) throws IOException {
+  private boolean put(K key, V value, OIndexEngine.Validator<K, V> validator) {
+    final OAtomicOperation atomicOperation;
+    try {
+      atomicOperation = startAtomicOperation(true);
+    } catch (IOException e) {
+      throw OException.wrapException(new OIndexException("Error during hash table entry put"), e);
+    }
+    acquireExclusiveLock();
+    try {
+
+      checkNullSupport(key);
+
+      key = keySerializer.preprocess(key, (Object[]) keyTypes);
+
+      final boolean putResult = doPut(key, value, validator, atomicOperation);
+      endAtomicOperation(false, null);
+      return putResult;
+    } catch (IOException e) {
+      rollback();
+      throw OException.wrapException(new OIndexException("Error during index update"), e);
+    } catch (Exception e) {
+      rollback();
+      throw OException.wrapException(new OStorageException("Error during index update"), e);
+    } finally {
+      releaseExclusiveLock();
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  private boolean doPut(K key, V value, OIndexEngine.Validator<K, V> validator, OAtomicOperation atomicOperation)
+      throws IOException {
     int sizeDiff = 0;
 
     if (key == null) {
@@ -1552,7 +1577,18 @@ public class OLocalHashTable20<K, V> extends ODurableComponent implements OHashT
       cacheEntry.acquireExclusiveLock();
       try {
         ONullBucket<V> nullBucket = new ONullBucket<V>(cacheEntry, getChanges(atomicOperation, cacheEntry), valueSerializer, isNew);
-        if (nullBucket.getValue() != null)
+
+        final V oldValue = nullBucket.getValue();
+
+        if (validator != null) {
+          final Object result = validator.validate(null, oldValue, value);
+          if (result == OIndexEngine.Validator.IGNORE)
+            return false;
+
+          value = (V) result;
+        }
+
+        if (oldValue != null)
           sizeDiff--;
 
         nullBucket.setValue(value);
@@ -1563,6 +1599,7 @@ public class OLocalHashTable20<K, V> extends ODurableComponent implements OHashT
       }
 
       changeSize(sizeDiff, atomicOperation);
+      return true;
     } else {
       final long hashCode = keyHashFunction.hashCode(key);
 
@@ -1581,16 +1618,25 @@ public class OLocalHashTable20<K, V> extends ODurableComponent implements OHashT
             getChanges(atomicOperation, cacheEntry));
         final int index = bucket.getIndex(hashCode, key);
 
+        if (validator != null) {
+          final V oldValue = index > -1 ? bucket.getValue(index) : null;
+          final Object result = validator.validate(key, oldValue, value);
+          if (result == OIndexEngine.Validator.IGNORE)
+            return false;
+
+          value = (V) result;
+        }
+
         if (index > -1) {
           final int updateResult = bucket.updateEntry(index, value);
           if (updateResult == 0) {
             changeSize(sizeDiff, atomicOperation);
-            return;
+            return true;
           }
 
           if (updateResult == 1) {
             changeSize(sizeDiff, atomicOperation);
-            return;
+            return true;
           }
 
           assert updateResult == -1;
@@ -1603,7 +1649,7 @@ public class OLocalHashTable20<K, V> extends ODurableComponent implements OHashT
           sizeDiff++;
 
           changeSize(sizeDiff, atomicOperation);
-          return;
+          return true;
         }
 
         final BucketSplitResult splitResult = splitBucket(bucket, fileLevel, pageIndex, atomicOperation);
@@ -1665,9 +1711,9 @@ public class OLocalHashTable20<K, V> extends ODurableComponent implements OHashT
       }
 
       changeSize(sizeDiff, atomicOperation);
-      doPut(key, value, atomicOperation);
+      doPut(key, value, null /* already validated */, atomicOperation);
+      return true;
     }
-
   }
 
   private void checkNullSupport(K key) {

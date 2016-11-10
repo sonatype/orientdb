@@ -1,3 +1,23 @@
+/*
+ *
+ *  *  Copyright 2014 OrientDB LTD (info(at)orientdb.com)
+ *  *
+ *  *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  *  you may not use this file except in compliance with the License.
+ *  *  You may obtain a copy of the License at
+ *  *
+ *  *       http://www.apache.org/licenses/LICENSE-2.0
+ *  *
+ *  *  Unless required by applicable law or agreed to in writing, software
+ *  *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  *  See the License for the specific language governing permissions and
+ *  *  limitations under the License.
+ *  *
+ *  * For more information: http://www.orientdb.com
+ *
+ */
+
 package com.orientechnologies.orient.core.metadata.sequence;
 
 import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
@@ -30,14 +50,13 @@ public class OSequenceLibraryImpl implements OSequenceLibrary {
   public void load() {
     sequences.clear();
 
-    //
     final ODatabaseDocument db = ODatabaseRecordThreadLocal.INSTANCE.get();
     if (((OMetadataInternal) db.getMetadata()).getImmutableSchemaSnapshot().existsClass(OSequence.CLASS_NAME)) {
-      List<ODocument> result = db.query(new OSQLSynchQuery<ODocument>("SELECT FROM " + OSequence.CLASS_NAME));
+      final List<ODocument> result = db.query(new OSQLSynchQuery<ODocument>("SELECT FROM " + OSequence.CLASS_NAME));
       for (ODocument document : result) {
         document.reload();
 
-        OSequence sequence = OSequenceHelper.createSequence(document);
+        final OSequence sequence = OSequenceHelper.createSequence(document);
         sequences.put(sequence.getName().toUpperCase(), sequence);
       }
     }
@@ -60,15 +79,24 @@ public class OSequenceLibraryImpl implements OSequenceLibrary {
 
   @Override
   public OSequence getSequence(String iName) {
-    final OSequence seq = sequences.get(iName.toUpperCase());
-    if (seq == null)
-      load();
+    final String name = iName.toUpperCase();
 
-    return sequences.get(iName.toUpperCase());
+    OSequence seq = sequences.get(name);
+    if (seq == null) {
+      load();
+      seq = sequences.get(name);
+    }
+
+    if (seq != null) {
+      seq.bindOnLocalThread();
+      seq.checkForUpdateToLastversion();
+    }
+
+    return seq;
   }
 
   @Override
-  public OSequence createSequence(String iName, SEQUENCE_TYPE sequenceType, OSequence.CreateParams params) {
+  public OSequence createSequence(final String iName, final SEQUENCE_TYPE sequenceType, final OSequence.CreateParams params) {
     init();
 
     final String key = iName.toUpperCase();
@@ -82,39 +110,47 @@ public class OSequenceLibraryImpl implements OSequenceLibrary {
   }
 
   @Override
-  public void dropSequence(String iName) {
-    OSequence seq = getSequence(iName);
+  public void dropSequence(final String iName) {
+    final OSequence seq = getSequence(iName);
 
     if (seq != null) {
-      seq.getDocument().delete();
-      sequences.remove(iName);
+      ODatabaseRecordThreadLocal.INSTANCE.get().delete(seq.getDocument().getIdentity());
+      sequences.remove(iName.toUpperCase());
     }
   }
 
   @Override
-  public OSequence onSequenceCreated(ODocument iDocument) {
+  public OSequence onSequenceCreated(final ODocument iDocument) {
     init();
 
-    OSequence sequence = OSequenceHelper.createSequence(iDocument);
+    String name = OSequence.getSequenceName(iDocument);
+    if (name == null)
+      return null;
 
-    final String name = sequence.getName().toUpperCase();
-    validateSequenceNoExists(name);
+    name = name.toUpperCase();
+
+    final OSequence seq = getSequence(name);
+
+    if (seq != null)
+      return seq;
+
+    final OSequence sequence = OSequenceHelper.createSequence(iDocument);
 
     sequences.put(name, sequence);
-
     return sequence;
   }
 
   @Override
-  public OSequence onSequenceUpdated(ODocument iDocument) {
+  public OSequence onSequenceUpdated(final ODocument iDocument) {
     String name = OSequence.getSequenceName(iDocument);
-    if (name == null) {
+    if (name == null)
       return null;
-    }
-    OSequence sequence = getSequence(name);
-    if (sequence == null) {
+
+    name = name.toUpperCase();
+
+    final OSequence sequence = sequences.get(name);
+    if (sequence == null)
       return null;
-    }
 
     sequence.onUpdate(iDocument);
 
@@ -122,9 +158,12 @@ public class OSequenceLibraryImpl implements OSequenceLibrary {
   }
 
   @Override
-  public void onSequenceDropped(ODocument iDocument) {
+  public void onSequenceDropped(final ODocument iDocument) {
     String name = OSequence.getSequenceName(iDocument);
-    validateSequenceExists(name);
+    if (name == null)
+      return;
+
+    name = name.toUpperCase();
 
     sequences.remove(name);
   }

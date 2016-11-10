@@ -49,12 +49,12 @@ import static com.orientechnologies.orient.core.metadata.schema.OClass.INDEX_TYP
  */
 public class OLuceneIndexEngineDelegate implements OLuceneIndexEngine, OFreezableStorageComponent {
 
-  //  private final String             name;
-  private final Boolean            durableInNonTxMode;
-  private final OStorage           storage;
-  private final int                version;
-  private final String             indexName;
-  private       OLuceneIndexEngine delegate;
+  // private final String name;
+  private final Boolean      durableInNonTxMode;
+  private final OStorage     storage;
+  private final int          version;
+  private final String       indexName;
+  private OLuceneIndexEngine delegate;
 
   public OLuceneIndexEngineDelegate(String name, Boolean durableInNonTxMode, OStorage storage, int version) {
 
@@ -66,7 +66,8 @@ public class OLuceneIndexEngineDelegate implements OLuceneIndexEngine, OFreezabl
 
   @Override
   public void flush() {
-    delegate.flush();
+    if (delegate != null)
+      delegate.flush();
   }
 
   @Override
@@ -78,7 +79,8 @@ public class OLuceneIndexEngineDelegate implements OLuceneIndexEngine, OFreezabl
 
   @Override
   public void delete() {
-    delegate.delete();
+    if (delegate != null)
+      delegate.delete();
   }
 
   @Override
@@ -92,8 +94,8 @@ public class OLuceneIndexEngineDelegate implements OLuceneIndexEngine, OFreezabl
       final OBinarySerializer keySerializer, final OType[] keyTypes, final boolean nullPointerSupport, final int keySize,
       final Map<String, String> engineProperties) {
     if (delegate != null)
-      delegate
-          .load(indexName, valueSerializer, isAutomatic, keySerializer, keyTypes, nullPointerSupport, keySize, engineProperties);
+      delegate.load(indexName, valueSerializer, isAutomatic, keySerializer, keyTypes, nullPointerSupport, keySize,
+          engineProperties);
   }
 
   @Override
@@ -108,13 +110,15 @@ public class OLuceneIndexEngineDelegate implements OLuceneIndexEngine, OFreezabl
 
   @Override
   public void clear() {
-
-    delegate.clear();
+    if (delegate != null)
+      delegate.clear();
   }
 
   @Override
   public void close() {
-    delegate.close();
+    if (delegate != null) {
+      delegate.close();
+    }
   }
 
   @Override
@@ -126,6 +130,11 @@ public class OLuceneIndexEngineDelegate implements OLuceneIndexEngine, OFreezabl
   public void put(Object key, Object value) {
 
     delegate.put(key, value);
+  }
+
+  @Override
+  public boolean validatedPut(Object key, OIdentifiable value, Validator<Object, OIdentifiable> validator) {
+    return delegate.validatedPut(key, value, validator);
   }
 
   @Override
@@ -200,7 +209,7 @@ public class OLuceneIndexEngineDelegate implements OLuceneIndexEngine, OFreezabl
     if (delegate == null) {
       if (FULLTEXT.name().equalsIgnoreCase(indexType)) {
 
-        delegate = new OLuceneFullTextIndexEngine(indexName, new ODocBuilder(), new OQueryBuilderImpl(metadata));
+        delegate = new OLuceneFullTextIndexEngine(storage, indexName, new ODocBuilder(), new OQueryBuilderImpl(metadata));
       }
 
       delegate.init(indexName, indexType, indexDefinition, isAutomatic, metadata);
@@ -270,12 +279,14 @@ public class OLuceneIndexEngineDelegate implements OLuceneIndexEngine, OFreezabl
   @Override
   public void freeze(boolean throwException) {
 
-    delegate.freeze(throwException);
+    if (delegate != null)
+      delegate.freeze(throwException);
   }
 
   @Override
   public void release() {
-    delegate.release();
+    if (delegate != null)
+      delegate.release();
   }
 
   @Override

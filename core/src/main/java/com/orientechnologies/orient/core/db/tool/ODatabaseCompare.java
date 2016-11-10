@@ -737,7 +737,7 @@ public class ODatabaseCompare extends ODatabaseImpExpAbstract {
             recordsCounter++;
 
             final long position = physicalPosition.clusterPosition;
-            rid.clusterPosition = position;
+            rid.setClusterPosition(position);
 
             if (rid.equals(new ORecordId(configuration1.indexMgrRecordId)) && rid
                 .equals(new ORecordId(configuration2.indexMgrRecordId)))
@@ -746,7 +746,7 @@ public class ODatabaseCompare extends ODatabaseImpExpAbstract {
                 .equals(new ORecordId(configuration2.schemaRecordId)))
               continue;
 
-            if (rid.clusterId == 0 && rid.clusterPosition == 0) {
+            if (rid.getClusterId() == 0 && rid.getClusterPosition() == 0) {
               // Skip the compare of raw structure if the storage type are different, due the fact that are different by definition.
               if (!storageType1.equals(storageType2))
                 continue;
@@ -766,13 +766,13 @@ public class ODatabaseCompare extends ODatabaseImpExpAbstract {
             final ORawBuffer buffer1 = makeDbCall(databaseOne, new ODbRelatedCall<ORawBuffer>() {
               @Override
               public ORawBuffer call(ODatabaseDocumentInternal database) {
-                return database.getStorage().readRecord(rid, null, true, null).getResult();
+                return database.getStorage().readRecord(rid, null, true, false, null).getResult();
               }
             });
             final ORawBuffer buffer2 = makeDbCall(databaseTwo, new ODbRelatedCall<ORawBuffer>() {
               @Override
               public ORawBuffer call(ODatabaseDocumentInternal database) {
-                return database.getStorage().readRecord(rid2, null, true, null).getResult();
+                return database.getStorage().readRecord(rid2, null, true, false, null).getResult();
               }
             });
 

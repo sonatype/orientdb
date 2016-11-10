@@ -21,11 +21,17 @@ public class OrientDataSourceTest extends OrientJdbcBaseTest {
   public void shouldConnect() throws SQLException {
 
     OrientDataSource ds = new OrientDataSource();
-    ds.setUrl("jdbc:orient:memory:test");
+    ds.setUrl("jdbc:orient:memory:OrientDataSourceTest");
     ds.setUsername("admin");
     ds.setPassword("admin");
 
     Connection conn = ds.getConnection();
+
+    assertThat(conn).isNotNull();
+    conn.close();
+    assertThat(conn.isClosed()).isTrue();
+
+    conn = ds.getConnection();
 
     assertThat(conn).isNotNull();
     conn.close();
@@ -42,7 +48,7 @@ public class OrientDataSourceTest extends OrientJdbcBaseTest {
     info.setProperty("db.pool.max", "10");
 
     final OrientDataSource ds = new OrientDataSource();
-    ds.setUrl("jdbc:orient:memory:test");
+    ds.setUrl("jdbc:orient:memory:OrientDataSourceTest");
     ds.setUsername("admin");
     ds.setPassword("admin");
     ds.setInfo(info);
@@ -75,7 +81,7 @@ public class OrientDataSourceTest extends OrientJdbcBaseTest {
     info.setProperty("db.pool.max", "10");
 
     final OrientDataSource ds = new OrientDataSource();
-    ds.setUrl("jdbc:orient:memory:test");
+    ds.setUrl("jdbc:orient:memory:OrientDataSourceTest");
     ds.setUsername("admin");
     ds.setPassword("admin");
     ds.setInfo(info);

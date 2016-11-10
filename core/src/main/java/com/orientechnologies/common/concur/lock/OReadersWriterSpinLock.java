@@ -20,17 +20,14 @@
 
 package com.orientechnologies.common.concur.lock;
 
+import com.orientechnologies.common.types.OModifiableInteger;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.AbstractOwnableSynchronizer;
 import java.util.concurrent.locks.LockSupport;
-
-import com.orientechnologies.common.types.OModifiableInteger;
-import com.orientechnologies.orient.core.OOrientShutdownListener;
-import com.orientechnologies.orient.core.OOrientStartupListener;
-import com.orientechnologies.orient.core.Orient;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 /**
  * @author Andrey Lomakin (a.lomakin-at-orientechnologies.com)
@@ -38,14 +35,14 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
  */
 @SuppressFBWarnings("SE_TRANSIENT_FIELD_NOT_RESTORED")
 public class OReadersWriterSpinLock extends AbstractOwnableSynchronizer {
-  private static final long serialVersionUID = 7975120282194559960L;
+  private static final long                               serialVersionUID = 7975120282194559960L;
 
-  private final transient ODistributedCounter distributedCounter;
-  private final transient AtomicReference<WNode>          tail      = new AtomicReference<WNode>();
-  private final transient ThreadLocal<OModifiableInteger> lockHolds = new InitOModifiableInteger();
+  private final transient ODistributedCounter             distributedCounter;
+  private final transient AtomicReference<WNode>          tail             = new AtomicReference<WNode>();
+  private final transient ThreadLocal<OModifiableInteger> lockHolds        = new InitOModifiableInteger();
 
-  private final transient ThreadLocal<WNode> myNode   = new InitWNode();
-  private final transient ThreadLocal<WNode> predNode = new ThreadLocal<WNode>();
+  private final transient ThreadLocal<WNode>              myNode           = new InitWNode();
+  private final transient ThreadLocal<WNode>              predNode         = new ThreadLocal<WNode>();
 
   public OReadersWriterSpinLock() {
     final WNode wNode = new WNode();
@@ -105,7 +102,7 @@ public class OReadersWriterSpinLock extends AbstractOwnableSynchronizer {
     final OModifiableInteger lHolds = lockHolds.get();
     final int holds = lHolds.intValue();
     if (holds > 1) {
-      lockHolds.get().decrement();
+      lHolds.decrement();
       return;
     } else if (holds < 0) {
       // write lock was acquired before, do nothing
@@ -141,8 +138,16 @@ public class OReadersWriterSpinLock extends AbstractOwnableSynchronizer {
 
     pNode.waitingWriter = null;
 
-    while (!distributedCounter.isEmpty())
-      ;
+    final long beginTime = System.currentTimeMillis();
+    while (!distributedCounter.isEmpty()) {
+      // IN THE WORST CASE CPU CAN BE 100% FOR MAXIMUM 1 SECOND
+      if (System.currentTimeMillis() - beginTime > 1000)
+        try {
+          Thread.sleep(1);
+        } catch (InterruptedException e) {
+          break;
+        }
+    }
 
     setExclusiveOwnerThread(Thread.currentThread());
 
@@ -196,7 +201,7 @@ public class OReadersWriterSpinLock extends AbstractOwnableSynchronizer {
   private final static class WNode {
     private final Queue<Thread> waitingReaders = new ConcurrentLinkedQueue<Thread>();
 
-    private volatile boolean locked = true;
-    private volatile Thread waitingWriter;
+    private volatile boolean    locked         = true;
+    private volatile Thread     waitingWriter;
   }
 }

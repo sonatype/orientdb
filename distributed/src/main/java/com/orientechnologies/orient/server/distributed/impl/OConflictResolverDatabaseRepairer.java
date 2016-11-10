@@ -117,7 +117,7 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
     if (!active)
       return;
 
-    if (rid.clusterPosition < -1)
+    if (rid.getClusterPosition() < -1)
       // SKIP TRANSACTIONAL RIDS
       return;
 
@@ -138,7 +138,7 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
     if (!active)
       return;
 
-    if (rid.clusterPosition < -1)
+    if (rid.getClusterPosition() < -1)
       // SKIP TRANSACTIONAL RIDS
       return;
 
@@ -331,7 +331,7 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
 
         for (long pos = remoteEnd + 1; pos <= localEnd; ++pos) {
           final ORecordId rid = new ORecordId(clusterId, pos);
-          final ORawBuffer rawRecord = storage.readRecord(rid, null, true, null).getResult();
+          final ORawBuffer rawRecord = storage.readRecord(rid, null, true, false, null).getResult();
           if (rawRecord == null)
             continue;
 
@@ -360,8 +360,12 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
               dManager.getNextMessageIdCounter(), ODistributedRequest.EXECUTION_MODE.RESPONSE, null, null);
         }
 
-        ODistributedServerLog.info(this, dManager.getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
-            "Auto repair aligned %d records of cluster '%s'", task.getTasks().size(), clusterNames.get(0));
+        if (task.getTasks().size() == 0)
+          ODistributedServerLog.debug(this, dManager.getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
+              "Auto repair aligned %d records of cluster '%s'", task.getTasks().size(), clusterNames.get(0));
+        else
+          ODistributedServerLog.info(this, dManager.getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
+              "Auto repair aligned %d records of cluster '%s'", task.getTasks().size(), clusterNames.get(0));
       }
     }
 
@@ -389,7 +393,7 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
 
         final Set<String> clusterNames = new HashSet();
         for (ORecordId rid : rids)
-          clusterNames.add(db.getClusterNameById(rid.clusterId));
+          clusterNames.add(db.getClusterNameById(rid.getClusterId()));
 
         final Collection<String> involvedServers = dCfg.getServers(clusterNames);
         final Set<String> nonLocalServers = new HashSet<String>(involvedServers);
@@ -402,8 +406,8 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
         final OTxTaskResult localResult = new OTxTaskResult();
         for (ORecordId rid : rids) {
           final OStorageOperationResult<ORawBuffer> res;
-          if (rid.clusterPosition > -1)
-            res = db.getStorage().readRecord(rid, null, true, null);
+          if (rid.getClusterPosition() > -1)
+            res = db.getStorage().readRecord(rid, null, true, false, null);
           else
             res = null;
 
@@ -476,7 +480,7 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
                 Map<Object, List<String>> candidates = groupedResult;
                 for (ODistributedConflictResolver conflictResolver : conflictResolvers) {
                   final ODistributedConflictResolver.OConflictResult conflictResult = conflictResolver.onConflict(databaseName,
-                      db.getClusterNameById(rid.clusterId), rid, dManager, candidates, config);
+                      db.getClusterNameById(rid.getClusterId()), rid, dManager, candidates, config);
 
                   winner = conflictResult.winner;
                   if (winner != null)
@@ -505,13 +509,13 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
                         // UPDATE THE RECORD
                         final ORawBuffer winnerRecord = (ORawBuffer) winner;
 
-                        completedTask.addFixTask(new OUpdateRecordTask(rid, winnerRecord.buffer,
+                        completedTask.addFixTask(new OFixUpdateRecordTask(rid, winnerRecord.buffer,
                             ORecordVersionHelper.setRollbackMode(winnerRecord.version), winnerRecord.recordType));
 
                       } else if (winner instanceof ORecordNotFoundException && value instanceof ORawBuffer) {
                         // DELETE THE RECORD
 
-                        completedTask.addFixTask(new ODeleteRecordTask(rid, -1));
+                        completedTask.addFixTask(new OFixCreateRecordTask(rid, -1));
 
                       } else if (value instanceof Throwable) {
                         // MANAGE EXCEPTION

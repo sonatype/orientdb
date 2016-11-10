@@ -343,7 +343,7 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
           iNodes, localResult);
 
       // AFTER COMPUTED THE QUORUM, REMOVE THE OFFLINE NODES TO HAVE THE LIST OF REAL AVAILABLE NODES
-      final int availableNodes = manager.getAvailableNodes(iNodes, databaseName);
+      final int availableNodes = checkNodesAreOnline ? manager.getAvailableNodes(iNodes, databaseName) : iNodes.size();
 
       final int expectedResponses = localResult != null ? availableNodes + 1 : availableNodes;
 
@@ -680,7 +680,7 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
     // SEND THE SHUTDOWN TO ALL THE WORKER THREADS
     for (ODistributedWorker workerThread : workerThreads) {
       if (workerThread != null)
-        workerThread.shutdown();
+        workerThread.sendShutdown();
     }
 
     // WAIT A BIT FOR PROPER SHUTDOWN

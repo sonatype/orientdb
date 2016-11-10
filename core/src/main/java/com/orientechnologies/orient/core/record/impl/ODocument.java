@@ -138,9 +138,9 @@ public class ODocument extends ORecordAbstract
     _recordId = (ORecordId) iRID;
 
     final ODatabaseDocumentInternal database = getDatabaseInternal();
-    if (_recordId.clusterId > -1 && database.getStorageVersions().classesAreDetectedByClusterId()) {
+    if (_recordId.getClusterId() > -1 && database.getStorageVersions().classesAreDetectedByClusterId()) {
       final OSchema schema = ((OMetadataInternal) database.getMetadata()).getImmutableSchemaSnapshot();
-      final OClass cls = schema.getClassByClusterId(_recordId.clusterId);
+      final OClass cls = schema.getClassByClusterId(_recordId.getClusterId());
       if (cls != null && !cls.getName().equals(iClassName))
         throw new IllegalArgumentException(
             "Cluster id does not correspond class name should be " + iClassName + " but found " + cls.getName());
@@ -454,6 +454,8 @@ public class ODocument extends ORecordAbstract
   }
 
   protected static void validateEmbedded(final OProperty p, final Object fieldValue) {
+    if (fieldValue == null)
+      return;
     if (fieldValue instanceof ORecordId)
       throw new OValidationException(
           "The field '" + p.getFullName() + "' has been declared as " + p.getType() + " but the value is the RecordID "
@@ -732,7 +734,7 @@ public class ODocument extends ORecordAbstract
     if (_status == ORecordElement.STATUS.LOADED && _source != null && ODatabaseRecordThreadLocal.INSTANCE.isDefined()
         && !ODatabaseRecordThreadLocal.INSTANCE.get().isClosed()) {
       // DESERIALIZE FIELD NAMES ONLY (SUPPORTED ONLY BY BINARY SERIALIZER)
-      final String[] fieldNames = _recordFormat.getFieldNames(_source);
+      final String[] fieldNames = _recordFormat.getFieldNames(this, _source);
       if (fieldNames != null)
         return fieldNames;
     }
@@ -2244,6 +2246,7 @@ public class ODocument extends ORecordAbstract
       _fields = _ordered ? new LinkedHashMap<String, ODocumentEntry>() : new HashMap<String, ODocumentEntry>();
 
     ODocumentEntry entry = getOrCreate(iFieldName);
+    removeCollectionChangeListener(entry, entry.value);
     entry.value = iFieldValue;
     entry.type = iFieldType;
     addCollectionChangeListener(entry);
@@ -2271,39 +2274,105 @@ public class ODocument extends ORecordAbstract
       for (OProperty prop : clazz.properties()) {
         OType type = prop.getType();
         OType linkedType = prop.getLinkedType();
+        OClass linkedClass = prop.getLinkedClass();
+        if(type == OType.EMBEDDED && linkedClass!=null){
+          convertToEmbeddedType(prop);
+          continue;
+        }
         if (linkedType == null)
           continue;
-        Object value = field(prop.getName());
+        final ODocumentEntry entry = _fields.get(prop.getName());
+        if (entry == null)
+          continue;
+        if (!entry.created && !entry.changed)
+          continue;
+        Object value = entry.value;
         if (value == null)
           continue;
         try {
-          if (type == OType.EMBEDDEDLIST && !(value instanceof OTrackedList)) {
-            List<Object> list = new OTrackedList<Object>(this);
+          if (type == OType.EMBEDDEDLIST) {
+            OTrackedList<Object> list = new OTrackedList<Object>(this);
             Collection<Object> values = (Collection<Object>) value;
             for (Object object : values) {
               list.add(OType.convert(object, linkedType.getDefaultJavaType()));
             }
-            field(prop.getName(), list);
-          } else if (type == OType.EMBEDDEDMAP && !(value instanceof OTrackedMap)) {
+            entry.value = list;
+            replaceListenerOnAutoconvert(entry, value);
+          } else if (type == OType.EMBEDDEDMAP) {
             Map<Object, Object> map = new OTrackedMap<Object>(this);
             Map<Object, Object> values = (Map<Object, Object>) value;
             for (Entry<Object, Object> object : values.entrySet()) {
               map.put(object.getKey(), OType.convert(object.getValue(), linkedType.getDefaultJavaType()));
             }
-            field(prop.getName(), map);
-          } else if (type == OType.EMBEDDEDSET && !(value instanceof OTrackedSet)) {
-            Set<Object> list = new OTrackedSet<Object>(this);
+            entry.value = map;
+            replaceListenerOnAutoconvert(entry, value);
+          } else if (type == OType.EMBEDDEDSET) {
+            Set<Object> set = new OTrackedSet<Object>(this);
             Collection<Object> values = (Collection<Object>) value;
             for (Object object : values) {
-              list.add(OType.convert(object, linkedType.getDefaultJavaType()));
+              set.add(OType.convert(object, linkedType.getDefaultJavaType()));
             }
-            field(prop.getName(), list);
+            entry.value = set;
+            replaceListenerOnAutoconvert(entry, value);
           }
         } catch (Exception e) {
           throw OException
               .wrapException(new OValidationException("impossible to convert value of field \"" + prop.getName() + "\""), e);
         }
       }
+    }
+  }
+
+  private void convertToEmbeddedType(OProperty prop) {
+    final ODocumentEntry entry = _fields.get(prop.getName());
+    OClass linkedClass = prop.getLinkedClass();
+    if (entry == null || linkedClass == null) {
+      return;
+    }
+    if (!entry.created && !entry.changed) {
+      return;
+    }
+    Object value = entry.value;
+    if (value == null) {
+      return;
+    }
+    try {
+      if (value instanceof ODocument) {
+        OClass docClass = ((ODocument) value).getSchemaClass();
+        if (docClass == null) {
+          ((ODocument) value).setClass(linkedClass);
+        } else if (!docClass.isSubClassOf(linkedClass)) {
+          throw new OValidationException(
+              "impossible to convert value of field \"" + prop.getName() + "\", incompatible with " + linkedClass);
+        }
+      } else if (value instanceof Map) {
+        removeCollectionChangeListener(entry, value);
+        ODocument newValue = new ODocument(linkedClass);
+        newValue.fromMap((Map) value);
+        entry.value = newValue;
+        newValue.addOwner(this);
+      } else {
+        throw new OValidationException("impossible to convert value of field \"" + prop.getName() + "\"");
+      }
+
+    } catch (Exception e) {
+      throw OException
+          .wrapException(new OValidationException("impossible to convert value of field \"" + prop.getName() + "\""), e);
+    }
+  }
+
+  private void replaceListenerOnAutoconvert(final ODocumentEntry entry, Object oldValue) {
+    if (entry.changeListener != null) {
+      // A listener was there, remove on the old value add it to the new value.
+      final OTrackedMultiValue<Object, Object> oldMultiValue = (OTrackedMultiValue<Object, Object>) oldValue;
+      oldMultiValue.removeRecordChangeListener(entry.changeListener);
+      ((OTrackedMultiValue<Object, Object>) entry.value).addChangeListener(entry.changeListener);
+    } else {
+      // no listener was there add it only to the new value
+      final OSimpleMultiValueChangeListener<Object, Object> listener = new OSimpleMultiValueChangeListener<Object, Object>(this,
+          entry);
+      ((OTrackedMultiValue<Object, Object>) entry.value).addChangeListener(listener);
+      entry.changeListener = listener;
     }
   }
 
@@ -2617,13 +2686,13 @@ public class ODocument extends ORecordAbstract
     final ODatabaseDocumentInternal database = getDatabaseIfDefinedInternal();
     if (database != null && database.getStorageVersions() != null && database.getStorageVersions()
         .classesAreDetectedByClusterId()) {
-      if (_recordId.clusterId < 0) {
+      if (_recordId.getClusterId() < 0) {
         checkForLoading();
         checkForFields(ODocumentHelper.ATTRIBUTE_CLASS);
       } else {
         final OSchema schema = ((OMetadataInternal) database.getMetadata()).getImmutableSchemaSnapshot();
         if (schema != null) {
-          OClass _clazz = schema.getClassByClusterId(_recordId.clusterId);
+          OClass _clazz = schema.getClassByClusterId(_recordId.getClusterId());
           if (_clazz != null)
             _className = _clazz.getName();
         }
