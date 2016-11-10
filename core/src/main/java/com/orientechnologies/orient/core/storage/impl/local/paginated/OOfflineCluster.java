@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2013 Orient Technologies LTD (info--at--orientechnologies.com)
+ * Copyright 2010-2013 OrientDB LTD (info--at--orientdb.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ import java.io.IOException;
  * Represents an offline cluster, created with the "alter cluster X status offline" command. To restore the original cluster assure
  * to have the cluster files in the right path and execute: "alter cluster X status online".
  *
- * @author Luca Garulli
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  * @since 2.0
  */
 public class OOfflineCluster implements OCluster {
@@ -138,7 +138,7 @@ public class OOfflineCluster implements OCluster {
   }
 
   @Override
-  public ORawBuffer readRecord(long clusterPosition) throws IOException {
+  public ORawBuffer readRecord(long clusterPosition, boolean prefetchRecords) throws IOException {
     throw OException.wrapException(new ORecordNotFoundException(new ORecordId(id, clusterPosition),
             "Record with rid #" + id + ":" + clusterPosition + " was not found in database"),
         new OOfflineClusterException("Cannot read a record from the offline cluster '" + name + "'"));
@@ -215,6 +215,11 @@ public class OOfflineCluster implements OCluster {
   @Override
   public float recordOverflowGrowFactor() {
     return 0;
+  }
+
+  @Override
+  public String compression() {
+    return null;
   }
 
   @Override

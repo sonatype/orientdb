@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.db.tool;
@@ -71,7 +71,7 @@ import java.util.zip.GZIPInputStream;
 /**
  * Import data from a file into a database.
  *
- * @author Luca Garulli (l.garulli--at--orientechnologies.com)
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class ODatabaseImport extends ODatabaseImpExpAbstract {
   public static final String EXPORT_IMPORT_MAP_NAME          = "___exportImportRIDMap";
@@ -387,7 +387,6 @@ public class ODatabaseImport extends ODatabaseImpExpAbstract {
 
       jsonReader.readNext(OJSONReader.BEGIN_OBJECT);
 
-      database.setMVCC(false);
       database.setValidationEnabled(false);
 
       database.setStatus(STATUS.IMPORTING);
@@ -629,14 +628,23 @@ public class ODatabaseImport extends ODatabaseImpExpAbstract {
     OClass ouser = schema.getClass(OUser.CLASS_NAME);
     OClass oidentity = schema.getClass(OIdentity.CLASS_NAME);
     final Map<String, OClass> classesToDrop = new HashMap<String, OClass>();
+    final Set<String> indexes = new HashSet<String>();
     for (OClass dbClass : classes) {
       String className = dbClass.getName();
 
       if (!dbClass.isSuperClassOf(orole) && !dbClass.isSuperClassOf(ouser) && !dbClass.isSuperClassOf(oidentity)) {
         classesToDrop.put(className, dbClass);
+        for(OIndex<?> index: dbClass.getIndexes()){
+          indexes.add(index.getName());
+        }
       }
     }
 
+    final OIndexManagerProxy indexManager = database.getMetadata().getIndexManager();
+    for (String indexName : indexes) {
+      indexManager.dropIndex(indexName);
+    }
+    
     int removedClasses = 0;
     while (!classesToDrop.isEmpty()) {
       final AbstractList<String> classesReadyToDrop = new ArrayList<String>();
@@ -910,7 +918,7 @@ public class ODatabaseImport extends ODatabaseImpExpAbstract {
               if (jsonReader.lastChar() == '}')
                 jsonReader.readNext(OJSONReader.NEXT_IN_ARRAY);
             }
-            jsonReader.readNext(OJSONReader.END_OBJECT);
+            jsonReader.readNext(OJSONReader.NEXT_IN_OBJECT);
           } else if (value.equals("\"customFields\"")) {
             Map<String, String> customFields = importCustomFields();
             for (Entry<String, String> entry : customFields.entrySet()) {
@@ -921,12 +929,12 @@ public class ODatabaseImport extends ODatabaseImpExpAbstract {
             cls.setClusterSelection(jsonReader.readString(OJSONReader.NEXT_IN_OBJECT));
           }
         }
-
+        
         classImported++;
 
         jsonReader.readNext(OJSONReader.NEXT_IN_ARRAY);
       } while (jsonReader.lastChar() == ',');
-
+      
       // REBUILD ALL THE INHERITANCE
       for (Map.Entry<OClass, List<String>> entry : superClasses.entrySet())
         for (String s : entry.getValue()) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2013 Luca Garulli (l.garulli--at--orientechnologies.com)
+ * Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,19 +38,12 @@ public class DistributedDbDropAndReCreateAnotherTest extends AbstractServerClust
   @Override
   protected void onAfterExecution() throws Exception {
     do {
-      for (ServerRun server : serverInstance) {
-        final String dbName = getDatabaseURL(server);
+      ServerRun server = serverInstance.get(0);
+      ODatabaseDocumentTx db = new ODatabaseDocumentTx(getDatabaseURL(server));
+      db.open("admin", "admin");
+      db.drop();
 
-        final ODatabaseDocumentTx db = new ODatabaseDocumentTx(dbName);
-        db.open("admin", "admin");
-
-        banner("DROPPING DATABASE " + dbName + " ON SERVER " + server.getServerId());
-        db.drop();
-      }
-
-      Thread.sleep(2000);
-
-      ServerRun server = serverInstance.get(lastServerNum);
+      server = serverInstance.get(lastServerNum);
 
       ++lastServerNum;
 
@@ -58,9 +51,9 @@ public class DistributedDbDropAndReCreateAnotherTest extends AbstractServerClust
 
       banner("(RE)CREATING DATABASE " + dbName + " ON SERVER " + server.getServerId());
 
-      final OrientGraphNoTx db = new OrientGraphNoTx(dbName);
-      onAfterDatabaseCreation(db);
-      db.shutdown();
+      final OrientGraphNoTx graph = new OrientGraphNoTx(dbName);
+      onAfterDatabaseCreation(graph);
+      graph.shutdown();
 
       Thread.sleep(2000);
 

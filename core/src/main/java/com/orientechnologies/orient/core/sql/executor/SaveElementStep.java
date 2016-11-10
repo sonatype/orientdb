@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * @author Luigi Dell'Aquila
+ * @author Luigi Dell'Aquila (l.dellaquila-(at)-orientdb.com)
  */
 public class SaveElementStep extends AbstractExecutionStep {
 
@@ -34,9 +34,9 @@ public class SaveElementStep extends AbstractExecutionStep {
         OResult result = upstream.next();
         if (result.isElement()) {
           if (cluster == null) {
-            ctx.getDatabase().save(result.getElement());
+            ctx.getDatabase().save(result.getElement().orElse(null));
           } else {
-            ctx.getDatabase().save(result.getElement(), cluster.getStringValue());
+            ctx.getDatabase().save(result.getElement().orElse(null), cluster.getStringValue());
           }
         }
         return result;

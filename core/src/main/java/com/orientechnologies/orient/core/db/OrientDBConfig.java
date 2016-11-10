@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,15 +14,12 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.db;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 import com.orientechnologies.orient.core.config.OContextConfiguration;
 import com.orientechnologies.orient.core.db.ODatabase.ATTRIBUTES;
@@ -32,7 +29,7 @@ import com.orientechnologies.orient.core.db.ODatabase.ATTRIBUTES;
  */
 public class OrientDBConfig {
 
-  private OrientDBConfig                parent;
+  private       OrientDBConfig          parent;
   private final OContextConfiguration   configurations;
   private final Map<ATTRIBUTES, Object> attributes;
   private final Set<ODatabaseListener>  listeners;
@@ -49,7 +46,10 @@ public class OrientDBConfig {
     this.configurations = configurations;
     this.attributes = attributes;
     parent = null;
-    this.listeners = listeners;
+    if (listeners != null)
+      this.listeners = listeners;
+    else
+      this.listeners = Collections.emptySet();
   }
 
   public static OrientDBConfig defaultConfig() {

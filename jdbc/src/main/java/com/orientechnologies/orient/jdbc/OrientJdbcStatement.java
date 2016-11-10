@@ -1,5 +1,5 @@
 /**
- * Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ * Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * For more information: http://www.orientechnologies.com
+ * For more information: http://orientdb.com
  */
 package com.orientechnologies.orient.jdbc;
 
@@ -50,6 +50,7 @@ public class OrientJdbcStatement implements Statement {
 
   // protected OCommandSQL query;
   protected OCommandRequest     query;
+  protected String              sql;
   protected List<ODocument>     documents;
   protected boolean             closed;
   protected Object              rawResult;
@@ -95,23 +96,26 @@ public class OrientJdbcStatement implements Statement {
   }
 
   @Override
-  public boolean execute(final String sql) throws SQLException {
+  public boolean execute(final String sqlCommand) throws SQLException {
 
-    if ("".equals(sql))
+    if ("".equals(sqlCommand))
       return false;
 
+    sql = mayCleanForSpark(sqlCommand);
+
     if (sql.equalsIgnoreCase("select 1")) {
-      documents = new ArrayList<ODocument>(1);
+      documents = new ArrayList<>(1);
       documents.add(new ODocument().field("1", 1));
     } else {
-      query = new OCommandSQL(mayCleanForSpark(sql));
+      query = new OCommandSQL(sql);
       try {
+
         rawResult = executeCommand(query);
         if (rawResult instanceof List<?>) {
           documents = (List<ODocument>) rawResult;
         } else if (rawResult instanceof OIdentifiable) {
-          documents = new ArrayList<ODocument>(1);
-          documents.add((ODocument) ((OIdentifiable) rawResult).getRecord());
+          documents = new ArrayList<>(1);
+          documents.add(((OIdentifiable) rawResult).getRecord());
         } else {
           return false;
         }
@@ -123,6 +127,7 @@ public class OrientJdbcStatement implements Statement {
 
       }
     }
+
     resultSet = new OrientJdbcResultSet(this, documents, resultSetType, resultSetConcurrency, resultSetHoldability);
     return true;
 

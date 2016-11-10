@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,11 +14,12 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.iterator;
 
+import com.orientechnologies.common.exception.OHighLevelException;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.db.record.ORecordOperation;
@@ -34,8 +35,8 @@ import java.util.NoSuchElementException;
  * iterator with "live updates" set is able to catch updates to the cluster sizes while browsing. This is the case when concurrent
  * clients/threads insert and remove item in any cluster the iterator is browsing. If the cluster are hot removed by from the
  * database the iterator could be invalid and throw exception of cluster not found.
- * 
- * @author Luca Garulli
+ *
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class ORecordIteratorClusters<REC extends ORecord> extends OIdentifiableIterator<REC> {
   protected int[]   clusterIds;
@@ -165,6 +166,9 @@ public class ORecordIteratorClusters<REC extends ORecord> extends OIdentifiableI
         try {
           currentRecord = readCurrentRecord(record, 0);
         } catch (Exception e) {
+          if ((e instanceof RuntimeException) && (e instanceof OHighLevelException))
+            throw (RuntimeException) e;
+
           OLogManager.instance().error(this, "Error during read of record", e);
 
           currentRecord = null;
@@ -235,8 +239,8 @@ public class ORecordIteratorClusters<REC extends ORecord> extends OIdentifiableI
     if (record != null)
       return (REC) record;
 
-    throw new NoSuchElementException("Direction: forward, last position was: " + current + ", range: " + beginRange + "-"
-        + endRange);
+    throw new NoSuchElementException(
+        "Direction: forward, last position was: " + current + ", range: " + beginRange + "-" + endRange);
   }
 
   /**
@@ -297,7 +301,7 @@ public class ORecordIteratorClusters<REC extends ORecord> extends OIdentifiableI
 
     browsedRecords = 0;
     currentClusterIdx = 0;
-    current.clusterId = clusterIds[currentClusterIdx];
+    current.setClusterId(clusterIds[currentClusterIdx]);
 
     updateClusterRange();
 
@@ -330,7 +334,7 @@ public class ORecordIteratorClusters<REC extends ORecord> extends OIdentifiableI
 
     updateClusterRange();
 
-    current.clusterId = clusterIds[currentClusterIdx];
+    current.setClusterId(clusterIds[currentClusterIdx]);
 
     resetCurrentPosition();
     prevPosition();
@@ -350,8 +354,7 @@ public class ORecordIteratorClusters<REC extends ORecord> extends OIdentifiableI
    * Tell to the iterator that the upper limit must be checked at every cycle. Useful when concurrent deletes or additions change
    * the size of the cluster while you're browsing it. Default is false.
    *
-   * @param iLiveUpdated
-   *          True to activate it, otherwise false (default)
+   * @param iLiveUpdated True to activate it, otherwise false (default)
    * @see #isLiveUpdated()
    */
   @Override
@@ -382,8 +385,9 @@ public class ORecordIteratorClusters<REC extends ORecord> extends OIdentifiableI
 
   @Override
   public String toString() {
-    return String.format("ORecordIteratorCluster.clusters(%s).currentRecord(%s).range(%s-%s)", Arrays.toString(clusterIds),
-        currentRecord, beginRange, endRange);
+    return String
+        .format("ORecordIteratorCluster.clusters(%s).currentRecord(%s).range(%s-%s)", Arrays.toString(clusterIds), currentRecord,
+            beginRange, endRange);
   }
 
   protected boolean include(final ORecord iRecord) {
@@ -400,15 +404,15 @@ public class ORecordIteratorClusters<REC extends ORecord> extends OIdentifiableI
     else if (currentClusterIdx < 0)
       currentClusterIdx = 0;
 
-    current.clusterId = clusterIds[currentClusterIdx];
-    final long[] range = database.getStorage().getClusterDataRange(current.clusterId);
+    current.setClusterId(clusterIds[currentClusterIdx]);
+    final long[] range = database.getStorage().getClusterDataRange(current.getClusterId());
 
-    if (beginRange != null && beginRange.getClusterId() == current.clusterId && beginRange.getClusterPosition() > range[0])
+    if (beginRange != null && beginRange.getClusterId() == current.getClusterId() && beginRange.getClusterPosition() > range[0])
       firstClusterEntry = beginRange.getClusterPosition();
     else
       firstClusterEntry = range[0];
 
-    if (endRange != null && endRange.getClusterId() == current.clusterId && endRange.getClusterPosition() < range[1])
+    if (endRange != null && endRange.getClusterId() == current.getClusterId() && endRange.getClusterPosition() < range[1])
       lastClusterEntry = endRange.getClusterPosition();
     else
       lastClusterEntry = range[1];

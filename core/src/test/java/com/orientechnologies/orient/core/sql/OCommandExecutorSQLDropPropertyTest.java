@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2015 Orient Technologies LTD (info(at)orientdb.com)
+ *  *  Copyright 2015 OrientDB LTD (info(at)orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,14 +14,14 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.sql;
 
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
-import com.orientechnologies.orient.core.metadata.schema.OSchemaProxy;
+import com.orientechnologies.orient.core.metadata.schema.OSchema;
 import com.orientechnologies.orient.core.metadata.schema.OType;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -42,7 +42,7 @@ public class OCommandExecutorSQLDropPropertyTest {
 
   @Test
   public void test() {
-    OSchemaProxy schema = db.getMetadata().getSchema();
+    OSchema schema = db.getMetadata().getSchema();
     OClass foo = schema.createClass("Foo");
 
     foo.createProperty("name", OType.STRING);
@@ -68,6 +68,22 @@ public class OCommandExecutorSQLDropPropertyTest {
     db.command(new OCommandSQL("DROP PROPERTY `Foo`.`name`")).execute();
     schema.reload();
     Assert.assertFalse(schema.getClass("Foo").existsProperty("name"));
+  }
+
+  @Test public void testIfExists() {
+    OSchema schema = db.getMetadata().getSchema();
+    OClass testIfExistsClass = schema.createClass("testIfExists");
+
+    testIfExistsClass.createProperty("name", OType.STRING);
+    Assert.assertTrue(schema.getClass("testIfExists").existsProperty("name"));
+    db.command(new OCommandSQL("DROP PROPERTY testIfExists.name if exists")).execute();
+    schema.reload();
+    Assert.assertFalse(schema.getClass("testIfExists").existsProperty("name"));
+
+    db.command(new OCommandSQL("DROP PROPERTY testIfExists.name if exists")).execute();
+    schema.reload();
+    Assert.assertFalse(schema.getClass("testIfExists").existsProperty("name"));
+
   }
 
 }

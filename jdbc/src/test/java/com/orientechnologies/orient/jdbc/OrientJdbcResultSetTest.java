@@ -1,12 +1,32 @@
+/**
+ * Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * For more information: http://orientdb.com
+ */
 package com.orientechnologies.orient.jdbc;
 
+import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.sql.OCommandSQL;
+import com.orientechnologies.orient.core.sql.query.OSQLSynchQuery;
 import org.junit.Test;
 
 import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
 import java.sql.Statement;
+import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.*;
 
 public class OrientJdbcResultSetTest extends OrientJdbcBaseTest {
 
@@ -79,4 +99,46 @@ public class OrientJdbcResultSetTest extends OrientJdbcBaseTest {
 
   }
 
+  @Test
+  public void shouldReadRowWithNullValue() throws Exception {
+
+    db.activateOnCurrentThread();
+    db.command(new OCommandSQL("INSERT INTO Article(uuid, date, title, content) VALUES (123456, null, 'title', 'the content')"))
+        .execute();
+
+    List<ODocument> docs = db.query(new OSQLSynchQuery<>("SELECT uuid,date, title, content FROM Article WHERE uuid = 123456"));
+
+    //    docs.stream().forEach(d -> System.out.println(d.toJSON()));
+
+    Statement stmt = conn.createStatement();
+
+    assertThat(stmt.execute("SELECT uuid,date, title, content FROM Article WHERE uuid = 123456")).isTrue();
+    ResultSet rs = stmt.getResultSet();
+    assertThat(rs).isNotNull();
+
+    assertThat(rs.getFetchSize()).isEqualTo(1);
+
+    rs.getLong("uuid");
+    rs.getDate(2);
+
+  }
+
+  @Test
+  public void shouldSelectContentInsertedByInsertContent() throws Exception {
+
+    Statement insert = conn.createStatement();
+    insert.execute("INSERT INTO Article CONTENT {'uuid':'1234567',  'title':'title', 'content':'content'} ");
+
+    Statement stmt = conn.createStatement();
+
+    assertThat(stmt.execute("SELECT uuid,date, title, content FROM Article WHERE uuid = 1234567")).isTrue();
+
+    ResultSet rs = stmt.getResultSet();
+    assertThat(rs).isNotNull();
+
+    assertThat(rs.getFetchSize()).isEqualTo(1);
+
+    assertThat(rs.getLong("uuid")).isEqualTo(1234567);
+
+  }
 }

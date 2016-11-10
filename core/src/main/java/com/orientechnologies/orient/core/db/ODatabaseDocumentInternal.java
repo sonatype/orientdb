@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 
@@ -35,6 +35,8 @@ import com.orientechnologies.orient.core.serialization.serializer.binary.OBinary
 import com.orientechnologies.orient.core.serialization.serializer.record.ORecordSerializer;
 import com.orientechnologies.orient.core.storage.ORecordCallback;
 import com.orientechnologies.orient.core.storage.OStorage;
+
+import java.util.Set;
 
 public interface ODatabaseDocumentInternal extends ODatabaseDocument, ODatabaseInternal<ORecord> {
 
@@ -60,6 +62,8 @@ public interface ODatabaseDocumentInternal extends ODatabaseDocument, ODatabaseI
    */
   ORecordSerializer getSerializer();
 
+  void setSerializer(ORecordSerializer serializer);
+
   int assignAndCheckCluster(ORecord record, String iClusterName);
 
   <RET extends ORecord> RET loadIfVersionIsNotLatest(final ORID rid, final int recordVersion, String fetchPlan, boolean ignoreCache)
@@ -69,13 +73,12 @@ public interface ODatabaseDocumentInternal extends ODatabaseDocument, ODatabaseI
 
   ORecordHook.RESULT callbackHooks(final ORecordHook.TYPE type, final OIdentifiable id);
 
-  <RET extends ORecord> RET executeReadRecord(final ORecordId rid, ORecord iRecord, final int recordVersion,
-      final String fetchPlan, final boolean ignoreCache, final boolean iUpdateCache, final boolean loadTombstones,
+  <RET extends ORecord> RET executeReadRecord(final ORecordId rid, ORecord iRecord, final int recordVersion, final String fetchPlan,
+      final boolean ignoreCache, final boolean iUpdateCache, final boolean loadTombstones,
       final OStorage.LOCKING_STRATEGY lockingStrategy, RecordReader recordReader);
 
-
-  <RET extends ORecord> RET executeSaveRecord(final ORecord record, String clusterName, final int ver,
-      final OPERATION_MODE mode, boolean forceCreate, final ORecordCallback<? extends Number> recordCreatedCallback,
+  <RET extends ORecord> RET executeSaveRecord(final ORecord record, String clusterName, final int ver, final OPERATION_MODE mode,
+      boolean forceCreate, final ORecordCallback<? extends Number> recordCreatedCallback,
       ORecordCallback<Integer> recordUpdatedCallback);
 
   void executeDeleteRecord(OIdentifiable record, final int iVersion, final boolean iRequired, final OPERATION_MODE iMode,
@@ -90,12 +93,21 @@ public interface ODatabaseDocumentInternal extends ODatabaseDocument, ODatabaseI
 
   ODatabaseDocumentInternal copy();
 
+  Set<ORecord> executeReadRecords(final Set<ORecordId> iRids, final boolean ignoreCache);
+
   void checkIfActive();
 
   void callOnOpenListeners();
 
   void callOnCloseListeners();
-  
+
+  void callOnDropListeners();
+
   public <DB extends ODatabase> DB setCustom(final String name, final Object iValue);
-  
+
+  void setPrefetchRecords(boolean prefetchRecords);
+
+  boolean isPrefetchRecords();
+
+  void checkForClusterPermissions(String name);
 }

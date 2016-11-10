@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *  
  */
 
@@ -23,6 +23,7 @@ package com.orientechnologies.orient.etl;
 import com.orientechnologies.orient.core.command.OCommandContext;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.etl.loader.OAbstractLoader;
+import com.tinkerpop.blueprints.impls.orient.OrientGraph;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,7 +31,7 @@ import java.util.List;
 /**
  * ETL Stub loader to check the result in tests.
  *
- * @author Luca Garulli on 27/11/14.
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com) on 27/11/14.
  */
 public class OETLStubLoader extends OAbstractLoader {
   public final List<ODocument> loadedRecords = new ArrayList<ODocument>();
@@ -39,13 +40,21 @@ public class OETLStubLoader extends OAbstractLoader {
   }
 
   @Override
-  public void load(OETLPipeline pipeline, Object input, OCommandContext context) {
+  public void beginLoader(OETLPipeline pipeline) {
+
+    OrientGraph graph = new OrientGraph("memory:OETLBaseTest");
+    graph.setUseLightweightEdges(false);
+    OETLDatabaseProvider provider = new OETLDatabaseProvider(graph.getRawGraph(), graph);
+    pipeline.setDatabaseProvider(provider);
+  }
+
+  @Override
+  public void load(OETLDatabaseProvider databaseProvider, Object input, OCommandContext context) {
     synchronized (loadedRecords) {
       loadedRecords.add((ODocument) input);
       progress.incrementAndGet();
     }
   }
-
 
   @Override
   public String getUnit() {
@@ -53,7 +62,7 @@ public class OETLStubLoader extends OAbstractLoader {
   }
 
   @Override
-  public void rollback(OETLPipeline pipeline) {
+  public void rollback(OETLDatabaseProvider databaseProvider) {
   }
 
   @Override

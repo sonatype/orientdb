@@ -1,6 +1,6 @@
 /*
   *
-  *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+  *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
   *  *
   *  *  Licensed under the Apache License, Version 2.0 (the "License");
   *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
   *  *  See the License for the specific language governing permissions and
   *  *  limitations under the License.
   *  *
-  *  * For more information: http://www.orientechnologies.com
+  *  * For more information: http://orientdb.com
   *
   */
 package com.orientechnologies.orient.core.serialization.serializer.record;
@@ -33,13 +33,13 @@ import com.orientechnologies.orient.core.serialization.serializer.record.string.
 /**
  * Factory of record serialized.
  *
- * @author Luca Garulli (l.garulli--at--orientechnologies.com)
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class ORecordSerializerFactory {
   private static final ORecordSerializerFactory       instance        = new ORecordSerializerFactory();
   private              Map<String, ORecordSerializer> implementations = new HashMap<String, ORecordSerializer>();
 
-  private static ORecordSerializer defaultRecordSerializer;
+  private ORecordSerializer defaultRecordSerializer;
 
   public ORecordSerializerFactory() {
     register(ORecordSerializerSchemaAware2CSV.NAME, ORecordSerializerSchemaAware2CSV.INSTANCE);
@@ -78,6 +78,10 @@ public class ORecordSerializerFactory {
     return instance;
   }
 
+  public void setDefaultRecordSerializer(ORecordSerializer defaultRecordSerializer) {
+    this.defaultRecordSerializer = defaultRecordSerializer;
+  }
+  
   public ORecordSerializer getDefaultRecordSerializer() {
     return defaultRecordSerializer;
   }

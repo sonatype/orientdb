@@ -1,6 +1,7 @@
 package com.orientechnologies.orient.core.storage.impl.local.paginated;
 
 import com.orientechnologies.common.io.OFileUtils;
+import com.orientechnologies.orient.client.remote.OServerAdmin;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
@@ -28,7 +29,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * @author Andrey Lomakin (a.lomakin-at-orientechnologies.com)
+ * @author Andrey Lomakin (a.lomakin-at-orientdb.com)
  * @since 9/22/14
  */
 
@@ -42,7 +43,19 @@ public class IndexCrashRestoreSingleValueIT {
 
   @Before
   public void setuUp() throws Exception {
-    spwanServer();
+    String buildDirectory = System.getProperty("buildDirectory", ".");
+    buildDirectory += "/uniqueIndexCrashRestore";
+
+    buildDir = new File(buildDirectory);
+
+    buildDirectory = buildDir.getCanonicalPath();
+    buildDir = new File(buildDirectory);
+
+    if (buildDir.exists())
+      OFileUtils.deleteRecursively(buildDir);
+
+    buildDir.mkdir();
+
     baseDocumentTx = new ODatabaseDocumentTx("plocal:" + buildDir.getAbsolutePath() + "/baseUniqueIndexCrashRestore");
     if (baseDocumentTx.exists()) {
       baseDocumentTx.open("admin", "admin");
@@ -51,38 +64,33 @@ public class IndexCrashRestoreSingleValueIT {
 
     baseDocumentTx.create();
 
+    spwanServer();
+
+    final OServerAdmin serverAdmin = new OServerAdmin("remote:localhost:3500");
+    serverAdmin.connect("root", "root");
+    serverAdmin.createDatabase("testUniqueIndexCrashRestore", "graph", "plocal");
+    serverAdmin.close();
+
     testDocumentTx = new ODatabaseDocumentTx("remote:localhost:3500/testUniqueIndexCrashRestore");
     testDocumentTx.open("admin", "admin");
   }
 
   public void spwanServer() throws Exception {
     OGlobalConfiguration.WAL_FUZZY_CHECKPOINT_INTERVAL.setValue(5);
-    String buildDirectory = System.getProperty("buildDirectory", ".");
-    buildDirectory += "/uniqueIndexCrashRestore";
-
-    buildDir = new File(buildDirectory);
-    if (buildDir.exists())
-      buildDir.delete();
-
-    buildDir.mkdir();
 
     final File mutexFile = new File(buildDir, "mutex.ct");
     final RandomAccessFile mutex = new RandomAccessFile(mutexFile, "rw");
     mutex.seek(0);
     mutex.write(0);
 
-
-    buildDirectory = buildDir.getCanonicalPath();
-    buildDir = new File(buildDirectory);
-
     String javaExec = System.getProperty("java.home") + "/bin/java";
     javaExec = new File(javaExec).getCanonicalPath();
 
+    System.setProperty("ORIENTDB_HOME", buildDir.getCanonicalPath());
 
-    System.setProperty("ORIENTDB_HOME", buildDirectory);
-
-    ProcessBuilder processBuilder = new ProcessBuilder(javaExec, "-Xmx2048m", "-XX:MaxDirectMemorySize=512g", "-classpath", System.getProperty("java.class.path"),
-        "-DORIENTDB_HOME=" + buildDirectory, "-DmutexFile=" + mutexFile.getCanonicalPath(), RemoteDBRunner.class.getName());
+    ProcessBuilder processBuilder = new ProcessBuilder(javaExec, "-Xmx4096m", "-XX:MaxDirectMemorySize=512g", "-classpath",
+        System.getProperty("java.class.path"), "-DORIENTDB_HOME=" + buildDir.getCanonicalPath(),
+        "-DmutexFile=" + mutexFile.getCanonicalPath(), RemoteDBRunner.class.getName());
     processBuilder.inheritIO();
 
     serverProcess = processBuilder.start();
@@ -141,7 +149,9 @@ public class IndexCrashRestoreSingleValueIT {
       }
     }
 
-    testDocumentTx = new ODatabaseDocumentTx("plocal:" + buildDir.getAbsolutePath() + "/testUniqueIndexCrashRestore");
+    testDocumentTx = new ODatabaseDocumentTx(
+        "plocal:" + new File(new File(buildDir, "databases"), "testUniqueIndexCrashRestore").getCanonicalPath());
+
     testDocumentTx.open("admin", "admin");
     testDocumentTx.close();
 

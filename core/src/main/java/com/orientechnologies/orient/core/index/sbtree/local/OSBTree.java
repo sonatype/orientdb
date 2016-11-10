@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 
@@ -29,7 +29,7 @@ import com.orientechnologies.orient.core.exception.OTooBigIndexKeyException;
 import com.orientechnologies.orient.core.index.OAlwaysGreaterKey;
 import com.orientechnologies.orient.core.index.OAlwaysLessKey;
 import com.orientechnologies.orient.core.index.OCompositeKey;
-import com.orientechnologies.orient.core.index.OIndexException;
+import com.orientechnologies.orient.core.index.OIndexEngine;
 import com.orientechnologies.orient.core.iterator.OEmptyIterator;
 import com.orientechnologies.orient.core.iterator.OEmptyMapEntryIterator;
 import com.orientechnologies.orient.core.metadata.schema.OType;
@@ -69,7 +69,7 @@ import java.util.*;
  * page to start, remember value of offset for this pair, and find proper position of this offset inside of first part of array.
  * Such approach allows to minimize amount of memory involved in performing of operations and as result speed up data processing.
  *
- * @author Andrey Lomakin
+ * @author Andrey Lomakin (a.lomakin-at-orientdb.com)
  * @since 8/7/13
  */
 public class OSBTree<K, V> extends ODurableComponent {
@@ -171,6 +171,15 @@ public class OSBTree<K, V> extends ODurableComponent {
     }
   }
 
+  public boolean isNullPointerSupport() {
+    acquireSharedLock();
+    try {
+      return nullPointerSupport;
+    } finally {
+      releaseSharedLock();
+    }
+  }
+
   public V get(K key) {
     final OSessionStoragePerformanceStatistic statistic = performanceStatisticManager.getSessionPerformanceStatistic();
     startOperation();
@@ -238,6 +247,15 @@ public class OSBTree<K, V> extends ODurableComponent {
   }
 
   public void put(K key, V value) {
+    put(key, value, null);
+  }
+
+  public boolean validatedPut(K key, V value, OIndexEngine.Validator<K, V> validator) {
+    return put(key, value, validator);
+  }
+
+  @SuppressWarnings("unchecked")
+  private boolean put(K key, V value, OIndexEngine.Validator<K, V> validator) {
     final OSessionStoragePerformanceStatistic statistic = performanceStatisticManager.getSessionPerformanceStatistic();
     startOperation();
     if (statistic != null)
@@ -278,6 +296,28 @@ public class OSBTree<K, V> extends ODurableComponent {
           keyBucketCacheEntry.acquireExclusiveLock();
           OSBTreeBucket<K, V> keyBucket = new OSBTreeBucket<K, V>(keyBucketCacheEntry, keySerializer, keyTypes, valueSerializer);
 
+          if (validator != null) {
+            final V oldValue = bucketSearchResult.itemIndex > -1 ?
+                readValue(keyBucket.getValue(bucketSearchResult.itemIndex), atomicOperation) :
+                null;
+
+            boolean doReleasePage = true;
+            try {
+              final Object result = validator.validate(key, oldValue, value);
+              if (result == OIndexEngine.Validator.IGNORE)
+                return false;
+              else
+                doReleasePage = false;
+
+              value = (V) result;
+            } finally {
+              if (doReleasePage) {
+                keyBucketCacheEntry.releaseExclusiveLock();
+                releasePage(atomicOperation, keyBucketCacheEntry);
+              }
+            }
+          }
+
           int insertionIndex;
           int sizeDiff;
           if (bucketSearchResult.itemIndex >= 0) {
@@ -288,7 +328,7 @@ public class OSBTree<K, V> extends ODurableComponent {
               releasePage(atomicOperation, keyBucketCacheEntry);
 
               endAtomicOperation(false, null);
-              return;
+              return true;
             } else {
               assert updateResult == -1;
 
@@ -348,8 +388,19 @@ public class OSBTree<K, V> extends ODurableComponent {
           cacheEntry.acquireExclusiveLock();
           try {
             final ONullBucket<V> nullBucket = new ONullBucket<V>(cacheEntry, valueSerializer, isNew);
+            final OSBTreeValue<V> oldValue = nullBucket.getValue();
 
-            if (nullBucket.getValue() != null)
+            if (validator != null) {
+              final V oldValueValue = oldValue == null ? null : readValue(oldValue, atomicOperation);
+
+              final Object result = validator.validate(null, oldValueValue, value);
+              if (result == OIndexEngine.Validator.IGNORE)
+                return false;
+
+              value = (V) result;
+            }
+
+            if (oldValue != null)
               sizeDiff = -1;
 
             nullBucket.setValue(treeValue);
@@ -364,6 +415,7 @@ public class OSBTree<K, V> extends ODurableComponent {
         }
 
         endAtomicOperation(false, null);
+        return true;
       } catch (IOException e) {
         rollback(e);
         throw OException
@@ -642,13 +694,12 @@ public class OSBTree<K, V> extends ODurableComponent {
           try {
             ONullBucket<V> nullBucket = new ONullBucket<V>(nullCacheEntry, valueSerializer, false);
             OSBTreeValue<V> treeValue = nullBucket.getValue();
-            if (treeValue == null) {
-              endAtomicOperation(false, null);
-              return null;
-            }
 
-            removedValue = readValue(treeValue, atomicOperation);
-            nullBucket.removeValue();
+            if (treeValue != null) {
+              removedValue = readValue(treeValue, atomicOperation);
+              nullBucket.removeValue();
+            } else
+              removedValue = null;
           } finally {
             nullCacheEntry.releaseExclusiveLock();
             releasePage(atomicOperation, nullCacheEntry);
@@ -656,7 +707,6 @@ public class OSBTree<K, V> extends ODurableComponent {
 
           if (removedValue != null)
             setSize(size() - 1, atomicOperation);
-
         }
 
         endAtomicOperation(false, null);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2013 Luca Garulli (l.garulli--at--orientechnologies.com)
+ * Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,9 +31,9 @@ import com.orientechnologies.orient.core.record.ORecordInternal;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.storage.ORawBuffer;
 import com.orientechnologies.orient.server.distributed.impl.task.OCreateRecordTask;
-import com.orientechnologies.orient.server.distributed.impl.task.ODeleteRecordTask;
+import com.orientechnologies.orient.server.distributed.impl.task.OFixCreateRecordTask;
+import com.orientechnologies.orient.server.distributed.impl.task.OFixUpdateRecordTask;
 import com.orientechnologies.orient.server.distributed.impl.task.OReadRecordTask;
-import com.orientechnologies.orient.server.distributed.impl.task.OUpdateRecordTask;
 import com.tinkerpop.blueprints.impls.orient.OrientBaseGraph;
 import com.tinkerpop.blueprints.impls.orient.OrientGraphFactory;
 import org.junit.Assert;
@@ -101,7 +101,7 @@ public abstract class AbstractServerClusterTest {
   }
 
   public void init(final int servers) {
-    Orient.instance().closeAllStorages();
+    ODatabaseDocumentTx.closeAll();
 
     System.setProperty(GroupProperties.PROP_WAIT_SECONDS_BEFORE_JOIN, "1");
 
@@ -115,53 +115,7 @@ public abstract class AbstractServerClusterTest {
 
     try {
 
-      if (startupNodesInSequence) {
-        for (final ServerRun server : serverInstance) {
-          banner("STARTING SERVER -> " + server.getServerId() + "...");
-
-          server.startServer(getDistributedServerConfiguration(server));
-
-          if (delayServerStartup > 0)
-            try {
-              Thread.sleep(delayServerStartup * serverInstance.size());
-            } catch (InterruptedException e) {
-            }
-
-          onServerStarted(server);
-        }
-      } else {
-        for (final ServerRun server : serverInstance) {
-          final Thread thread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-              banner("STARTING SERVER -> " + server.getServerId() + "...");
-              try {
-                onServerStarting(server);
-                server.startServer(getDistributedServerConfiguration(server));
-                onServerStarted(server);
-              } catch (Exception e) {
-                e.printStackTrace();
-              }
-            }
-          });
-          thread.start();
-        }
-      }
-
-      if (delayServerAlign > 0)
-        try {
-          System.out.println(
-              "Server started, waiting for synchronization (" + (delayServerAlign * serverInstance.size() / 1000) + "secs)...");
-          Thread.sleep(delayServerAlign * serverInstance.size());
-        } catch (InterruptedException e) {
-        }
-
-      for (ServerRun server : serverInstance) {
-        final ODistributedServerManager mgr = server.getServerInstance().getDistributedManager();
-        Assert.assertNotNull(mgr);
-        final ODocument cfg = mgr.getClusterConfiguration();
-        Assert.assertNotNull(cfg);
-      }
+      startServers();
 
       banner("Executing test...");
 
@@ -204,6 +158,56 @@ public abstract class AbstractServerClusterTest {
       deleteServers();
     }
 
+  }
+
+  protected void startServers() throws Exception {
+    if (startupNodesInSequence) {
+      for (final ServerRun server : serverInstance) {
+        banner("STARTING SERVER -> " + server.getServerId() + "...");
+
+        server.startServer(getDistributedServerConfiguration(server));
+
+        if (delayServerStartup > 0)
+          try {
+            Thread.sleep(delayServerStartup * serverInstance.size());
+          } catch (InterruptedException e) {
+          }
+
+        onServerStarted(server);
+      }
+    } else {
+      for (final ServerRun server : serverInstance) {
+        final Thread thread = new Thread(new Runnable() {
+          @Override
+          public void run() {
+            banner("STARTING SERVER -> " + server.getServerId() + "...");
+            try {
+              onServerStarting(server);
+              server.startServer(getDistributedServerConfiguration(server));
+              onServerStarted(server);
+            } catch (Exception e) {
+              e.printStackTrace();
+            }
+          }
+        });
+        thread.start();
+      }
+    }
+
+    if (delayServerAlign > 0)
+      try {
+        System.out.println(
+            "Server started, waiting for synchronization (" + (delayServerAlign * serverInstance.size() / 1000) + "secs)...");
+        Thread.sleep(delayServerAlign * serverInstance.size());
+      } catch (InterruptedException e) {
+      }
+
+    for (ServerRun server : serverInstance) {
+      final ODistributedServerManager mgr = server.getServerInstance().getDistributedManager();
+      Assert.assertNotNull(mgr);
+      final ODocument cfg = mgr.getClusterConfiguration();
+      Assert.assertNotNull(cfg);
+    }
   }
 
   protected void executeOnMultipleThreads(final int numOfThreads, final OCallable<Void, Integer> callback) {
@@ -296,7 +300,7 @@ public abstract class AbstractServerClusterTest {
         onAfterDatabaseCreation(graph);
       } finally {
         graph.shutdown();
-        Orient.instance().closeAllStorages();
+        ODatabaseDocumentTx.closeAll();
       }
     }
 
@@ -498,7 +502,7 @@ public abstract class AbstractServerClusterTest {
     clusterNames.add(ODatabaseRecordThreadLocal.INSTANCE.get().getClusterNameById(record.getIdentity().getClusterId()));
 
     return dManager.sendRequest(getDatabaseName(), clusterNames, Arrays.asList(servers),
-        new OUpdateRecordTask((ORecordId) record.getIdentity(), record.toStream(), record.getVersion(),
+        new OFixUpdateRecordTask((ORecordId) record.getIdentity(), record.toStream(), record.getVersion(),
             ORecordInternal.getRecordType(record)),
         dManager.getNextMessageIdCounter(), ODistributedRequest.EXECUTION_MODE.RESPONSE, null, null);
   }
@@ -509,7 +513,7 @@ public abstract class AbstractServerClusterTest {
     final Collection<String> clusterNames = new ArrayList<String>(1);
     clusterNames.add(ODatabaseRecordThreadLocal.INSTANCE.get().getClusterNameById(rid.getClusterId()));
 
-    return dManager.sendRequest(getDatabaseName(), clusterNames, Arrays.asList(servers), new ODeleteRecordTask(rid, -1),
+    return dManager.sendRequest(getDatabaseName(), clusterNames, Arrays.asList(servers), new OFixCreateRecordTask(rid, -1),
         dManager.getNextMessageIdCounter(), ODistributedRequest.EXECUTION_MODE.RESPONSE, null, null);
   }
 }

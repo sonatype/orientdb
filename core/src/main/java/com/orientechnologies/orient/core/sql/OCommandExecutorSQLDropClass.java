@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.sql;
@@ -35,7 +35,7 @@ import java.util.Map;
  * SQL DROP CLASS command: Drops a class from the database. Cluster associated are removed too if are used exclusively by the
  * deleting class.
  *
- * @author Luca Garulli
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 @SuppressWarnings("unchecked")
 public class OCommandExecutorSQLDropClass extends OCommandExecutorSQLAbstract implements OCommandDistributedReplicateRequest {
@@ -44,6 +44,7 @@ public class OCommandExecutorSQLDropClass extends OCommandExecutorSQLAbstract im
   public static final String KEYWORD_UNSAFE = "UNSAFE";
 
   private String             className;
+  private boolean            ifExists;
   private boolean            unsafe;
 
   public OCommandExecutorSQLDropClass parse(final OCommandRequest iRequest) {
@@ -57,6 +58,7 @@ public class OCommandExecutorSQLDropClass extends OCommandExecutorSQLAbstract im
       final boolean strict = getDatabase().getStorage().getConfiguration().isStrictSql();
       if (strict) {
         this.className = ((ODropClassStatement) this.preParsedStatement).name.getStringValue();
+        this.ifExists = ((ODropClassStatement) this.preParsedStatement).ifExists;
         this.unsafe = ((ODropClassStatement) this.preParsedStatement).unsafe;
       } else {
         oldParsing((OCommandRequestText) iRequest);
@@ -105,7 +107,8 @@ public class OCommandExecutorSQLDropClass extends OCommandExecutorSQLAbstract im
   @Override
   public long getDistributedTimeout() {
     if (className != null)
-      return 10 * getDatabase().countClass(className);
+      return OGlobalConfiguration.DISTRIBUTED_COMMAND_QUICK_TASK_SYNCH_TIMEOUT.getValueAsLong()
+          + (2 * getDatabase().countClass(className));
 
     return OGlobalConfiguration.DISTRIBUTED_COMMAND_QUICK_TASK_SYNCH_TIMEOUT.getValueAsLong();
   }
@@ -159,9 +162,8 @@ public class OCommandExecutorSQLDropClass extends OCommandExecutorSQLAbstract im
     return true;
   }
 
-  @Override
-  public String getSyntax() {
-    return "DROP CLASS <class> [UNSAFE]";
+  @Override public String getSyntax() {
+    return "DROP CLASS <class> [IF EXISTS] [UNSAFE]";
   }
 
   @Override

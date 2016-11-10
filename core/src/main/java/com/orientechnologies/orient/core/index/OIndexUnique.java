@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.index;
@@ -29,9 +29,31 @@ import com.orientechnologies.orient.core.tx.OTransactionIndexChangesPerKey;
 /**
  * Index implementation that allows only one value for a key.
  *
- * @author Luca Garulli
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class OIndexUnique extends OIndexOneValue {
+
+  private final OIndexEngine.Validator<Object, OIdentifiable> UNIQUE_VALIDATOR = new OIndexEngine.Validator<Object, OIdentifiable>() {
+    @Override
+    public Object validate(Object key, OIdentifiable oldValue, OIdentifiable newValue) {
+      if (oldValue != null) {
+        // CHECK IF THE ID IS THE SAME OF CURRENT: THIS IS THE UPDATE CASE
+        if (!oldValue.equals(newValue)) {
+          final Boolean mergeSameKey = metadata != null ? (Boolean) metadata.field(OIndex.MERGE_KEYS) : Boolean.FALSE;
+          if (mergeSameKey == null || !mergeSameKey)
+            throw new ORecordDuplicatedException(String
+                .format("Cannot index record %s: found duplicated key '%s' in index '%s' previously assigned to the record %s",
+                    newValue.getIdentity(), key, getName(), oldValue.getIdentity()), getName(), oldValue.getIdentity());
+        } else
+          return OIndexEngine.Validator.IGNORE;
+      }
+
+      if (!newValue.getIdentity().isPersistent())
+        newValue.getRecord().save();
+      return newValue.getIdentity();
+    }
+  };
+
   public OIndexUnique(String name, String typeId, String algorithm, int version, OAbstractPaginatedStorage storage,
       String valueContainerAlgorithm, ODocument metadata) {
     super(name, typeId, algorithm, version, storage, valueContainerAlgorithm, metadata);
@@ -52,26 +74,8 @@ public class OIndexUnique extends OIndexOneValue {
 
       acquireSharedLock();
       try {
-        final OIdentifiable value = (OIdentifiable) storage.getIndexValue(indexId, key);
-
-        if (value != null) {
-          // CHECK IF THE ID IS THE SAME OF CURRENT: THIS IS THE UPDATE CASE
-          if (!value.equals(iSingleValue)) {
-            final Boolean mergeSameKey = metadata != null ? (Boolean) metadata.field(OIndex.MERGE_KEYS) : Boolean.FALSE;
-            if (mergeSameKey == null || !mergeSameKey)
-              throw new ORecordDuplicatedException(String
-                  .format("Cannot index record %s: found duplicated key '%s' in index '%s' previously assigned to the record %s",
-                      iSingleValue.getIdentity(), key, getName(), value.getIdentity()), getName(), value.getIdentity());
-          } else
-            return this;
-        }
-
-        if (!iSingleValue.getIdentity().isPersistent())
-          iSingleValue.getRecord().save();
-
-        storage.putIndexValue(indexId, key, iSingleValue.getIdentity());
+        storage.validatedPutIndexValue(indexId, key, iSingleValue, UNIQUE_VALIDATOR);
         return this;
-
       } finally {
         releaseSharedLock();
       }

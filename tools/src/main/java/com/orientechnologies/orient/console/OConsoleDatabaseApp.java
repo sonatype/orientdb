@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.console;
@@ -264,7 +264,7 @@ public class OConsoleDatabaseApp extends OrientConsole implements OCommandOutput
     if (currentDatabase != null) {
       message("\nDisconnecting from the database [" + currentDatabaseName + "]...");
 
-      final OStorage stg = Orient.instance().getStorage(currentDatabase.getURL());
+      final OStorage stg = currentDatabase.getStorage();
 
       currentDatabase.activateOnCurrentThread();
       if (!currentDatabase.isClosed())
@@ -994,12 +994,12 @@ public class OConsoleDatabaseApp extends OrientConsole implements OCommandOutput
   public void script(@ConsoleParameter(name = "text", description = "Commands to execute, one per line") String iText) {
     final String language;
     final int languageEndPos = iText.indexOf(";");
-    if (languageEndPos > -1) {
-      // EXTRACT THE SCRIPT LANGUAGE
-      language = iText.substring(0, languageEndPos);
-      iText = iText.substring(languageEndPos + 1);
-    } else
+    String[] splitted = iText.split(" ")[0].split(";")[0].split("\n")[0].split("\t");
+    language = splitted[0];
+    iText = iText.substring(language.length()+1);
+    if(iText.trim().length()==0){
       throw new IllegalArgumentException("Missing language in script (sql, js, gremlin, etc.) as first argument");
+    }
 
     executeServerSideScript(language, iText);
   }
@@ -1308,7 +1308,7 @@ public class OConsoleDatabaseApp extends OrientConsole implements OCommandOutput
     ORawBuffer record;
     ORecordId id = new ORecordId(rid);
     if (!(currentDatabase.getStorage() instanceof OLocalPaginatedStorage)) {
-      record = currentDatabase.getStorage().readRecord(rid, null, false, null).getResult();
+      record = currentDatabase.getStorage().readRecord(rid, null, false, false, null).getResult();
       if (record != null) {
         String content;
         if (Integer.parseInt(properties.get("maxBinaryDisplay")) < record.buffer.length)
@@ -1319,14 +1319,18 @@ public class OConsoleDatabaseApp extends OrientConsole implements OCommandOutput
             + content.length() + " bytes:\n\n" + content);
       }
     } else {
-      OLocalPaginatedStorage storage = (OLocalPaginatedStorage) currentDatabase.getStorage();
-      OPaginatedCluster cluster = (OPaginatedCluster) storage.getClusterById(id.getClusterId());
+      final OLocalPaginatedStorage storage = (OLocalPaginatedStorage) currentDatabase.getStorage();
+      final OPaginatedCluster cluster = (OPaginatedCluster) storage.getClusterById(id.getClusterId());
       if (cluster == null) {
         message("\n cluster with id %i does not exist", id.getClusterId());
         return;
       }
-      OPaginatedClusterDebug debugInfo = cluster.readDebug(id.clusterPosition);
+
       message("\n\nLOW LEVEL CLUSTER INFO");
+      final OPaginatedCluster.RECORD_STATUS status = cluster.getRecordStatus(id.getClusterPosition());
+      message("\n status: %s", status);
+
+      final OPaginatedClusterDebug debugInfo = cluster.readDebug(id.getClusterPosition());
       message("\n cluster fieldId: %d", debugInfo.fileId);
       message("\n cluster name: %s", cluster.getName());
 
@@ -1342,7 +1346,7 @@ public class OConsoleDatabaseApp extends OrientConsole implements OCommandOutput
         message(" |%30d ", page.inPageSize);
         message(" |%s", OBase64Utils.encodeBytes(page.content));
       }
-      record = cluster.readRecord(id.clusterPosition);
+      record = cluster.readRecord(id.getClusterPosition(), false);
     }
     if (record == null)
       throw new OSystemException("The record has been deleted");
@@ -1365,7 +1369,7 @@ public class OConsoleDatabaseApp extends OrientConsole implements OCommandOutput
       for (ORecordSerializationDebugProperty prop : deserializeDebug.properties) {
         message("\n  property name: %s", prop.name);
         message("\n  property type: %s", prop.type.name());
-        message("\n  property globlaId: %d", prop.globalId);
+        message("\n  property globalId: %d", prop.globalId);
         message("\n  fail on reading: %b", prop.faildToRead);
         if (prop.faildToRead) {
           message("\n  failed on reading position: %b", prop.failPosition);
@@ -2018,30 +2022,6 @@ public class OConsoleDatabaseApp extends OrientConsole implements OCommandOutput
       message("\nEntry removed from the dictionary.");
   }
 
-  @ConsoleCommand(description = "Copy a database to a remote server")
-  public void copyDatabase(
-      @ConsoleParameter(name = "db-name", description = "Name of the database to share") final String iDatabaseName,
-      @ConsoleParameter(name = "db-user", description = "Database user") final String iDatabaseUserName,
-      @ConsoleParameter(name = "db-password", description = "Database password") String iDatabaseUserPassword,
-      @ConsoleParameter(name = "server-name", description = "Remote server's name as <address>:<port>") final String iRemoteName,
-      @ConsoleParameter(name = "engine-name", description = "Remote server's engine to use between 'local' or 'memory'") final String iRemoteEngine)
-      throws IOException {
-
-    try {
-      if (serverAdmin == null)
-        throw new IllegalStateException("You must be connected to a remote server to share a database");
-
-      message("\nCopying database '" + iDatabaseName + "' to the server '" + iRemoteName + "' via network streaming...");
-
-      serverAdmin.copyDatabase(iDatabaseName, iDatabaseUserName, iDatabaseUserPassword, iRemoteName, iRemoteEngine);
-
-      message("\nDatabase '" + iDatabaseName + "' has been copied to the server '" + iRemoteName + "'");
-
-    } catch (Exception e) {
-      printError(e);
-    }
-  }
-
   @ConsoleCommand(description = "Displays the status of the cluster nodes")
   public void clusterStatus() throws IOException {
     if (serverAdmin == null)
@@ -2567,7 +2547,7 @@ public class OConsoleDatabaseApp extends OrientConsole implements OCommandOutput
     checkForDatabase();
 
     currentRecord = currentDatabase.executeReadRecord(new ORecordId(iRecordId), null, -1, iFetchPlan, true, false, false,
-        OStorage.LOCKING_STRATEGY.NONE, new SimpleRecordReader());
+        OStorage.LOCKING_STRATEGY.NONE, new SimpleRecordReader(false));
     displayRecord(null);
 
     message("\nOK");

@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 
@@ -50,9 +50,9 @@ public abstract class OAbstractProfiler extends OSharedResourceAbstract
   protected final Map<String, OProfilerHookRuntime>      hooks         = new ConcurrentHashMap<String, OProfilerHookRuntime>();
   protected final ConcurrentHashMap<String, String>      dictionary    = new ConcurrentHashMap<String, String>();
   protected final ConcurrentHashMap<String, METRIC_TYPE> types         = new ConcurrentHashMap<String, METRIC_TYPE>();
-  protected long                                         recordingFrom = -1;
-  protected TimerTask                                    autoDumpTask;
-  protected List<OProfilerListener>                      listeners     = new ArrayList<OProfilerListener>();
+  protected       long                                   recordingFrom = -1;
+  protected TimerTask autoDumpTask;
+  protected List<OProfilerListener> listeners = new ArrayList<OProfilerListener>();
 
   public interface OProfilerHookValue {
     Object getValue();
@@ -100,8 +100,8 @@ public abstract class OAbstractProfiler extends OSharedResourceAbstract
             if ((jvmTotMemory * 140 / 100) < jvmMaxMemory && (totalDiskCacheUsedMemory * 120 / 100) > maxDiskCacheUsedMemory) {
 
               final long suggestedMaxHeap = jvmTotMemory * 120 / 100;
-              final long suggestedDiskCache = OGlobalConfiguration.DISK_CACHE_SIZE.getValueAsLong()
-                  + (jvmMaxMemory - suggestedMaxHeap) / OFileUtils.MEGABYTE;
+              final long suggestedDiskCache =
+                  OGlobalConfiguration.DISK_CACHE_SIZE.getValueAsLong() + (jvmMaxMemory - suggestedMaxHeap) / OFileUtils.MEGABYTE;
 
               OLogManager.instance().info(this,
                   "Database '%s' uses %,dMB/%,dMB of DISKCACHE memory, while Heap is not completely used (usedHeap=%dMB maxHeap=%dMB). To improve performance set maxHeap to %dMB and DISKCACHE to %dMB",
@@ -161,8 +161,8 @@ public abstract class OAbstractProfiler extends OSharedResourceAbstract
         final long osTotalMem = ((Number) mbs.getAttribute(osMBeanName, "TotalPhysicalMemorySize")).longValue();
         final long osUsedMem = osTotalMem - ((Number) mbs.getAttribute(osMBeanName, "FreePhysicalMemorySize")).longValue();
 
-        buffer.append(
-            String.format("OrientDB Memory profiler: HEAP=%s of %s - DISKCACHE (%s dbs)=%s of %s - OS=%s of %s - FS=%s of %s",
+        buffer.append(String
+            .format("OrientDB Memory profiler: HEAP=%s of %s - DISKCACHE (%s dbs)=%s of %s - OS=%s of %s - FS=%s of %s",
                 OFileUtils.getSizeAsString(runtime.totalMemory() - runtime.freeMemory()),
                 OFileUtils.getSizeAsString(runtime.maxMemory()), stgs, OFileUtils.getSizeAsString(diskCacheUsed),
                 OFileUtils.getSizeAsString(diskCacheTotal), OFileUtils.getSizeAsString(osUsedMem),
@@ -398,7 +398,10 @@ public abstract class OAbstractProfiler extends OSharedResourceAbstract
   }
 
   protected void installMemoryChecker() {
-    Orient.instance().scheduleTask(new MemoryChecker(), 120000, 120000);
+    final long memoryCheckInterval = OGlobalConfiguration.PROFILER_MEMORYCHECK_INTERVAL.getValueAsLong();
+
+    if (memoryCheckInterval > 0)
+      Orient.instance().scheduleTask(new MemoryChecker(), memoryCheckInterval, memoryCheckInterval);
   }
 
   /**

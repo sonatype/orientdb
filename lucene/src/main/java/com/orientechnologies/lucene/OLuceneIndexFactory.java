@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 Orient Technologies.
+ * Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,19 +17,19 @@
 package com.orientechnologies.lucene;
 
 import com.orientechnologies.common.log.OLogManager;
-import com.orientechnologies.lucene.engine.OLuceneIndexEngineDelegate;
+import com.orientechnologies.lucene.engine.OLuceneFullTextAllIndexEngine;
+import com.orientechnologies.lucene.engine.OLuceneFullTextIndexEngine;
 import com.orientechnologies.lucene.index.OLuceneFullTextIndex;
 import com.orientechnologies.orient.core.Orient;
-import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.db.ODatabaseInternal;
 import com.orientechnologies.orient.core.db.ODatabaseLifecycleListener;
 import com.orientechnologies.orient.core.exception.OConfigurationException;
-import com.orientechnologies.orient.core.index.OIndex;
 import com.orientechnologies.orient.core.index.OIndexEngine;
 import com.orientechnologies.orient.core.index.OIndexFactory;
 import com.orientechnologies.orient.core.index.OIndexInternal;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
 import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.core.storage.OStorage;
 import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
@@ -39,22 +39,26 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+import static com.orientechnologies.orient.core.metadata.schema.OClass.INDEX_TYPE.*;
+
 public class OLuceneIndexFactory implements OIndexFactory, ODatabaseLifecycleListener {
 
-  public static final String       LUCENE_ALGORITHM = "LUCENE";
+  public static final String LUCENE_ALGORITHM     = "LUCENE";
+  public static final String LUCENE_ALL_ALGORITHM = "LUCENE_ALL";
 
   private static final Set<String> TYPES;
   private static final Set<String> ALGORITHMS;
 
   static {
     final Set<String> types = new HashSet<String>();
-    types.add(OClass.INDEX_TYPE.FULLTEXT.toString());
+    types.add(FULLTEXT.toString());
     TYPES = Collections.unmodifiableSet(types);
   }
 
   static {
     final Set<String> algorithms = new HashSet<String>();
     algorithms.add(LUCENE_ALGORITHM);
+    algorithms.add(LUCENE_ALL_ALGORITHM);
     ALGORITHMS = Collections.unmodifiableSet(algorithms);
   }
 
@@ -84,26 +88,33 @@ public class OLuceneIndexFactory implements OIndexFactory, ODatabaseLifecycleLis
   }
 
   @Override
-  public OIndexInternal<?> createIndex(String name, ODatabaseDocumentInternal database, String indexType, String algorithm,
+  public OIndexInternal<?> createIndex(String name, OStorage storage, String indexType, String algorithm,
       String valueContainerAlgorithm, ODocument metadata, int version) throws OConfigurationException {
 
-    OAbstractPaginatedStorage storage = (OAbstractPaginatedStorage) database.getStorage().getUnderlying();
+    OAbstractPaginatedStorage pagStorage = (OAbstractPaginatedStorage) storage.getUnderlying();
 
     if (metadata == null)
       metadata = new ODocument().field("analyzer", StandardAnalyzer.class.getName());
 
-    if (OClass.INDEX_TYPE.FULLTEXT.toString().equals(indexType)) {
-      return new OLuceneFullTextIndex(name, indexType, LUCENE_ALGORITHM, version, storage, valueContainerAlgorithm, metadata);
-    }
+    if (FULLTEXT.toString().equalsIgnoreCase(indexType)) {
 
+      OLuceneFullTextIndex index = new OLuceneFullTextIndex(name, indexType, algorithm, version, pagStorage,
+          valueContainerAlgorithm, metadata);
+
+      return index;
+    }
     throw new OConfigurationException("Unsupported type : " + algorithm);
   }
 
   @Override
-  public OIndexEngine createIndexEngine(String algorithm, String name, Boolean durableInNonTxMode, OStorage storage, int version,
+  public OIndexEngine createIndexEngine(String algorithm, String indexName, Boolean durableInNonTxMode, OStorage storage,
+      int version,
       Map<String, String> engineProperties) {
 
-    return new OLuceneIndexEngineDelegate(name, durableInNonTxMode, storage, version);
+    if (LUCENE_ALL_ALGORITHM.equalsIgnoreCase(algorithm)) {
+      return new OLuceneFullTextAllIndexEngine(storage, indexName);
+    }
+    return new OLuceneFullTextIndexEngine(storage, indexName);
 
   }
 
@@ -113,37 +124,39 @@ public class OLuceneIndexFactory implements OIndexFactory, ODatabaseLifecycleLis
   }
 
   @Override
-  public void onCreate(ODatabaseInternal iDatabase) {
+  public void onCreate(ODatabaseInternal db) {
     OLogManager.instance().debug(this, "onCreate");
 
+    createCrossClassSearchIndex(db);
+
   }
 
   @Override
-  public void onOpen(ODatabaseInternal iDatabase) {
+  public void onOpen(ODatabaseInternal db) {
     OLogManager.instance().debug(this, "onOpen");
 
+    createCrossClassSearchIndex(db);
   }
 
   @Override
-  public void onClose(ODatabaseInternal iDatabase) {
+  public void onClose(ODatabaseInternal db) {
     OLogManager.instance().debug(this, "onClose");
   }
 
   @Override
-  public void onDrop(final ODatabaseInternal iDatabase) {
+  public void onDrop(final ODatabaseInternal db) {
     try {
-      if (iDatabase.isClosed())
+      if (db.isClosed())
         return;
 
       OLogManager.instance().debug(this, "Dropping Lucene indexes...");
-      for (OIndex idx : iDatabase.getMetadata().getIndexManager().getIndexes()) {
 
-        if (idx.getInternal() instanceof OLuceneFullTextIndex) {
-
-          OLogManager.instance().debug(this, "- index '%s'", idx.getName());
-          idx.delete();
-        }
-      }
+      db.getMetadata().getIndexManager().getIndexes().stream()
+          .filter(idx -> idx.getInternal() instanceof OLuceneFullTextIndex)
+          .forEach(idx -> {
+            OLogManager.instance().debug(this, "- index '%s'", idx.getName());
+            idx.delete();
+          });
 
     } catch (Exception e) {
       OLogManager.instance().warn(this, "Error on dropping Lucene indexes", e);
@@ -151,14 +164,24 @@ public class OLuceneIndexFactory implements OIndexFactory, ODatabaseLifecycleLis
   }
 
   @Override
-  public void onCreateClass(ODatabaseInternal iDatabase, OClass iClass) {
+  public void onCreateClass(ODatabaseInternal db, OClass oClass) {
   }
 
   @Override
-  public void onDropClass(ODatabaseInternal iDatabase, OClass iClass) {
+  public void onDropClass(ODatabaseInternal db, OClass oClass) {
   }
 
   @Override
   public void onLocalNodeConfigurationRequest(ODocument iConfiguration) {
+  }
+
+  private void createCrossClassSearchIndex(ODatabaseInternal db) {
+    if (!db.getMetadata().getIndexManager().existsIndex("CrossClassSearchIndex")) {
+
+      OLogManager.instance().debug(this, "creating cross class index");
+
+      db.command(new OCommandSQL(
+          "create index CrossClassSearchIndex FULLTEXT ENGINE LUCENE_ALL")).execute();
+    }
   }
 }

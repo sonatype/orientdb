@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.client.remote;
@@ -28,8 +28,8 @@ import com.orientechnologies.orient.core.storage.*;
 
 /**
  * Remote cluster implementation
- * 
- * @author Luca Garulli (l.garulli--at--orientechnologies.com)
+ *
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class OClusterRemote implements OCluster {
   private String name;
@@ -41,7 +41,7 @@ public class OClusterRemote implements OCluster {
    * @see com.orientechnologies.orient.core.storage.OCluster#configure(com.orientechnologies.orient.core.storage.OStorage, int,
    * java.lang.String, java.lang.String, int, java.lang.Object[])
    */
-  public void configure(OStorage iStorage, int iId, String iClusterName, Object... iParameters) throws IOException {
+  public void configure(OStorage iStorage, int iId, String iClusterName, Object... iParameters) {
     id = iId;
     name = iClusterName;
   }
@@ -108,7 +108,7 @@ public class OClusterRemote implements OCluster {
   }
 
   @Override
-  public ORawBuffer readRecord(long clusterPosition) throws IOException {
+  public ORawBuffer readRecord(long clusterPosition, boolean prefetchRecords) throws IOException {
     throw new UnsupportedOperationException("readRecord");
   }
 
@@ -227,6 +227,11 @@ public class OClusterRemote implements OCluster {
   @Override
   public float recordOverflowGrowFactor() {
     throw new UnsupportedOperationException("recordOverflowGrowFactor()");
+  }
+
+  @Override
+  public String compression() {
+    throw new UnsupportedOperationException("compression()");
   }
 
   @Override

@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,16 +14,14 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.storage.cache.local;
 
 import com.orientechnologies.common.collection.closabledictionary.OClosableEntry;
 import com.orientechnologies.common.collection.closabledictionary.OClosableLinkedContainer;
-import com.orientechnologies.common.concur.lock.OInterruptedException;
-import com.orientechnologies.common.concur.lock.OPartitionedLockManager;
-import com.orientechnologies.common.concur.lock.OReadersWriterSpinLock;
+import com.orientechnologies.common.concur.lock.*;
 import com.orientechnologies.common.directmemory.OByteBufferPool;
 import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.log.OLogManager;
@@ -63,7 +61,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.zip.CRC32;
 
 /**
- * @author Andrey Lomakin
+ * @author Andrey Lomakin (a.lomakin-at-orientdb.com)
  * @since 7/23/13
  */
 public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCachePointer.WritersListener {
@@ -104,7 +102,8 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
   private final OWriteAheadLog            writeAheadLog;
   private final AtomicLong amountOfNewPagesAdded = new AtomicLong();
 
-  private final OPartitionedLockManager<PageKey> lockManager = new OPartitionedLockManager<PageKey>();
+  private final OLockManager<PageKey> lockManager = new OPartitionedLockManager<PageKey>();
+
   private final OLocalPaginatedStorage storageLocal;
   private final OReadersWriterSpinLock filesLock = new OReadersWriterSpinLock();
   private final ScheduledExecutorService commitExecutor;
@@ -293,6 +292,10 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
       final File storageDir = new File(storagePath);
 
       final long freeSpace = storageDir.getFreeSpace();
+      //we work with virtual devices which have "unlimited" amount of free space
+      if (freeSpace < 0) {
+        return;
+      }
 
       if (freeSpace < freeSpaceLimit)
         callLowSpaceListeners(new OLowDiskSpaceInformation(freeSpace, freeSpaceLimit));
@@ -502,6 +505,10 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
     final File storageDir = new File(storagePath);
 
     final long freeSpace = storageDir.getFreeSpace();
+    //system has unlimited amount of free space
+    if (freeSpace < 0)
+      return true;
+
     return freeSpace < freeSpaceLimit;
   }
 
@@ -580,7 +587,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
 
         pageGroup.recencyBit = true;
       } finally {
-        lockManager.releaseLock(groupLock);
+        lockManager.releaseExclusiveLock(pageKey);
       }
 
       if (exclusiveWriteCacheSize.sum() > writeCacheMaxSize) {
@@ -1526,7 +1533,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
             result = pageKey;
           }
         } finally {
-          lockManager.releaseLock(lock);
+          lockManager.releaseExclusiveLock(pageKey);
         }
       }
 
@@ -1549,7 +1556,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
             result = pageKey;
           }
         } finally {
-          lockManager.releaseLock(lock);
+          lockManager.releaseExclusiveLock(pageKey);
         }
       }
 
@@ -1626,7 +1633,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
             writeCachePages.remove(entry);
           }
         } finally {
-          lockManager.releaseLock(groupLock);
+          lockManager.releaseExclusiveLock(entry);
         }
 
         lastWritePageKey = entry;
@@ -1702,7 +1709,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
             entriesIterator.remove();
           }
         } finally {
-          lockManager.releaseLock(groupLock);
+          lockManager.releaseExclusiveLock(entry.getKey());
         }
 
         lastPageKey = pageKey;
@@ -1774,7 +1781,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
 
     private OLogSequenceNumber findMinLsn(OLogSequenceNumber minLsn, ConcurrentSkipListMap<PageKey, PageGroup> ring) {
       for (Map.Entry<PageKey, PageGroup> entry : ring.entrySet()) {
-        final Lock groupLock = lockManager.acquireExclusiveLock(entry.getKey());
+        lockManager.acquireExclusiveLock(entry.getKey());
         try {
           PageGroup group = entry.getValue();
           final OCachePointer pagePointer = group.page;
@@ -1784,7 +1791,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
             }
           }
         } finally {
-          lockManager.releaseLock(groupLock);
+          lockManager.releaseExclusiveLock(entry.getKey());
         }
       }
       return minLsn;
@@ -1849,7 +1856,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
           entryIterator.remove();
 
         } finally {
-          lockManager.releaseLock(groupLock);
+          lockManager.releaseExclusiveLock(pageKey);
         }
       }
     }
@@ -1894,7 +1901,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
 
           entryIterator.remove();
         } finally {
-          lockManager.releaseLock(groupLock);
+          lockManager.releaseExclusiveLock(pageKey);
         }
       }
     }

@@ -2,6 +2,7 @@ package com.orientechnologies.orient.core.storage.impl.local.paginated;
 
 import com.orientechnologies.common.concur.lock.OOneEntryPerKeyLockManager;
 import com.orientechnologies.common.io.OFileUtils;
+import com.orientechnologies.orient.client.remote.OServerAdmin;
 import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.id.ORecordId;
@@ -30,7 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * @author Andrey Lomakin
+ * @author Andrey Lomakin (a.lomakin-at-orientdb.com)
  * @since 6/24/13
  */
 public class LocalPaginatedStorageUpdateCrashRestoreIT {
@@ -46,19 +47,6 @@ public class LocalPaginatedStorageUpdateCrashRestoreIT {
   private Process process;
 
   public void spawnServer() throws Exception {
-    String buildDirectory = System.getProperty("buildDirectory", ".");
-    buildDirectory += "/localPaginatedStorageUpdateCrashRestore";
-
-    buildDir = new File(buildDirectory);
-
-    buildDirectory = buildDir.getCanonicalPath();
-    buildDir = new File(buildDirectory);
-
-    if (buildDir.exists())
-      OFileUtils.deleteFolderIfEmpty(buildDir);
-
-    buildDir.mkdir();
-
     final File mutexFile = new File(buildDir, "mutex.ct");
     final RandomAccessFile mutex = new RandomAccessFile(mutexFile, "rw");
     mutex.seek(0);
@@ -67,14 +55,14 @@ public class LocalPaginatedStorageUpdateCrashRestoreIT {
     String javaExec = System.getProperty("java.home") + "/bin/java";
     javaExec = (new File(javaExec)).getCanonicalPath();
 
-    System.setProperty("ORIENTDB_HOME", buildDirectory);
+    System.setProperty("ORIENTDB_HOME", buildDir.getCanonicalPath());
 
-    ProcessBuilder processBuilder = new ProcessBuilder(javaExec, "-Xmx2048m", "-XX:MaxDirectMemorySize=512g", "-classpath", System.getProperty("java.class.path"),
-        "-DORIENTDB_HOME=" + buildDirectory, "-DmutexFile=" + mutexFile.getCanonicalPath(), RemoteDBRunner.class.getName());
+    ProcessBuilder processBuilder = new ProcessBuilder(javaExec, "-Xmx4096m", "-XX:MaxDirectMemorySize=512g", "-classpath",
+        System.getProperty("java.class.path"), "-DORIENTDB_HOME=" + buildDir.getCanonicalPath(),
+        "-DmutexFile=" + mutexFile.getCanonicalPath(), RemoteDBRunner.class.getName());
     processBuilder.inheritIO();
 
     process = processBuilder.start();
-
 
     System.out.println(LocalPaginatedStorageUpdateCrashRestoreIT.class.getSimpleName() + ": Wait for server start");
     boolean started = false;
@@ -102,7 +90,19 @@ public class LocalPaginatedStorageUpdateCrashRestoreIT {
 
   @Before
   public void beforeMethod() throws Exception {
-    spawnServer();
+    String buildDirectory = System.getProperty("buildDirectory", ".");
+    buildDirectory += "/localPaginatedStorageUpdateCrashRestore";
+
+    buildDir = new File(buildDirectory);
+
+    buildDirectory = buildDir.getCanonicalPath();
+    buildDir = new File(buildDirectory);
+
+    if (buildDir.exists())
+      OFileUtils.deleteRecursively(buildDir);
+
+    buildDir.mkdir();
+
     baseDocumentTx = new ODatabaseDocumentTx(
         "plocal:" + buildDir.getAbsolutePath() + "/baseLocalPaginatedStorageUpdateCrashRestore");
     if (baseDocumentTx.exists()) {
@@ -111,6 +111,13 @@ public class LocalPaginatedStorageUpdateCrashRestoreIT {
     }
 
     baseDocumentTx.create();
+
+    spawnServer();
+
+    final OServerAdmin serverAdmin = new OServerAdmin("remote:localhost:3500");
+    serverAdmin.connect("root", "root");
+    serverAdmin.createDatabase("testLocalPaginatedStorageUpdateCrashRestore", "graph", "plocal");
+    serverAdmin.close();
 
     testDocumentTx = new ODatabaseDocumentTx("remote:localhost:3500/testLocalPaginatedStorageUpdateCrashRestore");
     testDocumentTx.open("admin", "admin");
@@ -153,7 +160,7 @@ public class LocalPaginatedStorageUpdateCrashRestoreIT {
     System.out.println("Documents update was stopped.");
 
     testDocumentTx = new ODatabaseDocumentTx(
-        "plocal:" + buildDir.getAbsolutePath() + "/testLocalPaginatedStorageUpdateCrashRestore");
+        "plocal:" + new File(new File(buildDir, "databases"), "testLocalPaginatedStorageUpdateCrashRestore").getCanonicalPath());
 
     long startRestoreTime = System.currentTimeMillis();
     testDocumentTx.open("admin", "admin");
@@ -228,7 +235,7 @@ public class LocalPaginatedStorageUpdateCrashRestoreIT {
       final ORecordId rid = new ORecordId(clusterId);
 
       for (OPhysicalPosition physicalPosition : physicalPositions) {
-        rid.clusterPosition = physicalPosition.clusterPosition;
+        rid.setClusterPosition(physicalPosition.clusterPosition);
 
         baseDocumentTx.activateOnCurrentThread();
         ODocument baseDocument = baseDocumentTx.load(rid);

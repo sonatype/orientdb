@@ -78,6 +78,10 @@ public class OMethodCall extends SimpleNode {
         paramValues.add(expr.execute((OIdentifiable) val, ctx));
       } else if (val instanceof OResult) {
         paramValues.add(expr.execute((OResult) val, ctx));
+      } else if (targetObjects instanceof OIdentifiable) {
+        paramValues.add(expr.execute((OIdentifiable) targetObjects, ctx));
+      } else if (targetObjects instanceof OResult) {
+        paramValues.add(expr.execute((OResult) targetObjects, ctx));
       } else {
         throw new OCommandExecutionException("Invalild value for $current: " + val);
       }
@@ -85,11 +89,22 @@ public class OMethodCall extends SimpleNode {
     if (graphMethods.contains(name)) {
       OSQLFunction function = OSQLEngine.getInstance().getFunction(name);
       if (function instanceof OSQLFunctionFiltered) {
+        Object current = ctx.getVariable("$current");
+        if(current instanceof OResult){
+          current = ((OResult) current).getElement().orElse(null);
+        }
         return ((OSQLFunctionFiltered) function)
-            .execute(targetObjects, (OIdentifiable) ctx.getVariable("$current"), null, paramValues.toArray(), iPossibleResults,
+            .execute(targetObjects, (OIdentifiable) current, null, paramValues.toArray(), iPossibleResults,
                 ctx);
       } else {
-        return function.execute(targetObjects, (OIdentifiable) ctx.getVariable("$current"), null, paramValues.toArray(), ctx);
+        Object current = ctx.getVariable("$current");
+        if(current instanceof OIdentifiable) {
+          return function.execute(targetObjects, (OIdentifiable) current, null, paramValues.toArray(), ctx);
+        }else if(current instanceof OResult){
+          return function.execute(targetObjects,((OResult) current).getElement().orElse(null), null, paramValues.toArray(), ctx);
+        } else {
+          return function.execute(targetObjects, null, null, paramValues.toArray(), ctx);
+        }
       }
 
     }
@@ -97,7 +112,7 @@ public class OMethodCall extends SimpleNode {
     if (method != null) {
       Object val = ctx.getVariable("$current");
       if (val instanceof OResult) {
-        val = ((OResult) val).getElement();
+        val = ((OResult) val).getElement().orElse(null);
       }
       return method.execute(targetObjects, (OIdentifiable) val, ctx, targetObjects, paramValues.toArray());
     }

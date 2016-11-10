@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.db;
@@ -71,7 +71,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * available. If total amount of connection is set to value 0 or less it means that there is no connection limit.
  * </p>
  *
- * @author Andrey Lomakin (a.lomakin-at-orientechnologies.com)
+ * @author Andrey Lomakin (a.lomakin-at-orientdb.com)
  * @since 06/11/14
  */
 public class OPartitionedDatabasePool extends OOrientListenerAbstract implements OPool<ODatabaseDocument> {
@@ -90,6 +90,7 @@ public class OPartitionedDatabasePool extends OOrientListenerAbstract implements
   private volatile PoolPartition[] partitions;
   private volatile boolean closed     = false;
   private          boolean autoCreate = false;
+
 
   public OPartitionedDatabasePool(String url, String userName, String password) {
     this(url, userName, password, Runtime.getRuntime().availableProcessors(), -1);
@@ -256,6 +257,8 @@ public class OPartitionedDatabasePool extends OOrientListenerAbstract implements
               return newDb;
             }
           } else {
+            properties.entrySet().forEach(p -> db.setProperty(p.getKey(), p.getValue()));
+
             openDatabase(db);
             db.partition = partition;
             partition.acquiredConnections.incrementAndGet();
@@ -264,7 +267,6 @@ public class OPartitionedDatabasePool extends OOrientListenerAbstract implements
             data.acquiredDatabase = db;
 
             acquired = true;
-            properties.entrySet().forEach(p -> db.setProperty(p.getKey(), p.getValue()));
 
             return db;
           }
@@ -331,10 +333,12 @@ public class OPartitionedDatabasePool extends OOrientListenerAbstract implements
 
       while (!queue.isEmpty()) {
         DatabaseDocumentTxPooled db = queue.poll();
-        db.activateOnCurrentThread();
-        OStorage storage = db.getStorage();
-        storage.close();
-        ODatabaseRecordThreadLocal.INSTANCE.remove();
+        if (!db.isClosed()) {
+          db.activateOnCurrentThread();
+          OStorage storage = db.getStorage();
+          storage.close();
+          ODatabaseRecordThreadLocal.INSTANCE.remove();
+        }
       }
     }
 
@@ -411,7 +415,7 @@ public class OPartitionedDatabasePool extends OOrientListenerAbstract implements
     private PoolPartition partition;
 
     private DatabaseDocumentTxPooled(String iURL) {
-      super(iURL, true, false);
+      super(iURL, false);
     }
 
     @Override

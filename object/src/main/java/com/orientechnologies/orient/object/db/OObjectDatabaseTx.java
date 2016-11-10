@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.object.db;
@@ -23,7 +23,6 @@ import com.orientechnologies.common.collection.OMultiValue;
 import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.util.OCommonConst;
-import com.orientechnologies.orient.core.OUncompletedCommit;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.conflict.ORecordConflictStrategy;
@@ -41,11 +40,15 @@ import com.orientechnologies.orient.core.exception.OTransactionException;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.id.ORecordId;
 import com.orientechnologies.orient.core.metadata.OMetadataInternal;
+import com.orientechnologies.orient.core.metadata.schema.OClass;
 import com.orientechnologies.orient.core.metadata.security.ORole;
 import com.orientechnologies.orient.core.metadata.security.ORule;
 import com.orientechnologies.orient.core.metadata.security.OToken;
 import com.orientechnologies.orient.core.metadata.security.OUser;
+import com.orientechnologies.orient.core.record.OEdge;
+import com.orientechnologies.orient.core.record.OElement;
 import com.orientechnologies.orient.core.record.ORecord;
+import com.orientechnologies.orient.core.record.OVertex;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.serialization.serializer.record.OSerializationThreadLocal;
 import com.orientechnologies.orient.core.storage.ORecordCallback;
@@ -594,17 +597,6 @@ public class OObjectDatabaseTx extends ODatabasePojoAbstract<Object> implements 
   }
 
   @Override
-  public OUncompletedCommit<Void> initiateCommit() {
-    return initiateCommit(false);
-  }
-
-  @Override
-  public OUncompletedCommit<Void> initiateCommit(boolean force) {
-    final OUncompletedCommit<Void> nestedCommit = underlying.initiateCommit(force);
-    return new UncompletedCommit(getTransaction().amountOfNestedTxs() == 0, nestedCommit);
-  }
-
-  @Override
   public ODatabasePojoAbstract<Object> rollback() {
     return rollback(false);
   }
@@ -897,66 +889,33 @@ public class OObjectDatabaseTx extends ODatabasePojoAbstract<Object> implements 
     return getUnderlying().getBlobClusterIds();
   }
 
-  private class UncompletedCommit implements OUncompletedCommit<Void> {
-    private final boolean                  topLevel;
-    private final OUncompletedCommit<Void> nestedCommit;
+  @Override public OElement newElement() {
+    return underlying.newElement();
+  }
 
-    public UncompletedCommit(boolean topLevel, OUncompletedCommit<Void> nestedCommit) {
-      this.topLevel = topLevel;
-      this.nestedCommit = nestedCommit;
-    }
+  @Override public OElement newElement(String className) {
+    return underlying.newElement(className);
+  }
 
-    @Override
-    public Void complete() {
-      nestedCommit.complete();
+  @Override public OEdge newEdge(OVertex from, OVertex to, OClass type) {
+    return getUnderlying().newEdge(from, to, type);
+  }
 
-      if (!topLevel)
-        return null;
+  @Override public OEdge newEdge(OVertex from, OVertex to, String type) {
+    return getUnderlying().newEdge(from, to, type);
+  }
 
-      if (getTransaction().getAllRecordEntries() != null) {
-        // UPDATE ID & VERSION FOR ALL THE RECORDS
-        Object pojo = null;
-        for (ORecordOperation entry : getTransaction().getAllRecordEntries()) {
-          switch (entry.type) {
-          case ORecordOperation.CREATED:
-          case ORecordOperation.UPDATED:
-            break;
+  @Override public OVertex newVertex(OClass type) {
+    return getUnderlying().newVertex(type);
+  }
 
-          case ORecordOperation.DELETED:
-            final ORecord rec = entry.getRecord();
-            if (rec instanceof ODocument)
-              unregisterPojo(pojo, (ODocument) rec);
-            break;
-          }
-        }
-      }
-
-      return null;
-    }
-
-    @Override
-    public void rollback() {
-      nestedCommit.rollback();
-
-      if (!topLevel)
-        return;
-
-      // COPY ALL TX ENTRIES
-      final List<ORecordOperation> newEntries;
-      if (getTransaction().getAllRecordEntries() != null) {
-        newEntries = new ArrayList<ORecordOperation>();
-        for (ORecordOperation entry : getTransaction().getAllRecordEntries())
-          if (entry.type == ORecordOperation.CREATED)
-            newEntries.add(entry);
-      } else
-        newEntries = null;
-    }
+  @Override public OVertex newVertex(String type) {
+    return getUnderlying().newVertex(type);
   }
 
   @Override
   public OSharedContext getSharedContext() {
     return underlying.getSharedContext();
   }
-
 
 }

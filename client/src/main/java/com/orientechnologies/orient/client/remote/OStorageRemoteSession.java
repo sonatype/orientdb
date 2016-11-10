@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,12 +14,11 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.client.remote;
 
-import com.orientechnologies.orient.core.db.ODatabaseSessionMetadata;
 import com.orientechnologies.orient.enterprise.channel.binary.OChannelBinary;
 
 import java.util.*;
@@ -27,8 +26,8 @@ import java.util.*;
 /**
  * Created by tglman on 31/03/16.
  */
-public class OStorageRemoteSession implements ODatabaseSessionMetadata {
-  boolean                                commandExecuting       = false;
+public class OStorageRemoteSession {
+  public boolean                         commandExecuting       = false;
   int                                    serverURLIndex         = -1;
   String                                 connectionUserName     = null;
   String                                 connectionUserPassword = null;

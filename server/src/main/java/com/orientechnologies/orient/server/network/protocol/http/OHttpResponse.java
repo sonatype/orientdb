@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.server.network.protocol.http;
@@ -32,18 +32,20 @@ import com.orientechnologies.orient.server.OClientConnection;
 import java.io.*;
 import java.net.Socket;
 import java.nio.charset.Charset;
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.zip.GZIPOutputStream;
 
 /**
  * Maintains information about current HTTP response.
  *
- * @author Luca Garulli
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class OHttpResponse {
   public static final String   JSON_FORMAT       = "type,indent:-1,rid,version,attribSameRow,class,keepTypes,alwaysFetchEmbeddedDocuments";
   public static final char[]   URL_SEPARATOR     = { '/' };
   private static final Charset utf8              = Charset.forName("utf8");
+  
   public final String          httpVersion;
   private final OutputStream   out;
   public String                headers;
@@ -145,8 +147,13 @@ public class OHttpResponse {
     if (headers != null) {
       writeLine(headers);
     }
+    
+    // Set up a date formatter that prints the date in the Http-date format as
+    // per RFC 7231, section 7.1.1.1
+    SimpleDateFormat sdf = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz");
+    sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
 
-    writeLine("Date: " + new Date());
+    writeLine("Date: " + sdf.format(new Date()));
     writeLine("Content-Type: " + iContentType + "; charset=" + characterSet);
     writeLine("Server: " + serverInfo);
     writeLine("Connection: " + (iKeepAlive ? "Keep-Alive" : "close"));
@@ -321,7 +328,7 @@ public class OHttpResponse {
         iFormat = JSON_FORMAT + "," + iFormat;
 
       final String sendFormat = iFormat;
-      if (streaming) {
+      if (streaming ) {
         sendStream(OHttpUtils.STATUS_OK_CODE, "OK", OHttpUtils.CONTENT_JSON, null, new OCallable<Void, OChunkedResponse>() {
           @Override
           public Void call(OChunkedResponse iArgument) {
@@ -600,4 +607,8 @@ public class OHttpResponse {
     return "" + key;
   }
 
+  public void setStreaming(boolean streaming) {
+    this.streaming = streaming;
+  }
+  
 }

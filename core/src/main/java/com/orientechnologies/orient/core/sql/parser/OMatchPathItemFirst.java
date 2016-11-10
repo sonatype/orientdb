@@ -7,7 +7,7 @@ import java.util.Collections;
 import java.util.Map;
 
 /**
- * @author Luigi Dell'Aquila
+ * @author Luigi Dell'Aquila (l.dellaquila-(at)-orientdb.com)
  */
 public class OMatchPathItemFirst extends OMatchPathItem {
   protected OFunctionCall function;
@@ -60,5 +60,13 @@ public class OMatchPathItemFirst extends OMatchPathItem {
     int result = super.hashCode();
     result = 31 * result + (function != null ? function.hashCode() : 0);
     return result;
+  }
+
+  public OFunctionCall getFunction() {
+    return function;
+  }
+
+  public void setFunction(OFunctionCall function) {
+    this.function = function;
   }
 }

@@ -10,7 +10,7 @@ import org.junit.Test;
 import java.util.List;
 
 /**
- * @author Luigi Dell'Aquila
+ * @author Luigi Dell'Aquila (l.dellaquila-(at)-orientdb.com)
  */
 public class OCreateLinkStatementExecutionTest {
   static ODatabaseDocument db;
@@ -87,12 +87,5 @@ public class OCreateLinkStatementExecutionTest {
   }
 
 
-  private void printExecutionPlan(String query, OTodoResultSet result) {
-    if (query != null) {
-      System.out.println(query);
-    }
-    result.getExecutionPlan().ifPresent(x -> System.out.println(x.prettyPrint(0, 3)));
-    System.out.println();
-  }
 
 }

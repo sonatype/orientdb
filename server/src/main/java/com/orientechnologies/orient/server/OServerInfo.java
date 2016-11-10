@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,19 +14,10 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.server;
-
-import com.orientechnologies.orient.core.Orient;
-import com.orientechnologies.orient.core.config.OGlobalConfiguration;
-import com.orientechnologies.orient.core.db.OPartitionedDatabasePool;
-import com.orientechnologies.orient.core.serialization.serializer.OJSONWriter;
-import com.orientechnologies.orient.core.storage.OStorage;
-import com.orientechnologies.orient.core.storage.impl.local.paginated.OLocalPaginatedStorage;
-import com.orientechnologies.orient.server.config.OServerEntryConfiguration;
-import com.orientechnologies.orient.server.network.protocol.ONetworkProtocolData;
 
 import java.io.IOException;
 import java.io.StringWriter;
@@ -36,10 +27,19 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 
+import com.orientechnologies.orient.core.config.OGlobalConfiguration;
+import com.orientechnologies.orient.core.db.OPartitionedDatabasePool;
+import com.orientechnologies.orient.core.index.OIndexException;
+import com.orientechnologies.orient.core.serialization.serializer.OJSONWriter;
+import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
+import com.orientechnologies.orient.core.storage.impl.local.paginated.OLocalPaginatedStorage;
+import com.orientechnologies.orient.server.config.OServerEntryConfiguration;
+import com.orientechnologies.orient.server.network.protocol.ONetworkProtocolData;
+
 /**
  * Returns information about the server.
  * 
- * @author Luca Garulli
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class OServerInfo {
   public static String getServerInfo(final OServer server) throws IOException {
@@ -90,8 +90,9 @@ public class OServerInfo {
       }
       json.beginObject(2);
       writeField(json, 2, "connectionId", c.getId());
-      writeField(json, 2, "remoteAddress", c.getProtocol().getChannel() != null ? c.getProtocol().getChannel().toString() : "Disconnected");
-      writeField(json, 2, "db", lastDatabase!= null ? lastDatabase : "-");
+      writeField(json, 2, "remoteAddress",
+          c.getProtocol().getChannel() != null ? c.getProtocol().getChannel().toString() : "Disconnected");
+      writeField(json, 2, "db", lastDatabase != null ? lastDatabase : "-");
       writeField(json, 2, "user", lastUser != null ? lastUser : "-");
       writeField(json, 2, "totalRequests", stats.totalRequests);
       writeField(json, 2, "commandInfo", data.commandInfo);
@@ -154,8 +155,8 @@ public class OServerInfo {
 
   public static void getStorages(final OServer server, final OJSONWriter json) throws IOException {
     json.beginCollection(1, true, "storages");
-    Collection<OStorage> storages = Orient.instance().getStorages();
-    for (OStorage s : storages) {
+    Collection<OAbstractPaginatedStorage> storages = server.getDatabases().getStorages();
+    for (OAbstractPaginatedStorage s : storages) {
       json.beginObject(2);
       writeField(json, 2, "name", s.getName());
       writeField(json, 2, "type", s.getClass().getSimpleName());
@@ -180,8 +181,8 @@ public class OServerInfo {
     json.endCollection(1, false);
   }
 
-  private static void writeField(final OJSONWriter json, final int iLevel, final String iAttributeName, final Object iAttributeValue)
-      throws IOException {
+  private static void writeField(final OJSONWriter json, final int iLevel, final String iAttributeName,
+      final Object iAttributeValue) throws IOException {
     json.writeAttribute(iLevel, true, iAttributeName, iAttributeValue != null ? iAttributeValue.toString() : "-");
   }
 }

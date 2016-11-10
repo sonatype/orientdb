@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.server;
@@ -22,8 +22,9 @@ package com.orientechnologies.orient.server;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.orient.client.binary.OChannelBinaryAsynchClient;
 import com.orientechnologies.orient.client.binary.OChannelBinaryAsynchClientSynch;
+import com.orientechnologies.orient.client.remote.OBinaryRequest;
+import com.orientechnologies.orient.client.remote.message.OShutdownRequest;
 import com.orientechnologies.orient.core.config.OContextConfiguration;
-import com.orientechnologies.orient.enterprise.channel.binary.OChannelBinaryProtocol;
 import com.orientechnologies.orient.enterprise.channel.binary.ONetworkProtocolException;
 import com.orientechnologies.orient.server.config.OServerConfiguration;
 import com.orientechnologies.orient.server.network.OServerNetworkListener;
@@ -34,16 +35,16 @@ import java.util.Arrays;
 /**
  * Sends a shutdown command to the server.
  *
- * @author Luca Garulli (l.garulli--at--orientechnologies.com)
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class OServerShutdownMain {
   public String                     networkAddress;
   public int[]                      networkPort;
   public OChannelBinaryAsynchClient channel;
 
-  private OContextConfiguration contextConfig;
-  private String                rootUser;
-  private String                rootPassword;
+  private OContextConfiguration     contextConfig;
+  private String                    rootUser;
+  private String                    rootPassword;
 
   public OServerShutdownMain(final String iServerAddress, final String iServerPorts, final String iRootUser,
       final String iRootPassword) {
@@ -71,10 +72,10 @@ public class OServerShutdownMain {
       throw new ONetworkProtocolException(
           "Cannot connect to server host '" + networkAddress + "', ports: " + Arrays.toString(networkPort));
 
-    channel.writeByte(OChannelBinaryProtocol.REQUEST_SHUTDOWN);
+    OShutdownRequest request = new OShutdownRequest(rootUser, rootPassword);
+    channel.writeByte(request.getCommand());
     channel.writeInt(0);
-    channel.writeString(rootUser);
-    channel.writeString(rootPassword);
+    request.write(channel, null);
     channel.flush();
 
     channel.beginResponse(0, false);

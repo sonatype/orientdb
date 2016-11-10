@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2013 Luca Garulli (l.garulli--at--orientechnologies.com)
+ * Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,12 @@
  */
 package com.orientechnologies.orient.server.distributed;
 
+import com.orientechnologies.orient.core.exception.ODatabaseException;
+import org.junit.Assert;
 import org.junit.Test;
 
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
+import com.orientechnologies.orient.server.hazelcast.OHazelcastPlugin;
 
 /**
  * Distributed test on drop + recreate database.
@@ -37,25 +40,45 @@ public class DistributedDbDropAndReCreateTest extends AbstractServerClusterTxTes
   protected void onAfterExecution() throws Exception {
     int s = 0;
     do {
-      for (ServerRun server : serverInstance) {
-        final ODatabaseDocumentTx db = new ODatabaseDocumentTx(getDatabaseURL(server));
-        db.open("admin", "admin");
+      ServerRun server = serverInstance.get(0);
+      ODatabaseDocumentTx db = new ODatabaseDocumentTx(getDatabaseURL(server));
+      db.open("admin", "admin");
 
-        banner("DROPPING DATABASE ON SERVER " + server.getServerId());
-        db.drop();
-      }
-
-      ServerRun server = serverInstance.get(s);
-
-      banner("RE-CREATING DATABASE ON SERVER " + server.getServerId());
-
-      final ODatabaseDocumentTx db = new ODatabaseDocumentTx(getDatabaseURL(server));
-      db.create();
-      db.close();
+      banner("DROPPING DATABASE ON SERVERS");
+      db.drop();
 
       Thread.sleep(2000);
 
+      Assert.assertFalse(server.getServerInstance().getDistributedManager().getConfigurationMap()
+          .containsKey(OHazelcastPlugin.CONFIG_DATABASE_PREFIX + getDatabaseName()));
+
+      server = serverInstance.get(s);
+
+      banner("RE-CREATING DATABASE ON SERVER " + server.getServerId());
+
+      db = new ODatabaseDocumentTx(getDatabaseURL(server));
+
+      Assert.assertFalse(server.getServerInstance().getDistributedManager().getConfigurationMap()
+          .containsKey(OHazelcastPlugin.CONFIG_DATABASE_PREFIX + getDatabaseName()));
+
+      for (int retry = 0; retry < 10; retry++) {
+        try {
+          db.create();
+          break;
+        } catch (ODatabaseException e) {
+          System.out.println("DB STILL IN THE CLUSTER, WAIT AND RETRY (retry " + retry + ")...");
+          Thread.sleep(1000);
+        }
+      }
+
+      db.close();
+
     } while (++s < serverInstance.size());
+
+    // DROP LAST DATABASE
+    final ODatabaseDocumentTx db = new ODatabaseDocumentTx(getDatabaseURL(serverInstance.get(serverInstance.size() - 1)));
+    db.open("admin", "admin");
+    db.drop();
   }
 
   protected String getDatabaseURL(final ServerRun server) {
@@ -64,6 +87,6 @@ public class DistributedDbDropAndReCreateTest extends AbstractServerClusterTxTes
 
   @Override
   public String getDatabaseName() {
-    return "distributed-dropnocreatedb";
+    return "distributed-DistributedDbDropAndReCreateTest";
   }
 }

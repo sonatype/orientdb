@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Created by frank on 17/06/2016.
@@ -83,14 +84,20 @@ public class OETLProcessorConfigurator {
 
       OExtractor extractor = configureExtractor(cfg, context);
 
+      //copy  the skipDuplicates flag from vertex trensformer to Loader
+      Optional.ofNullable(cfg.<Collection<ODocument>>field("transformers"))
+          .map(c -> c.stream()
+              .filter(d -> d.containsField("vertex"))
+              .map(d -> d.<ODocument>field("vertex"))
+              .filter(d -> d.containsField("skipDuplicates"))
+              .map(d -> d.field("skipDuplicates"))
+              .map(skip -> cfg.<ODocument>field("loader")
+                  .<ODocument>field(cfg.<ODocument>field("loader").fieldNames()[0])
+                  .field("skipDuplicates", skip))
+              .count());
+
       OLoader loader = configureLoader(cfg, context);
 
-      //projecting cluster info to transformers
-      if (cfg.<ODocument>field("loader").containsField("cluster")) {
-        for (ODocument aTransformer : cfg.<Collection<ODocument>>field("transformers")) {
-          aTransformer.field("cluster", cfg.<ODocument>field("loader").<String>field("cluster"));
-        }
-      }
       List<OTransformer> transformers = configureTransformers(cfg, context);
 
       List<OBlock> endBlocks = configureEndBlocks(cfg, context);
@@ -100,16 +107,18 @@ public class OETLProcessorConfigurator {
 
       OETLProcessor processor = new OETLProcessor(beginBlocks, source, extractor, transformers, loader, endBlocks, context);
 
-      List<OETLComponent> components = new ArrayList<OETLComponent>();
-      components.add(source);
-      components.addAll(transformers);
-      components.addAll(beginBlocks);
-      components.addAll(endBlocks);
-      components.add(loader);
-      components.add(extractor);
-      for (OETLComponent component : components) {
-        component.setProcessor(processor);
-      }
+      List<OETLComponent> components = new ArrayList<OETLComponent>() {{
+        add(source);
+        addAll(transformers);
+        addAll(beginBlocks);
+        addAll(endBlocks);
+        add(loader);
+        add(extractor);
+      }};
+
+      components.stream()
+          .forEach(c -> c.setProcessor(processor));
+
       return processor;
     } catch (Exception e) {
       throw OException.wrapException(new OConfigurationException("Error on creating ETL processor"), e);

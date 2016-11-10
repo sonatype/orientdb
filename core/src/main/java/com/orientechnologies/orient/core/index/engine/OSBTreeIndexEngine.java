@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 
@@ -35,7 +35,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * @author Andrey Lomakin
+ * @author Andrey Lomakin (a.lomakin-at-orientdb.com)
  * @since 8/30/13
  */
 public class OSBTreeIndexEngine implements OIndexEngine {
@@ -163,6 +163,12 @@ public class OSBTreeIndexEngine implements OIndexEngine {
     sbTree.put(key, value);
   }
 
+  @SuppressWarnings("unchecked")
+  @Override
+  public boolean validatedPut(Object key, OIdentifiable value, Validator<Object, OIdentifiable> validator) {
+    return sbTree.validatedPut(key, value, (Validator) validator);
+  }
+
   @Override
   public Object getFirstKey() {
     return sbTree.firstKey();
@@ -196,12 +202,19 @@ public class OSBTreeIndexEngine implements OIndexEngine {
     if (transformer == null)
       return sbTree.size();
     else {
+      int counter = 0;
+
+      if (sbTree.isNullPointerSupport()) {
+        final Object nullValue = sbTree.get(null);
+        if (nullValue != null) {
+          counter += transformer.transformFromValue(nullValue).size();
+        }
+      }
+
       final Object firstKey = sbTree.firstKey();
       final Object lastKey = sbTree.lastKey();
 
       if (firstKey != null && lastKey != null) {
-        int counter = 0;
-
         final OSBTree.OSBTreeCursor<Object, Object> cursor = sbTree.iterateEntriesBetween(firstKey, true, lastKey, true, true);
         Map.Entry<Object, Object> entry = cursor.next(-1);
         while (entry != null) {
@@ -212,7 +225,7 @@ public class OSBTreeIndexEngine implements OIndexEngine {
         return counter;
       }
 
-      return 0;
+      return counter;
     }
   }
 

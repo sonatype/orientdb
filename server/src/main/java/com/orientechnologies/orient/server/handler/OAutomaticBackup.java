@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 
@@ -28,12 +28,9 @@ import com.orientechnologies.common.parser.OVariableParser;
 import com.orientechnologies.common.parser.OVariableParserListener;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.command.OCommandOutputListener;
-import com.orientechnologies.orient.core.db.ODatabase;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
-import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.db.tool.ODatabaseExport;
 import com.orientechnologies.orient.core.exception.OConfigurationException;
-import com.orientechnologies.orient.core.metadata.security.OSecurityNull;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.server.OServer;
 import com.orientechnologies.orient.server.config.OServerParameterConfiguration;
@@ -47,16 +44,20 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Automatically creates a backup at configured time. Starting from v2.2, this component is able also to create incremental backup
  * and export of databases. If you need a mix of different modes, configure more instances of the same component.
- * 
- * @author Luca Garulli
+ *
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class OAutomaticBackup extends OServerPluginAbstract implements OServerPluginConfigurable {
 
-  private ODocument configuration;
+  private ODocument                     configuration;
+
+  private Set<OAutomaticBackupListener> listeners = Collections
+      .newSetFromMap(new ConcurrentHashMap<OAutomaticBackupListener, Boolean>());
 
   public enum VARIABLES {
     DBNAME, DATE
@@ -92,8 +93,8 @@ public class OAutomaticBackup extends OServerPluginAbstract implements OServerPl
 
         final File f = new File(OSystemVariableResolver.resolveSystemVariables(configFile));
         if (!f.exists())
-          throw new OConfigurationException("Automatic Backup configuration file '" + configFile
-              + "' not found. Automatic Backup will be disabled");
+          throw new OConfigurationException(
+              "Automatic Backup configuration file '" + configFile + "' not found. Automatic Backup will be disabled");
         break;
 
         // LEGACY <v2.2: CONVERT ALL SETTINGS IN JSON
@@ -165,10 +166,7 @@ public class OAutomaticBackup extends OServerPluginAbstract implements OServerPl
           if (include) {
             ODatabaseDocumentInternal db = null;
             try {
-
-              db = new ODatabaseDocumentTx(dbURL);
-              db.setProperty(ODatabase.OPTIONS.SECURITY.toString(), OSecurityNull.class);
-              db.open("admin", "aaa");
+              db = serverInstance.openDatabase(dbName, null, null, null, true);
 
               final long begin = System.currentTimeMillis();
 
@@ -196,11 +194,27 @@ public class OAutomaticBackup extends OServerPluginAbstract implements OServerPl
                 break;
               }
 
+              try {
+
+                for (OAutomaticBackupListener listener : listeners) {
+                  listener.onBackupCompleted(dbName);
+                }
+              } catch (Exception e) {
+                OLogManager.instance().error(this, "Error on listener for database '" + dbURL, e);
+              }
               ok++;
 
             } catch (Exception e) {
 
               OLogManager.instance().error(this, "Error on backup of database '" + dbURL + "' to directory: " + targetDirectory, e);
+
+              try {
+                for (OAutomaticBackupListener listener : listeners) {
+                  listener.onBackupError(dbName, e);
+                }
+              } catch (Exception l) {
+                OLogManager.instance().error(this, "Error on listener for database '" + dbURL, l);
+              }
               errors++;
 
             } finally {
@@ -227,8 +241,8 @@ public class OAutomaticBackup extends OServerPluginAbstract implements OServerPl
         final String configurationContent = OIOUtils.readFileAsString(f);
         configuration = new ODocument().fromJSON(configurationContent);
       } catch (IOException e) {
-        throw OException.wrapException(new OConfigurationException("Cannot load Automatic Backup configuration file '" + configFile
-            + "'. Automatic Backup will be disabled"), e);
+        throw OException.wrapException(new OConfigurationException(
+            "Cannot load Automatic Backup configuration file '" + configFile + "'. Automatic Backup will be disabled"), e);
       }
 
     } else {
@@ -240,8 +254,8 @@ public class OAutomaticBackup extends OServerPluginAbstract implements OServerPl
 
         OLogManager.instance().info(this, "Automatic Backup: migrated configuration to file '%s'", f);
       } catch (IOException e) {
-        throw OException.wrapException(new OConfigurationException("Cannot create Automatic Backup configuration file '" + configFile
-            + "'. Automatic Backup will be disabled"), e);
+        throw OException.wrapException(new OConfigurationException(
+            "Cannot create Automatic Backup configuration file '" + configFile + "'. Automatic Backup will be disabled"), e);
       }
     }
 
@@ -266,18 +280,20 @@ public class OAutomaticBackup extends OServerPluginAbstract implements OServerPl
             firstTime = cal.getTime();
           }
         } catch (ParseException e) {
-          throw OException.wrapException(
-              new OConfigurationException("Parameter 'firstTime' has invalid format, expected: HH:mm:ss"), e);
+          throw OException
+              .wrapException(new OConfigurationException("Parameter 'firstTime' has invalid format, expected: HH:mm:ss"), e);
         }
       } else if (settingName.equalsIgnoreCase("targetDirectory"))
         targetDirectory = settingValueAsString;
-      else if (settingName.equalsIgnoreCase("dbInclude") && settingValueAsString.trim().length() > 0)
-        for (String db : settingValueAsString.split(","))
+      else if (settingName.equalsIgnoreCase("dbInclude")) {
+        String[] included = getDbsList(settingName, settingValueAsString);
+        for (String db : included)
           includeDatabases.add(db);
-      else if (settingName.equalsIgnoreCase("dbExclude") && settingValueAsString.trim().length() > 0)
-        for (String db : settingValueAsString.split(","))
+      } else if (settingName.equalsIgnoreCase("dbExclude") && settingValueAsString.trim().length() > 0) {
+        String[] excluded = getDbsList(settingName, settingValueAsString);
+        for (String db : excluded)
           excludeDatabases.add(db);
-      else if (settingName.equalsIgnoreCase("targetFileName"))
+      } else if (settingName.equalsIgnoreCase("targetFileName"))
         targetFileName = settingValueAsString;
       else if (settingName.equalsIgnoreCase("bufferSize"))
         bufferSize = (Integer) settingValue;
@@ -290,7 +306,27 @@ public class OAutomaticBackup extends OServerPluginAbstract implements OServerPl
     }
   }
 
-  protected void incrementalBackupDatabase(final String dbURL, String iPath, final ODatabaseDocumentInternal db) throws IOException {
+  private String[] getDbsList(String settingName, String settingValueAsString) {
+    String[] included = null;
+    Object val = configuration.field(settingName);
+    if (val instanceof Collection) {
+      Collection dbs = (Collection) val;
+      included = new String[dbs.size()];
+      int i = 0;
+      for (Object o : dbs) {
+        included[i] = o.toString();
+        i++;
+      }
+    } else {
+      if (settingValueAsString.trim().length() > 0) {
+        included = settingValueAsString.split(",");
+      }
+    }
+    return included;
+  }
+
+  protected void incrementalBackupDatabase(final String dbURL, String iPath, final ODatabaseDocumentInternal db)
+      throws IOException {
     // APPEND DB NAME TO THE DIRECTORY NAME
     if (!iPath.endsWith("/"))
       iPath += "/";
@@ -356,10 +392,23 @@ public class OAutomaticBackup extends OServerPluginAbstract implements OServerPl
     return configuration;
   }
 
-
   // TODO change current config and restart the automatic backup plugin
   @Override
   public void changeConfig(ODocument document) {
 
+  }
+
+  public void registerListener(OAutomaticBackupListener listener) {
+    listeners.add(listener);
+  }
+
+  public void unregisterListener(OAutomaticBackupListener listener) {
+    listeners.remove(listener);
+  }
+
+  public interface OAutomaticBackupListener {
+    void onBackupCompleted(String database);
+
+    void onBackupError(String database, Exception e);
   }
 }

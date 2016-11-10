@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 
@@ -22,7 +22,6 @@ package com.orientechnologies.orient.core.tx;
 
 import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.log.OLogManager;
-import com.orientechnologies.orient.core.OUncompletedCommit;
 import com.orientechnologies.orient.core.db.ODatabase.OPERATION_MODE;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.db.OScenarioThreadLocal;
@@ -114,31 +113,6 @@ public class OTransactionOptimistic extends OTransactionRealAbstract {
   }
 
   @Override
-  public OUncompletedCommit<Void> initiateCommit() {
-    return initiateCommit(false);
-  }
-
-  @Override
-  public OUncompletedCommit<Void> initiateCommit(boolean force) {
-    checkTransaction();
-
-    if (txStartCounter < 0)
-      throw new OStorageException("Invalid value of tx counter");
-
-    if (force)
-      txStartCounter = 0;
-    else
-      txStartCounter--;
-
-    if (txStartCounter == 0)
-      return doInitiateCommit();
-    else if (txStartCounter > 0)
-      return new UncompletedCommit(false, null);
-    else
-      throw new OTransactionException("Transaction was committed more times than it is started.");
-  }
-
-  @Override
   public int amountOfNestedTxs() {
     return txStartCounter;
   }
@@ -221,7 +195,7 @@ public class OTransactionOptimistic extends OTransactionRealAbstract {
 
     // DELEGATE TO THE STORAGE, NO TOMBSTONES SUPPORT IN TX MODE
     final ORecord record = database.executeReadRecord((ORecordId) rid, iRecord, -1, fetchPlan, ignoreCache, iUpdateCache,
-        loadTombstone, lockingStrategy, new SimpleRecordReader());
+        loadTombstone, lockingStrategy, new SimpleRecordReader(database.isPrefetchRecords()));
 
     if (record != null && isolationLevel == ISOLATION_LEVEL.REPEATABLE_READ)
       // KEEP THE RECORD IN TX TO ASSURE REPEATABLE READS
@@ -252,7 +226,7 @@ public class OTransactionOptimistic extends OTransactionRealAbstract {
 
     // DELEGATE TO THE STORAGE, NO TOMBSTONES SUPPORT IN TX MODE
     final ORecord record = database.executeReadRecord((ORecordId) rid, null, recordVersion, fetchPlan, ignoreCache, !ignoreCache,
-        false, OStorage.LOCKING_STRATEGY.NONE, new SimpleRecordReader());
+        false, OStorage.LOCKING_STRATEGY.NONE, new SimpleRecordReader(database.isPrefetchRecords()));
 
     if (record != null && isolationLevel == ISOLATION_LEVEL.REPEATABLE_READ)
       // KEEP THE RECORD IN TX TO ASSURE REPEATABLE READS
@@ -293,7 +267,7 @@ public class OTransactionOptimistic extends OTransactionRealAbstract {
     try {
       final RecordReader recordReader;
       if (force) {
-        recordReader = new SimpleRecordReader();
+        recordReader = new SimpleRecordReader(database.isPrefetchRecords());
       } else {
         recordReader = new LatestVersionRecordReader();
       }
@@ -443,7 +417,7 @@ public class OTransactionOptimistic extends OTransactionRealAbstract {
           ORecordInternal.onBeforeIdentityChanged(iRecord);
           database.assignAndCheckCluster(iRecord, iClusterName);
 
-          rid.clusterPosition = newObjectCounter--;
+          rid.setClusterPosition(newObjectCounter--);
 
           ORecordInternal.onAfterIdentityChanged(iRecord);
         }
@@ -599,96 +573,4 @@ public class OTransactionOptimistic extends OTransactionRealAbstract {
       }
     }
   }
-
-  private OUncompletedCommit<Void> doInitiateCommit() {
-    if (status == TXSTATUS.ROLLED_BACK || status == TXSTATUS.ROLLBACKING)
-      throw new ORollbackException("Given transaction was rolled back and cannot be used.");
-
-    status = TXSTATUS.COMMITTING;
-
-    if (!allEntries.isEmpty() || !indexEntries.isEmpty()) {
-      if (!OScenarioThreadLocal.INSTANCE.isRunModeDistributed()
-          && !(database.getStorage().getUnderlying() instanceof OAbstractPaginatedStorage))
-        return new UncompletedCommit(true, database.getStorage().initiateCommit(this, null));
-      else {
-        final String storageType = database.getStorage().getUnderlying().getType();
-
-        if (storageType.equals(OEngineLocalPaginated.NAME) || storageType.equals(OEngineMemory.NAME))
-          return new UncompletedCommit(true, database.getStorage().initiateCommit(OTransactionOptimistic.this, null));
-        else
-          return database.getStorage().callInLock(new Callable<OUncompletedCommit<Void>>() {
-            @Override
-            public OUncompletedCommit<Void> call() throws Exception {
-              return new UncompletedCommit(true, database.getStorage().initiateCommit(OTransactionOptimistic.this, null));
-            }
-          }, true);
-      }
-    }
-
-    return new UncompletedCommit(true, null);
-  }
-
-  private class UncompletedCommit implements OUncompletedCommit<Void> {
-
-    private final boolean                                    topLevel;
-    private final OUncompletedCommit<List<ORecordOperation>> nestedCommit;
-
-    public UncompletedCommit(boolean topLevel, OUncompletedCommit<List<ORecordOperation>> nestedCommit) {
-      this.topLevel = topLevel;
-      this.nestedCommit = nestedCommit;
-    }
-
-    @Override
-    public Void complete() {
-      checkTransaction();
-
-      if (!topLevel) {
-        OLogManager.instance().debug(this, "Nested transaction was closed but transaction itself was not committed.");
-        return null;
-      }
-
-      if (nestedCommit != null)
-        nestedCommit.complete();
-
-      invokeCallbacks();
-
-      close();
-      status = TXSTATUS.COMPLETED;
-
-      return null;
-    }
-
-    @Override
-    public void rollback() {
-      checkTransaction();
-
-      if (!topLevel) {
-        OTransactionOptimistic.this.rollback(false, 0);
-        return;
-      }
-
-      status = TXSTATUS.ROLLBACKING;
-
-      if (nestedCommit != null)
-        nestedCommit.rollback();
-
-      // CLEAR THE CACHE
-      database.getLocalCache().clear();
-
-      // REMOVE ALL THE DIRTY ENTRIES AND UNDO ANY DIRTY DOCUMENT IF POSSIBLE.
-      for (ORecordOperation v : allEntries.values()) {
-        final ORecord rec = v.getRecord();
-        if (rec.isDirty())
-          if (rec instanceof ODocument && ((ODocument) rec).isTrackingChanges())
-            ((ODocument) rec).undo();
-          else
-            rec.unload();
-      }
-
-      close();
-
-      status = TXSTATUS.ROLLED_BACK;
-    }
-  }
-
 }

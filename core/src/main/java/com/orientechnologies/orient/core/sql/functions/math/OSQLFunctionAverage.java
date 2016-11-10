@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.sql.functions.math;
@@ -34,7 +34,7 @@ import java.util.Map;
  * Compute the average value for a field. Uses the context to save the last average number. When different Number class are used,
  * take the class with most precision.
  * 
- * @author Luca Garulli (l.garulli--at--orientechnologies.com)
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  * 
  */
 public class OSQLFunctionAverage extends OSQLFunctionMathAbstract {
@@ -94,7 +94,7 @@ public class OSQLFunctionAverage extends OSQLFunctionMathAbstract {
 
   @SuppressWarnings("unchecked")
   @Override
-  public Object mergeDistributedResult(List<Object> resultsToMerge) {
+  public Object mergeDistributedResult(final List<Object> resultsToMerge) {
     if (returnDistributedResult()) {
       Number dSum = null;
       int dTotal = 0;
@@ -111,7 +111,10 @@ public class OSQLFunctionAverage extends OSQLFunctionMathAbstract {
       return computeAverage(dSum, dTotal);
     }
 
-    return resultsToMerge.get(0);
+    if (!resultsToMerge.isEmpty())
+      return resultsToMerge.get(0);
+
+    return null;
   }
 
   @Override

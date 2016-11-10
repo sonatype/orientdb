@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.index.engine;
@@ -22,8 +22,6 @@ package com.orientechnologies.orient.core.index.engine;
 import com.orientechnologies.common.serialization.types.OBinarySerializer;
 import com.orientechnologies.common.util.OCommonConst;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
-import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
-import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.index.*;
 import com.orientechnologies.orient.core.index.hashindex.local.*;
@@ -38,7 +36,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * @author Andrey Lomakin
+ * @author Andrey Lomakin (a.lomakin-at-orientdb.com)
  * @since 15.07.13
  */
 public final class OHashTableIndexEngine implements OIndexEngine {
@@ -150,17 +148,31 @@ public final class OHashTableIndexEngine implements OIndexEngine {
     hashTable.put(key, value);
   }
 
+  @SuppressWarnings("unchecked")
+  @Override
+  public boolean validatedPut(Object key, OIdentifiable value, Validator<Object, OIdentifiable> validator) {
+    return hashTable.validatedPut(key, value, (Validator) validator);
+  }
+
   @Override
   public long size(ValuesTransformer transformer) {
     if (transformer == null)
       return hashTable.size();
     else {
+      long counter = 0;
+
+      if (hashTable.isNullKeyIsSupported()) {
+        final Object nullValue = hashTable.get(null);
+        if (nullValue != null) {
+          counter += transformer.transformFromValue(nullValue).size();
+        }
+      }
+
       OHashIndexBucket.Entry<Object, Object> firstEntry = hashTable.firstEntry();
       if (firstEntry == null)
-        return 0;
+        return counter;
 
       OHashIndexBucket.Entry<Object, Object>[] entries = hashTable.ceilingEntries(firstEntry.key);
-      long counter = 0;
 
       while (entries.length > 0) {
         for (OHashIndexBucket.Entry<Object, Object> entry : entries)

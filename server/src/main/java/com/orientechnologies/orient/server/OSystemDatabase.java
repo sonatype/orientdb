@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.server;
@@ -25,10 +25,13 @@ import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.db.ODatabase;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
+import com.orientechnologies.orient.core.db.OrientDBConfig;
+import com.orientechnologies.orient.core.db.OrientDBFactory.DatabaseType;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocument;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
 import com.orientechnologies.orient.core.metadata.schema.OSchema;
+import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.OCommandSQL;
 
@@ -60,13 +63,13 @@ public class OSystemDatabase {
     final ODatabaseDocumentInternal currentDB = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
     try {
       final ODatabaseDocumentInternal sysdb = openSystemDatabase();
-      
+
       if (!sysdb.existsCluster(clusterName)) {
         OSchema schema = sysdb.getMetadata().getSchema();
         OClass cls = schema.getClass(className);
 
         if (cls != null) {
-        	cls.addCluster(clusterName);
+          cls.addCluster(clusterName);
         } else {
           OLogManager.instance().error(this, "createCluster() Class name %s does not exist", className);
         }
@@ -86,9 +89,8 @@ public class OSystemDatabase {
   }
 
   /**
-   * Opens the System Database and returns an ODatabaseDocumentInternal object.
-   * The caller is responsible for retrieving any ThreadLocal-stored database before openSystemDatabase()
-   * is called and restoring it after the database is closed.
+   * Opens the System Database and returns an ODatabaseDocumentInternal object. The caller is responsible for retrieving any
+   * ThreadLocal-stored database before openSystemDatabase() is called and restoring it after the database is closed.
    */
   public ODatabaseDocumentInternal openSystemDatabase() {
     return server.openDatabase(getSystemDatabaseName(), "OSuperUser", "", null, true);
@@ -101,7 +103,7 @@ public class OSystemDatabase {
       final ODatabase<?> db = openSystemDatabase();
       try {
         final Object result = db.command(new OCommandSQL(sql)).execute(args);
-        
+
         if (callback != null)
           return callback.call(result);
         else
@@ -129,10 +131,10 @@ public class OSystemDatabase {
       // BYPASS SECURITY
       final ODatabaseDocumentInternal db = openSystemDatabase();
       try {
-        if(clusterName != null)
+        if (clusterName != null)
           return (ODocument) db.save(document, clusterName);
         else
-        return (ODocument) db.save(document);
+          return (ODocument) db.save(document);
       } finally {
         db.close();
       }
@@ -146,20 +148,15 @@ public class OSystemDatabase {
   }
 
   private void init() {
-    final ODatabaseDocumentInternal oldDbInThread = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
+    final ODatabaseRecordThreadLocal tl = ODatabaseRecordThreadLocal.INSTANCE;
+    final ODatabaseDocumentInternal oldDbInThread = tl != null ? tl.getIfDefined() : null;
     try {
-
-      ODatabaseDocument sysDB = new ODatabaseDocumentTx("plocal:" + getSystemDatabasePath());
-
-      if (!sysDB.exists()) {
+      if (!exists()) {
         OLogManager.instance().info(this, "Creating the system database '%s' for current server", SYSTEM_DB_NAME);
 
-        Map<OGlobalConfiguration, Object> settings = new ConcurrentHashMap<OGlobalConfiguration, Object>();
-        settings.put(OGlobalConfiguration.CREATE_DEFAULT_USERS, false);
-        settings.put(OGlobalConfiguration.CLASS_MINIMUM_CLUSTERS, 1);
-
-        sysDB.create(settings);
-        sysDB.close();
+        OrientDBConfig config = OrientDBConfig.builder().addConfig(OGlobalConfiguration.CREATE_DEFAULT_USERS, false)
+            .addConfig(OGlobalConfiguration.CLASS_MINIMUM_CLUSTERS, 1).build();
+        server.createDatabase(SYSTEM_DB_NAME, DatabaseType.PLOCAL, config);
       }
 
     } finally {
@@ -192,19 +189,6 @@ public class OSystemDatabase {
   }
 
   public boolean exists() {
-    final ODatabaseDocumentInternal oldDbInThread = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
-    try {
-
-      ODatabaseDocument sysDB = new ODatabaseDocumentTx("plocal:" + getSystemDatabasePath());
-
-      return sysDB.exists();
-
-    } finally {
-      if (oldDbInThread != null) {
-        ODatabaseRecordThreadLocal.INSTANCE.set(oldDbInThread);
-      } else {
-        ODatabaseRecordThreadLocal.INSTANCE.remove();
-      }
-    }
+    return server.existsDatabase(getSystemDatabaseName());
   }
 }

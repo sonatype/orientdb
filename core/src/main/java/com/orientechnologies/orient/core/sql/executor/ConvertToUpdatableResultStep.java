@@ -12,7 +12,7 @@ import java.util.Optional;
  * takes a normal result set and transforms it in another result set made of OUpdatableRecord instances.
  * Records that are not identifiable are discarded.
  *
- * @author Luigi Dell'Aquila
+ * @author Luigi Dell'Aquila (l.dellaquila-(at)-orientdb.com)
  */
 public class ConvertToUpdatableResultStep extends AbstractExecutionStep {
   OTodoResultSet prevResult = null;
@@ -58,7 +58,7 @@ public class ConvertToUpdatableResultStep extends AbstractExecutionStep {
             break;
           }
           if (nextItem.isElement()) {
-            ORecord element = nextItem.getElement().getRecord();
+            ORecord element = nextItem.getElement().get().getRecord();
             if (element != null && element instanceof ODocument) {
               nextItem = new OUpdatableResult((ODocument) element);
             }

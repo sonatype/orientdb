@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.graph.stresstest;
@@ -32,7 +32,7 @@ import com.tinkerpop.blueprints.impls.orient.*;
 /**
  * CRUD implementation of the workload.
  *
- * @author Luca Garulli
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public abstract class OBaseGraphWorkload extends OBaseWorkload implements OCheckWorkload {
   public class OWorkLoadContext extends OBaseWorkload.OBaseWorkLoadContext {
@@ -62,7 +62,7 @@ public abstract class OBaseGraphWorkload extends OBaseWorkload implements OCheck
     if (database == null)
       throw new IllegalArgumentException("Error on opening database " + databaseIdentifier.getName());
 
-    return new OrientGraphNoTx((ODatabaseDocumentTx) database);
+    return (OrientGraphNoTx) OrientGraphFactory.getNoTxGraphImplFactory().getGraph((ODatabaseDocumentTx) database);
   }
 
   protected OrientGraph getGraph(final ODatabaseIdentifier databaseIdentifier) {
@@ -72,7 +72,7 @@ public abstract class OBaseGraphWorkload extends OBaseWorkload implements OCheck
 
     database.setProperty(OStorageRemote.PARAM_CONNECTION_STRATEGY, connectionStrategy.toString());
 
-    final OrientGraph g = new OrientGraph((ODatabaseDocumentTx) database);
+    final OrientGraph g = (OrientGraph) OrientGraphFactory.getTxGraphImplFactory().getGraph((ODatabaseDocumentTx) database);
     g.setAutoStartTx(false);
     return g;
   }
@@ -85,7 +85,7 @@ public abstract class OBaseGraphWorkload extends OBaseWorkload implements OCheck
       public void onMessage(String iText) {
         System.out.print("   - " + iText);
       }
-    });
+    }, null);
   }
 
   @Override

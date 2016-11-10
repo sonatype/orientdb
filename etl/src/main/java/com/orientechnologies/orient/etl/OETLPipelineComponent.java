@@ -1,6 +1,6 @@
 /*
  *
- *  * Copyright 2010-2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  * Copyright 2010-2016 OrientDB LTD (info(-at-)orientdb.com)
  *  *
  *  * Licensed under the Apache License, Version 2.0 (the "License");
  *  * you may not use this file except in compliance with the License.
@@ -18,9 +18,14 @@
 
 package com.orientechnologies.orient.etl;
 
+import com.orientechnologies.orient.core.command.OCommandContext;
+
 /**
  * ETL basic component.
  */
 public interface OETLPipelineComponent extends OETLComponent {
-  void setPipeline(OETLPipeline iPipeline);
+
+  void setDatabaseProvider(OETLDatabaseProvider databaseProvider);
+
+  void setContext(OCommandContext context);
 }

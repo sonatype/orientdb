@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.record;
@@ -380,8 +380,8 @@ public abstract class ORecordAbstract implements ORecord {
   }
 
   protected ORecordAbstract fill(final ORID iRid, final int iVersion, final byte[] iBuffer, boolean iDirty) {
-    _recordId.clusterId = iRid.getClusterId();
-    _recordId.clusterPosition = iRid.getClusterPosition();
+    _recordId.setClusterId(iRid.getClusterId());
+    _recordId.setClusterPosition(iRid.getClusterPosition());
     _recordVersion = iVersion;
     _status = ORecordElement.STATUS.LOADED;
     _source = iBuffer;
@@ -400,8 +400,8 @@ public abstract class ORecordAbstract implements ORecord {
     if (_recordId == null || _recordId == ORecordId.EMPTY_RECORD_ID)
       _recordId = new ORecordId(iClusterId, iClusterPosition);
     else {
-      _recordId.clusterId = iClusterId;
-      _recordId.clusterPosition = iClusterPosition;
+      _recordId.setClusterId(iClusterId);
+      _recordId.setClusterPosition(iClusterPosition);
     }
     return this;
   }

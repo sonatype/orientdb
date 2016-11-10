@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.sql;
@@ -37,7 +37,7 @@ import java.util.Map;
 /**
  * SQL CREATE PROPERTY command: Creates a new property in the target class.
  *
- * @author Luca Garulli
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 @SuppressWarnings("unchecked")
 public class OCommandExecutorSQLDropProperty extends OCommandExecutorSQLAbstract implements OCommandDistributedReplicateRequest {
@@ -46,6 +46,7 @@ public class OCommandExecutorSQLDropProperty extends OCommandExecutorSQLAbstract
 
   private String className;
   private String fieldName;
+  private boolean ifExists;
   private boolean force = false;
 
   public OCommandExecutorSQLDropProperty parse(final OCommandRequest iRequest) {
@@ -88,6 +89,13 @@ public class OCommandExecutorSQLDropProperty extends OCommandExecutorSQLAbstract
         final String forceParameter = word.toString();
         if ("FORCE".equals(forceParameter)) {
           force = true;
+        } else if ("IF".equals(word.toString())) {
+          pos = nextWord(parserText, parserTextUpperCase, pos, word, false);
+          if ("EXISTS".equals(word.toString())) {
+            this.ifExists = true;
+          }else{
+            throw new OCommandSQLParsingException("Wrong query parameter, expecting EXISTS after IF", parserText, pos);
+          }
         } else {
           throw new OCommandSQLParsingException("Wrong query parameter", parserText, pos);
         }
@@ -110,6 +118,10 @@ public class OCommandExecutorSQLDropProperty extends OCommandExecutorSQLAbstract
     final OClassImpl sourceClass = (OClassImpl) database.getMetadata().getSchema().getClass(className);
     if (sourceClass == null)
       throw new OCommandExecutionException("Source class '" + className + "' not found");
+
+    if(ifExists && !sourceClass.existsProperty(fieldName)){
+      return null;
+    }
 
     final List<OIndex<?>> indexes = relatedIndexes(fieldName);
     if (!indexes.isEmpty()) {
@@ -171,6 +183,6 @@ public class OCommandExecutorSQLDropProperty extends OCommandExecutorSQLAbstract
 
   @Override
   public String getSyntax() {
-    return "DROP PROPERTY <class>.<property>";
+    return "DROP PROPERTY <class>.<property> [ IF EXISTS ] [FORCE]";
   }
 }

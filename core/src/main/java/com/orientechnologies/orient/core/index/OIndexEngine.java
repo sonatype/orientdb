@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 
@@ -30,7 +30,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * @author Andrey Lomakin
+ * @author Andrey Lomakin (a.lomakin-at-orientdb.com)
  * @since 6/29/13
  */
 public interface OIndexEngine {
@@ -60,6 +60,19 @@ public interface OIndexEngine {
   Object get(Object key);
 
   void put(Object key, Object value);
+
+  /**
+   * Puts the given value under the given key into this index engine. Validates the operation using the provided validator.
+   *
+   * @param key       the key to put the value under.
+   * @param value     the value to put.
+   * @param validator the operation validator.
+   *
+   * @return {@code true} if the validator allowed the put, {@code false} otherwise.
+   *
+   * @see Validator#validate(Object, Object, Object)
+   */
+  boolean validatedPut(Object key, OIdentifiable value, Validator<Object, OIdentifiable> validator);
 
   Object getFirstKey();
 
@@ -104,5 +117,34 @@ public interface OIndexEngine {
 
   interface ValuesTransformer {
     Collection<OIdentifiable> transformFromValue(Object value);
+  }
+
+  /**
+   * Put operation validator.
+   *
+   * @param <K> the key type.
+   * @param <V> the value type.
+   */
+  interface Validator<K, V> {
+
+    /**
+     * Indicates that a put request should be silently ignored by the store.
+     *
+     * @see #validate(Object, Object, Object)
+     */
+    Object IGNORE = new Object();
+
+    /**
+     * Validates the put operation for the given key, the old value and the new value. May throw an exception to abort the current
+     * put operation with an error.
+     *
+     * @param key      the put operation key.
+     * @param oldValue the old value or {@code null} if no value is currently stored.
+     * @param newValue the new value passed to {@link #validatedPut(Object, OIdentifiable, Validator)}.
+     *
+     * @return the new value to store, may differ from the passed one, or the special {@link #IGNORE} value to silently ignore the
+     * put operation request being processed.
+     */
+    Object validate(K key, V oldValue, V newValue);
   }
 }

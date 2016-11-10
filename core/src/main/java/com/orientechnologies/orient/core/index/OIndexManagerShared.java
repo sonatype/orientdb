@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.index;
@@ -25,7 +25,9 @@ import com.orientechnologies.common.util.OMultiKey;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.db.ODatabase;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
+import com.orientechnologies.orient.core.db.OrientDBFactory;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocument;
+import com.orientechnologies.orient.core.db.document.ODatabaseDocumentEmbedded;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.db.record.ORecordElement;
@@ -41,13 +43,14 @@ import com.orientechnologies.orient.core.storage.OStorage;
 import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
+import java.io.File;
 import java.nio.channels.UnsupportedAddressTypeException;
 import java.util.*;
 
 /**
  * Manages indexes at database level. A single instance is shared among multiple databases. Contentions are managed by r/w locks.
  *
- * @author Luca Garulli (l.garulli--at--orientechnologies.com)
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  * @author Artem Orobets added composite index managemement
  */
 @SuppressFBWarnings("EQ_DOESNT_OVERRIDE_EQUALS")
@@ -153,7 +156,7 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
           metadata.field("trackMode", "FULL");
       }
 
-      index = OIndexes.createIndex(getDatabase(), iName, type, algorithm, valueContainerAlgorithm, metadata, -1);
+      index = OIndexes.createIndex(getStorage(), iName, type, algorithm, valueContainerAlgorithm, metadata, -1);
       if (progressListener == null)
         // ASSIGN DEFAULT PROGRESS LISTENER
         progressListener = new OIndexRebuildOutputListener(index);
@@ -316,10 +319,8 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
       final ODocument doc = new ODocument();
       document.copyTo(doc);
 
-      // USE A NEW DB INSTANCE
-      final ODatabaseDocumentInternal newDb = database.copy();
 
-      Runnable recreateIndexesTask = new RecreateIndexesTask(newDb, doc);
+      Runnable recreateIndexesTask = new RecreateIndexesTask(getStorage(), doc);
 
       recreateIndexesThread = new Thread(recreateIndexesTask, "OrientDB rebuild indexes");
       recreateIndexesThread.start();
@@ -399,7 +400,7 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
                 (String) d.field(OIndexInternal.CONFIG_TYPE), (String) d.field(OIndexInternal.ALGORITHM),
                 d.<String> field(OIndexInternal.VALUE_CONTAINER_ALGORITHM));
 
-            index = OIndexes.createIndex(getDatabase(), newIndexMetadata.getName(), newIndexMetadata.getType(),
+            index = OIndexes.createIndex(getStorage(), newIndexMetadata.getName(), newIndexMetadata.getType(),
                 newIndexMetadata.getAlgorithm(), newIndexMetadata.getValueContainerAlgorithm(),
                 (ODocument) d.field(OIndexInternal.METADATA), indexVersion);
 
@@ -501,24 +502,28 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
   }
 
   private class RecreateIndexesTask implements Runnable {
-    private final ODatabaseDocumentInternal newDb;
+    private final OStorage                  storage;
     private final ODocument                 doc;
-    private       int                       ok;
-    private       int                       errors;
+    private int                             ok;
+    private int                             errors;
 
-    public RecreateIndexesTask(ODatabaseDocumentInternal newDb, ODocument doc) {
-      this.newDb = newDb;
+    public RecreateIndexesTask(OStorage storage, ODocument doc) {
+      this.storage = storage;
       this.doc = doc;
     }
 
     @Override
     public void run() {
       try {
-        setUpDatabase();
+        ODatabaseDocumentEmbedded newDb = new ODatabaseDocumentEmbedded(storage);
+
+        newDb.activateOnCurrentThread();
+        newDb.resetInitialization();
+        newDb.setProperty(ODatabase.OPTIONS.SECURITY.toString(), OSecurityNull.class);
+        newDb.internalOpen("admin", "nopass", null);
 
         final Collection<ODocument> idxs = getConfiguration();
 
-        final OStorage storage = newDb.getStorage().getUnderlying();
 
         if (storage instanceof OAbstractPaginatedStorage) {
           final OAbstractPaginatedStorage abstractPaginatedStorage = (OAbstractPaginatedStorage) storage;
@@ -533,8 +538,9 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
             abstractPaginatedStorage.getAtomicOperationsManager().switchOffUnsafeMode();
             abstractPaginatedStorage.synch();
           }
+          newDb.close();
         }
-
+        
       } catch (Exception e) {
         OLogManager.instance().error(this, "Error when attempt to restore indexes after crash was performed", e);
       }
@@ -649,7 +655,7 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
         throw new OIndexException("Index type is null, will process other record. Index configuration: " + idx.toString());
       }
 
-      return OIndexes.createIndex(newDb, indexName, indexType, algorithm, valueContainerAlgorithm, metadata, -1);
+      return OIndexes.createIndex(storage, indexName, indexType, algorithm, valueContainerAlgorithm, metadata, -1);
     }
 
     private Collection<ODocument> getConfiguration() {
@@ -659,15 +665,6 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
         return Collections.emptyList();
       }
       return idxs;
-    }
-
-    private void setUpDatabase() {
-      newDb.activateOnCurrentThread();
-      newDb.resetInitialization();
-      newDb.setProperty(ODatabase.OPTIONS.SECURITY.toString(), OSecurityNull.class);
-      newDb.open("admin", "nopass");
-
-      newDb.activateOnCurrentThread();
     }
   }
 

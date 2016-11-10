@@ -1,6 +1,6 @@
 /*
  *
- *  * Copyright 2010-2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  * Copyright 2010-2016 OrientDB LTD (info(-at-)orientdb.com)
  *  *
  *  * Licensed under the Apache License, Version 2.0 (the "License");
  *  * you may not use this file except in compliance with the License.
@@ -30,9 +30,11 @@ import com.orientechnologies.orient.core.intent.OIntentMassiveInsert;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
 import com.orientechnologies.orient.core.metadata.schema.OClassImpl;
 import com.orientechnologies.orient.core.metadata.schema.OProperty;
-import com.orientechnologies.orient.core.metadata.schema.OSchemaProxy;
+import com.orientechnologies.orient.core.metadata.schema.OSchema;
 import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.storage.ORecordDuplicatedException;
+import com.orientechnologies.orient.etl.OETLDatabaseProvider;
 import com.orientechnologies.orient.etl.OETLPipeline;
 import com.tinkerpop.blueprints.impls.orient.OrientBaseGraph;
 import com.tinkerpop.blueprints.impls.orient.OrientElement;
@@ -53,58 +55,65 @@ import static com.orientechnologies.orient.etl.loader.OOrientDBLoader.DB_TYPE.*;
 public class OOrientDBLoader extends OAbstractLoader implements OLoader {
 
   private static String NOT_DEF = "not_defined";
-  protected String          clusterName;
-  protected String          className;
-  protected List<ODocument> classes;
-  protected List<ODocument> indexes;
-  protected OClass          schemaClass;
-  protected String          dbURL;
-  protected String dbUser     = "admin";
-  protected String dbPassword = "admin";
-
-  protected String serverUser     = NOT_DEF;
-  protected String serverPassword = NOT_DEF;
-
-  protected boolean    dbAutoCreate               = true;
-  protected boolean    dbAutoDropIfExists         = false;
-  protected boolean    dbAutoCreateProperties     = false;
-  protected boolean    useLightweightEdges        = false;
-  protected boolean    standardElementConstraints = true;
-  protected boolean    tx                         = false;
-  protected int        batchCommitSize            = 0;
-  protected AtomicLong batchCounter               = new AtomicLong(0);
-  protected DB_TYPE    dbType                     = DOCUMENT;
-  protected boolean    wal                        = true;
-  protected boolean    txUseLog                   = false;
+  private String          clusterName;
+  private String          className;
+  private List<ODocument> classes;
+  private List<ODocument> indexes;
+  private OClass          schemaClass;
+  private String          dbURL;
+  private String     dbUser                     = "admin";
+  private String     dbPassword                 = "admin";
+  private String     serverUser                 = NOT_DEF;
+  private String     serverPassword             = NOT_DEF;
+  private boolean    dbAutoCreate               = true;
+  private boolean    dbAutoDropIfExists         = false;
+  private boolean    dbAutoCreateProperties     = false;
+  private boolean    useLightweightEdges        = false;
+  private boolean    standardElementConstraints = true;
+  private boolean    tx                         = false;
+  private int        batchCommitSize            = 0;
+  private AtomicLong batchCounter               = new AtomicLong(0);
+  private DB_TYPE    dbType                     = DOCUMENT;
+  private boolean    wal                        = true;
+  private boolean    txUseLog                   = false;
+  private boolean    skipDuplicates             = false;
 
   public OOrientDBLoader() {
   }
 
   @Override
-  public void load(OETLPipeline pipeline, final Object input, OCommandContext context) {
+  public void load(OETLDatabaseProvider databaseProvider, final Object input, OCommandContext context) {
 
     if (input == null)
       return;
 
     if (dbAutoCreateProperties) {
-      autoCreateProperties(pipeline.getDocumentDatabase(), input);
+      autoCreateProperties(databaseProvider.getDocumentDatabase(), input);
     }
 
     if (tx && dbType == DOCUMENT) {
-      final ODatabaseDocument documentDatabase = pipeline.getDocumentDatabase();
+      final ODatabaseDocument documentDatabase = databaseProvider.getDocumentDatabase();
       if (!documentDatabase.getTransaction().isActive()) {
         documentDatabase.begin();
         documentDatabase.getTransaction().setUsingLog(txUseLog);
-
       }
     }
 
     if (input instanceof OrientVertex) {
+      databaseProvider.getGraphDatabase();
 
       final OrientVertex v = (OrientVertex) input;
 
-      v.save(clusterName);
+      try {
+        v.save(clusterName);
+      } catch (ORecordDuplicatedException e) {
+        if (skipDuplicates) {
+        } else {
+          throw e;
+        }
+      } finally {
 
+      }
     } else if (input instanceof ODocument) {
 
       final ODocument doc = (ODocument) input;
@@ -114,28 +123,36 @@ public class OOrientDBLoader extends OAbstractLoader implements OLoader {
       }
 
       if (clusterName != null) {
-        doc.save(clusterName);
+        databaseProvider.getDocumentDatabase().save(doc, clusterName);
       } else {
-        doc.save();
+        databaseProvider.getDocumentDatabase().save(doc);
       }
 
+    } else {
+      log(ERROR, "input type not supported::  %s", input.getClass());
     }
 
     progress.incrementAndGet();
 
-    // DO BATCH COMMIT
-    if (batchCommitSize > 0 && batchCounter.get() > batchCommitSize) {
-      if (dbType == DOCUMENT) {
-        final ODatabaseDocument documentDatabase = pipeline.getDocumentDatabase();
-        log(DEBUG, "committing document batch");
-        documentDatabase.commit();
-        documentDatabase.begin();
-        documentDatabase.getTransaction().setUsingLog(txUseLog);
-      } else {
-        log(DEBUG, "committing graph batch");
-        pipeline.getGraphDatabase().commit();
+    // DO BATCH COMMIT if on TX
+
+    if (tx && batchCommitSize > 0 && batchCounter.get() > batchCommitSize) {
+      synchronized (this) {
+        if (batchCommitSize > 0 && batchCounter.get() > batchCommitSize) {
+
+          if (dbType == DOCUMENT) {
+            final ODatabaseDocument documentDatabase = databaseProvider.getDocumentDatabase();
+            log(DEBUG, "committing document batch %d", progress.get());
+            documentDatabase.commit();
+            documentDatabase.begin();
+            documentDatabase.getTransaction().setUsingLog(txUseLog);
+          } else {
+            log(DEBUG, "committing graph batch %d", progress.get());
+            databaseProvider.getGraphDatabase().commit();
+          }
+          batchCounter.set(0);
+        }
       }
-      batchCounter.set(0);
     } else {
       batchCounter.incrementAndGet();
     }
@@ -207,14 +224,15 @@ public class OOrientDBLoader extends OAbstractLoader implements OLoader {
   }
 
   @Override
-  public void rollback(OETLPipeline pipeline) {
+  public void rollback(OETLDatabaseProvider databaseProvider) {
     if (tx)
       if (dbType == DOCUMENT) {
-        final ODatabaseDocument documentDatabase = pipeline.getDocumentDatabase();
+        final ODatabaseDocument documentDatabase = databaseProvider.getDocumentDatabase();
         if (documentDatabase.getTransaction().isActive())
           documentDatabase.rollback();
-      } else
-        pipeline.getGraphDatabase().rollback();
+      } else {
+        databaseProvider.getGraphDatabase().rollback();
+      }
   }
 
   protected OClass getOrCreateClass(ODatabaseDocument db, final String iClassName, final String iSuperClass) {
@@ -241,14 +259,13 @@ public class OOrientDBLoader extends OAbstractLoader implements OLoader {
 
   private OClass getOrCreateClassOnGraph(ODatabaseDocument db, String iClassName, String iSuperClass) {
     OClass cls;// GRAPH
-    final OrientBaseGraph graphDatabase = new OrientGraphNoTx(db.getURL());
-    OSchemaProxy schema = graphDatabase.getRawGraph().getMetadata().getSchema();
+    OSchema schema = db.getMetadata().getSchema();
     cls = schema.getClass(iClassName);
 
     if (cls == null) {
-
+      final OrientBaseGraph graphDatabase = new OrientGraphNoTx(db.getURL());
       if (iSuperClass != null) {
-        final OClass superClass = graphDatabase.getRawGraph().getMetadata().getSchema().getClass(iSuperClass);
+        final OClass superClass = schema.getClass(iSuperClass);
         if (superClass == null)
           throw new OLoaderException("Cannot find super class '" + iSuperClass + "'");
 
@@ -266,6 +283,7 @@ public class OOrientDBLoader extends OAbstractLoader implements OLoader {
         cls = graphDatabase.createVertexType(iClassName);
         log(DEBUG, "- OrientDBLoader: created vertex class '%s'", iClassName);
       }
+      graphDatabase.shutdown();
     }
     return cls;
   }
@@ -370,6 +388,9 @@ public class OOrientDBLoader extends OAbstractLoader implements OLoader {
     if (conf.containsField("standardElementConstraints"))
       standardElementConstraints = conf.<Boolean>field("standardElementConstraints");
 
+    if (conf.containsField("skipDuplicates"))
+      skipDuplicates = conf.field("skipDuplicates");
+
     clusterName = conf.field("cluster");
     className = conf.field("class");
     indexes = conf.field("indexes");
@@ -471,26 +492,36 @@ public class OOrientDBLoader extends OAbstractLoader implements OLoader {
 
   }
 
+  @Override
   public synchronized void beginLoader(OETLPipeline pipeline) {
 
     createSchema();
+    OETLDatabaseProvider dbProvider = getDatabaseProvider();
 
-    final OrientGraphFactory factory = new OrientGraphFactory(dbURL, dbUser, dbPassword);
+    pipeline.setDatabaseProvider(dbProvider);
 
-    final OrientBaseGraph graphDatabase = tx ? factory.getTx() : factory.getNoTx();
+  }
 
-    graphDatabase.setUseLightweightEdges(useLightweightEdges);
-    graphDatabase.setStandardElementConstraints(standardElementConstraints);
+  private OETLDatabaseProvider getDatabaseProvider() {
+    OrientGraphFactory factory = new OrientGraphFactory(dbURL, dbUser, dbPassword);
+    final OrientBaseGraph graph = tx ? factory.getTx() : factory.getNoTx();
 
-    final ODatabaseDocument documentDatabase = graphDatabase.getRawGraph();
+    graph.setUseLightweightEdges(useLightweightEdges);
+    graph.setStandardElementConstraints(standardElementConstraints);
 
-    pipeline.setDocumentDatabase(documentDatabase);
-    pipeline.setGraphDatabase(graphDatabase);
-
+    final ODatabaseDocument documentDatabase = graph.getRawGraph();
     documentDatabase.getMetadata().getSchema().reload();
 
     documentDatabase.declareIntent(new OIntentMassiveInsert());
 
+    if (tx && dbType == DOCUMENT) {
+      if (!documentDatabase.getTransaction().isActive()) {
+        documentDatabase.begin();
+        documentDatabase.getTransaction().setUsingLog(txUseLog);
+      }
+    }
+
+    return new OETLDatabaseProvider(documentDatabase, graph);
   }
 
   private void createSchema() {
@@ -499,7 +530,7 @@ public class OOrientDBLoader extends OAbstractLoader implements OLoader {
 
     if (classes != null) {
       for (ODocument cls : classes) {
-        schemaClass = getOrCreateClass(documentDatabase, (String) cls.field("name"), (String) cls.field("extends"));
+        schemaClass = getOrCreateClass(documentDatabase, cls.field("name"), cls.field("extends"));
 
         Integer clusters = cls.field("clusters");
         if (clusters != null)
@@ -587,12 +618,9 @@ public class OOrientDBLoader extends OAbstractLoader implements OLoader {
   }
 
   @Override
-  public void endLoader(OETLPipeline pipeline) {
+  public void endLoader(OETLDatabaseProvider databaseProvider) {
     log(INFO, "committing");
-    if (dbType == DOCUMENT)
-      pipeline.getDocumentDatabase().commit();
-    else
-      pipeline.getGraphDatabase().commit();
+    databaseProvider.commit();
   }
 
   @Override

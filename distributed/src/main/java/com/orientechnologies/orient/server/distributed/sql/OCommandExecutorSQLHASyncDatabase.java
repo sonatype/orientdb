@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.server.distributed.sql;
@@ -39,7 +39,7 @@ import java.util.Map;
 /**
  * SQL HA SYNC DATABASE command: synchronizes database form distributed servers.
  * 
- * @author Luca Garulli
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  * 
  */
 @SuppressWarnings("unchecked")
@@ -48,12 +48,6 @@ public class OCommandExecutorSQLHASyncDatabase extends OCommandExecutorSQLAbstra
   public static final String KEYWORD_HA       = "HA";
   public static final String KEYWORD_SYNC     = "SYNC";
   public static final String KEYWORD_DATABASE = "DATABASE";
-
-  enum MODE {
-    FULL_REPLACE, DELTA
-  };
-
-  private MODE mode = MODE.FULL_REPLACE;
 
   public OCommandExecutorSQLHASyncDatabase parse(final OCommandRequest iRequest) {
     init((OCommandRequestText) iRequest);
@@ -72,11 +66,6 @@ public class OCommandExecutorSQLHASyncDatabase extends OCommandExecutorSQLAbstra
     pos = nextWord(parserText, parserTextUpperCase, pos, word, true);
     if (pos == -1 || !word.toString().equals(KEYWORD_DATABASE))
       throw new OCommandSQLParsingException("Keyword " + KEYWORD_DATABASE + " not found. Use " + getSyntax(), parserText, oldPos);
-
-    pos = nextWord(parserText, parserTextUpperCase, pos, word, false);
-    if (pos != -1) {
-      mode = MODE.valueOf(word.toString());
-    }
 
     return this;
   }
@@ -100,7 +89,7 @@ public class OCommandExecutorSQLHASyncDatabase extends OCommandExecutorSQLAbstra
 
     final String databaseName = database.getName();
 
-    return dManager.installDatabase(true, databaseName, dStg.getDistributedConfiguration().getDocument());
+    return dManager.installDatabase(true, databaseName, dStg.getDistributedConfiguration().getDocument(), false, true);
   }
 
   @Override

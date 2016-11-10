@@ -1,5 +1,5 @@
 /**
- * Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ * Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * For more information: http://www.orientechnologies.com
+ * For more information: http://orientdb.com
  */
 package com.orientechnologies.orient.jdbc;
 
@@ -23,6 +23,7 @@ import com.orientechnologies.orient.core.exception.OQueryParsingException;
 import com.orientechnologies.orient.core.query.OQuery;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.record.impl.ORecordBytes;
+import com.orientechnologies.orient.core.sql.executor.OTodoResultSet;
 import com.orientechnologies.orient.core.sql.query.OSQLSynchQuery;
 import com.orientechnologies.orient.jdbc.OrientJdbcParameterMetadata.ParameterDefinition;
 
@@ -55,11 +56,10 @@ import java.util.Map;
 /**
  * @author Roberto Franchini (CELI Srl - franchini@celi.it)
  * @author Salvatore Piccione (TXT e-solutions SpA - salvo.picci@gmail.com)
- * @author Luca Garulli (l.garulli--at--orientechnologies.com)
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class OrientJdbcPreparedStatement extends OrientJdbcStatement implements PreparedStatement {
 
-  protected final String               sql;
   protected final Map<Integer, Object> params;
 
   public OrientJdbcPreparedStatement(OrientJdbcConnection iConnection, String sql) {
@@ -81,16 +81,18 @@ public class OrientJdbcPreparedStatement extends OrientJdbcStatement implements 
   @SuppressWarnings("unchecked")
   public ResultSet executeQuery() throws SQLException {
 
+    //    return super.executeQuery(sql);
+    sql = mayCleanForSpark(sql);
+
     if (sql.equalsIgnoreCase("select 1")) {
       // OPTIMIZATION
-      documents = new ArrayList<ODocument>();
+      documents = new ArrayList<>();
       documents.add(new ODocument().field("1", 1));
     } else {
       try {
-        ;
-
         query = new OSQLSynchQuery<ODocument>(mayCleanForSpark(sql));
         documents = database.query((OQuery<? extends Object>) query, params.values().toArray());
+
       } catch (OQueryParsingException e) {
         throw new SQLSyntaxErrorException("Error while parsing query", e);
       } catch (OException e) {

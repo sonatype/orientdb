@@ -1,3 +1,20 @@
+/**
+ * Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * 	http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * For more information: http://orientdb.com
+ */
 package com.orientechnologies.orient.jdbc;
 
 import org.junit.Test;
@@ -93,28 +110,37 @@ public class OrientJdbcResultSetMetaDataTest extends OrientJdbcBaseTest {
     assertThat(count).isEqualTo(10);
   }
 
+
   @Test
   public void shouldNavigateResultSetByMetadata() throws Exception {
 
     assertThat(conn.isClosed()).isFalse();
     Statement stmt = conn.createStatement();
-    ResultSet rs = stmt.executeQuery("SELECT stringKey, intKey, text, length, date FROM Item");
+    ResultSet rs = stmt.executeQuery("SELECT @rid, @class, stringKey, intKey, text, length, date FROM Item");
 
     rs.next();
     ResultSetMetaData metaData = rs.getMetaData();
-    assertThat(metaData.getColumnCount()).isEqualTo(5);
+    assertThat(metaData.getColumnCount()).isEqualTo(7);
 
-    assertThat(metaData.getColumnName(1)).isEqualTo("stringKey");
+    assertThat(metaData.getColumnName(1)).isEqualTo("rid");
+    assertThat(rs.getString(1)).isEqualTo("#25:0");
     assertThat(rs.getObject(1)).isInstanceOf(String.class);
 
-    assertThat(metaData.getColumnName(2)).isEqualTo("intKey");
+    assertThat(metaData.getColumnName(2)).isEqualTo("class");
+    assertThat(rs.getString(2)).isEqualTo("Item");
+    assertThat(rs.getObject(2)).isInstanceOf(String.class);
 
-    assertThat(metaData.getColumnName(3)).isEqualTo("text");
+    assertThat(metaData.getColumnName(3)).isEqualTo("stringKey");
     assertThat(rs.getObject(3)).isInstanceOf(String.class);
 
-    assertThat(metaData.getColumnName(4)).isEqualTo("length");
+    assertThat(metaData.getColumnName(4)).isEqualTo("intKey");
 
-    assertThat(metaData.getColumnName(5)).isEqualTo("date");
+    assertThat(metaData.getColumnName(5)).isEqualTo("text");
+    assertThat(rs.getObject(5)).isInstanceOf(String.class);
+
+    assertThat(metaData.getColumnName(6)).isEqualTo("length");
+
+    assertThat(metaData.getColumnName(7)).isEqualTo("date");
 
   }
 
@@ -159,5 +185,17 @@ public class OrientJdbcResultSetMetaDataTest extends OrientJdbcBaseTest {
     assertThat(metaData.getColumnTypeName(1)).isEqualTo("STRING");
     assertThat(rs.getObject(1)).isInstanceOf(String.class);
 
+  }
+
+  @Test
+  public void shouldReadBoolean() throws Exception {
+
+    Statement stmt = conn.createStatement();
+    ResultSet rs = stmt.executeQuery("SELECT  isActive, is_active FROM Writer");
+
+    while (rs.next()) {
+
+      System.out.println("bool:: " + rs.getBoolean(1) + " - " + rs.getBoolean(2));
+    }
   }
 }

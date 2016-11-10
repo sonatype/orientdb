@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.server;
@@ -44,6 +44,7 @@ import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.net.ssl.SSLSocket;
 
 public class OClientConnectionManager {
   private static final long                                  TIMEOUT_PUSH     = 3000;
@@ -123,7 +124,7 @@ public class OClientConnectionManager {
    * @return new connection
    * @throws IOException
    */
-  public OClientConnection connect(final ONetworkProtocol iProtocol) throws IOException {
+  public OClientConnection connect(final ONetworkProtocol iProtocol) {
 
     final OClientConnection connection;
 
@@ -144,7 +145,7 @@ public class OClientConnectionManager {
    * @throws IOException
    */
   public OClientConnection connect(final ONetworkProtocol iProtocol, final OClientConnection connection, final byte[] tokenBytes,
-      final OTokenHandler handler) throws IOException {
+      final OTokenHandler handler) {
 
     final OToken token;
     try {
@@ -166,8 +167,7 @@ public class OClientConnectionManager {
     return connection;
   }
 
-  public OClientConnection reConnect(final ONetworkProtocol iProtocol, final byte[] tokenBytes, final OToken token)
-      throws IOException {
+  public OClientConnection reConnect(final ONetworkProtocol iProtocol, final byte[] tokenBytes, final OToken token) {
 
     final OClientConnection connection;
     connection = new OClientConnection(connectionSerial.incrementAndGet(), iProtocol);
@@ -445,7 +445,8 @@ public class OClientConnectionManager {
         if (socket != null && !socket.isClosed() && !socket.isInputShutdown()) {
           try {
             OLogManager.instance().debug(this, "Closing input socket of thread %s", protocol);
-            socket.shutdownInput();
+            if(!(socket instanceof SSLSocket)) // An SSLSocket will throw an UnsupportedOperationException.
+              socket.shutdownInput();
           } catch (IOException e) {
             OLogManager.instance().debug(this, "Error on closing connection of %s client during shutdown", e,
                 entry.getValue().getRemoteAddress());
@@ -482,8 +483,10 @@ public class OClientConnectionManager {
         else
           socket = protocol.getChannel().socket;
 
-        if (socket != null && !socket.isClosed() && !socket.isInputShutdown())
-          socket.shutdownInput();
+        if (socket != null && !socket.isClosed() && !socket.isInputShutdown()) {
+          if(!(socket instanceof SSLSocket)) // An SSLSocket will throw an UnsupportedOperationException.
+            socket.shutdownInput();
+        }
 
       } catch (Exception e) {
         OLogManager.instance().debug(this, "Error on killing connection to %s client", e, entry.getValue().getRemoteAddress());

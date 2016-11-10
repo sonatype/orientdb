@@ -27,7 +27,7 @@ import java.util.*;
 import java.util.zip.CRC32;
 
 /**
- * @author Andrey Lomakin
+ * @author Andrey Lomakin (a.lomakin-at-orientdb.com)
  * @since 26.07.13
  */
 public class WOWCacheTest {
@@ -49,7 +49,9 @@ public class WOWCacheTest {
     if (buildDirectory == null)
       buildDirectory = ".";
 
-    storageLocal = (OLocalPaginatedStorage) Orient.instance().loadStorage("plocal:" + buildDirectory + "/WOWCacheTest");
+    storageLocal = (OLocalPaginatedStorage) Orient.instance().getEngine("plocal").createStorage(buildDirectory + "/WOWCacheTest",
+        null);
+//    storageLocal = (OLocalPaginatedStorage) Orient.instance().loadStorage("plocal:" + buildDirectory + "/WOWCacheTest");
     storageLocal.create(null);
 
     fileName = "wowCacheTest.tst";

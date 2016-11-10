@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,10 +14,27 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.client.binary;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.net.SocketException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
 
 import com.orientechnologies.common.concur.OTimeoutException;
 import com.orientechnologies.common.concur.lock.OInterruptedException;
@@ -29,25 +46,19 @@ import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.util.OPair;
 import com.orientechnologies.orient.client.remote.OStorageRemoteNodeSession;
 import com.orientechnologies.orient.client.remote.OStorageRemoteSession;
+import com.orientechnologies.orient.client.remote.message.OErrorResponse;
 import com.orientechnologies.orient.core.config.OContextConfiguration;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.serialization.OMemoryInputStream;
 import com.orientechnologies.orient.enterprise.channel.OSocketFactory;
-import com.orientechnologies.orient.enterprise.channel.binary.*;
-
-import java.io.*;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
-import java.net.InetSocketAddress;
-import java.net.Socket;
-import java.net.SocketException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Condition;
+import com.orientechnologies.orient.enterprise.channel.binary.OChannelBinary;
+import com.orientechnologies.orient.enterprise.channel.binary.OChannelBinaryProtocol;
+import com.orientechnologies.orient.enterprise.channel.binary.ONetworkProtocolException;
+import com.orientechnologies.orient.enterprise.channel.binary.ORemoteServerEventListener;
+import com.orientechnologies.orient.enterprise.channel.binary.OResponseProcessingException;
 
 public class OChannelBinaryAsynchClient extends OChannelBinary {
-  protected final int                          socketTimeout;                                               // IN MS
+  private int                                  socketTimeout;                                               // IN MS
   protected final short                        srvProtocolVersion;
   private final Condition                      readCondition = getLockRead().getUnderlying().newCondition();
   private final int                            maxUnreadResponses;
@@ -75,7 +86,7 @@ public class OChannelBinaryAsynchClient extends OChannelBinary {
       socketTimeout = iConfig.getValueAsInteger(OGlobalConfiguration.NETWORK_SOCKET_TIMEOUT);
 
       try {
-        socket.connect(new InetSocketAddress(remoteHost, remotePort), socketTimeout);
+        socket.connect(new InetSocketAddress(remoteHost, remotePort), getSocketTimeout());
         setReadResponseTimeout();
         connected();
       } catch (java.net.SocketTimeoutException e) {
@@ -287,6 +298,11 @@ public class OChannelBinaryAsynchClient extends OChannelBinary {
 
   }
 
+  public void endRequest() throws IOException {
+    flush();
+    releaseWriteLock();
+  }
+  
   @Override
   public void close() {
     if (getLockRead().tryAcquireLock())
@@ -360,26 +376,15 @@ public class OChannelBinaryAsynchClient extends OChannelBinary {
       return iClientTxId;
     } else if (iResult == OChannelBinaryProtocol.RESPONSE_STATUS_ERROR) {
 
-      final List<OPair<String, String>> exceptions = new ArrayList<OPair<String, String>>();
-
-      // EXCEPTION
-      while (readByte() == 1) {
-        final String excClassName = readString();
-        final String excMessage = readString();
-        exceptions.add(new OPair<String, String>(excClassName, excMessage));
-      }
-
-      byte[] serializedException = null;
-      if (srvProtocolVersion >= 19)
-        serializedException = readBytes();
-
+      OErrorResponse response = new OErrorResponse();
+      response.read(this, null);
+      byte[] serializedException = response.getResult();
       Exception previous = null;
-
       if (serializedException != null && serializedException.length > 0)
         throwSerializedException(serializedException);
 
-      for (int i = exceptions.size() - 1; i > -1; --i) {
-        previous = createException(exceptions.get(i).getKey(), exceptions.get(i).getValue(), previous);
+      for (Map.Entry<String, String> entry : response.getMessages().entrySet()) {
+        previous = createException(entry.getKey(), entry.getValue(), previous);
       }
 
       if (previous != null) {
@@ -397,7 +402,7 @@ public class OChannelBinaryAsynchClient extends OChannelBinary {
   private void setReadResponseTimeout() throws SocketException {
     final Socket s = socket;
     if (s != null && s.isConnected() && !s.isClosed())
-      s.setSoTimeout(socketTimeout);
+      s.setSoTimeout(getSocketTimeout());
   }
 
   private void setWaitResponseTimeout() throws SocketException {
@@ -442,7 +447,7 @@ public class OChannelBinaryAsynchClient extends OChannelBinary {
 
     if (throwable instanceof Throwable) {
       throw new OResponseProcessingException("Exception during response processing", (Throwable) throwable);
-    }
+    } 
     // WRAP IT
     else
       OLogManager.instance().error(this,
@@ -450,21 +455,29 @@ public class OChannelBinaryAsynchClient extends OChannelBinary {
               + (throwable != null ? throwable.getClass().getName() : "null"));
   }
 
-  public void beginRequest(final byte iCommand, final OStorageRemoteSession session)
-      throws IOException {
+  public void beginRequest(final byte iCommand, final OStorageRemoteSession session) throws IOException {
     final OStorageRemoteNodeSession nodeSession = session.getServerSession(getServerURL());
 
-    if( nodeSession == null )
-      throw new OIOException("Invalid session for URL '"+getServerURL()+"'");
+    if (nodeSession == null)
+      throw new OIOException("Invalid session for URL '" + getServerURL() + "'");
 
     writeByte(iCommand);
     writeInt(nodeSession.getSessionId());
     if (nodeSession.getToken() != null) {
-//      if (!session.hasConnection(this) || true) {
-        writeBytes(nodeSession.getToken());
-//        session.addConnection(this);
-//      } else
-//        writeBytes(new byte[] {});
+      // if (!session.hasConnection(this) || true) {
+      writeBytes(nodeSession.getToken());
+      // session.addConnection(this);
+      // } else
+      // writeBytes(new byte[] {});
     }
   }
+
+  public int getSocketTimeout() {
+    return socketTimeout;
+  }
+
+  public void setSocketTimeout(int socketTimeout) {
+    this.socketTimeout = socketTimeout;
+  }
+
 }

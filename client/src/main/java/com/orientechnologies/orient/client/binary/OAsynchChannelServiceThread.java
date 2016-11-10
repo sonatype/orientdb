@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.client.binary;
@@ -29,7 +29,7 @@ import java.io.IOException;
 /**
  * Service thread that catches internal messages sent by the server
  * 
- * @author Luca Garulli (l.garulli--at--orientechnologies.com)
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class OAsynchChannelServiceThread extends OSoftThread {
   private OChannelBinaryAsynchClient network;
@@ -48,14 +48,27 @@ public class OAsynchChannelServiceThread extends OSoftThread {
   @Override
   protected void execute() throws Exception {
     try {
-      network.beginResponse(sessionId, 0, false);
       Object obj = null;
-      final byte request = network.readByte();
-      switch (request) {
-      case OChannelBinaryProtocol.REQUEST_PUSH_DISTRIB_CONFIG:
-      case OChannelBinaryProtocol.REQUEST_PUSH_LIVE_QUERY:
-        obj = network.readBytes();
-        break;
+      final byte request;
+      try {
+        network.beginResponse(sessionId, 0, false);
+        request = network.readByte();
+        switch (request) {
+        case OChannelBinaryProtocol.REQUEST_PUSH_DISTRIB_CONFIG:
+        case OChannelBinaryProtocol.REQUEST_PUSH_LIVE_QUERY:
+          obj = network.readBytes();
+          break;
+        }
+      } catch (IOException ioe) {
+        if (network != null) {
+          final OChannelBinaryAsynchClient n = network;
+          network = null;
+          n.close();
+        }
+        throw ioe;
+      } finally {
+        if (network != null)
+          network.endResponse();
       }
 
       if (remoteServerEventListener != null)
@@ -64,15 +77,6 @@ public class OAsynchChannelServiceThread extends OSoftThread {
     } catch (IOException ioe) {
       // EXCEPTION RECEIVED (THE SOCKET HAS BEEN CLOSED?) ASSURE TO UNLOCK THE READ AND EXIT THIS THREAD
       sendShutdown();
-      if (network != null) {
-        final OChannelBinaryAsynchClient n = network;
-        network = null;
-        n.close();
-      }
-
-    } finally {
-      if (network != null)
-        network.endResponse();
     }
   }
 }

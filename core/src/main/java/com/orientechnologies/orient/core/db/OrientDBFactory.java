@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,13 +14,14 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 
 package com.orientechnologies.orient.core.db;
 
 import com.orientechnologies.common.exception.OException;
+import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocument;
 import com.orientechnologies.orient.core.exception.ODatabaseException;
 
@@ -68,8 +69,8 @@ public interface OrientDBFactory extends AutoCloseable {
 
     try {
       Class<?> kass = Class.forName("com.orientechnologies.orient.core.db.ORemoteDBFactory");
-      Constructor<?> constructor = kass.getConstructor(String[].class, OrientDBConfig.class);
-      factory = (OrientDBFactory) constructor.newInstance(hosts, configuration);
+      Constructor<?> constructor = kass.getConstructor(String[].class, OrientDBConfig.class, Orient.class);
+      factory = (OrientDBFactory) constructor.newInstance(hosts, configuration, Orient.instance());
     } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException | InstantiationException e) {
       throw new ODatabaseException("OrientDB client API missing");
     } catch (InvocationTargetException e) {
@@ -86,7 +87,7 @@ public interface OrientDBFactory extends AutoCloseable {
    * @return a new embedded databases factory
    */
   static OEmbeddedDBFactory embedded(String directoryPath, OrientDBConfig config) {
-    return new OEmbeddedDBFactory(directoryPath, config);
+    return new OEmbeddedDBFactory(directoryPath, config, Orient.instance());
   }
 
   /**

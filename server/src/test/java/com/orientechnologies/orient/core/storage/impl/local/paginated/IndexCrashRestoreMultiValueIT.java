@@ -2,6 +2,7 @@ package com.orientechnologies.orient.core.storage.impl.local.paginated;
 
 import com.orientechnologies.common.io.OFileUtils;
 import com.orientechnologies.common.log.OLogManager;
+import com.orientechnologies.orient.client.remote.OServerAdmin;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
@@ -28,9 +29,10 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.not;
 
 /**
- * @author Andrey Lomakin (a.lomakin-at-orientechnologies.com)
+ * @author Andrey Lomakin (a.lomakin-at-orientdb.com)
  * @since 9/25/14
  */
 public class IndexCrashRestoreMultiValueIT {
@@ -53,21 +55,8 @@ public class IndexCrashRestoreMultiValueIT {
 
   @Before
   public void beforeMethod() throws Exception {
-    spawnServer();
-    baseDocumentTx = new ODatabaseDocumentTx("plocal:" + buildDir.getAbsolutePath() + "/" + baseIndexName);
-    if (baseDocumentTx.exists()) {
-      baseDocumentTx.open("admin", "admin");
-      baseDocumentTx.drop();
-    }
-
-    baseDocumentTx.create();
-
-    testDocumentTx = new ODatabaseDocumentTx("remote:localhost:3500/" + testIndexName);
-    testDocumentTx.open("admin", "admin");
-  }
-
-  public void spawnServer() throws Exception {
     OLogManager.instance().installCustomFormatter();
+
     OGlobalConfiguration.WAL_FUZZY_CHECKPOINT_INTERVAL.setValue(1000000);
     OGlobalConfiguration.RID_BAG_EMBEDDED_TO_SBTREEBONSAI_THRESHOLD.setValue(3);
     OGlobalConfiguration.FILE_LOCK.setValue(false);
@@ -76,26 +65,45 @@ public class IndexCrashRestoreMultiValueIT {
     buildDirectory += "/" + getClass().getSimpleName();
 
     buildDir = new File(buildDirectory);
+    buildDir = new File(buildDir.getCanonicalPath());
+
     if (buildDir.exists()) {
       OFileUtils.deleteRecursively(buildDir);
     }
 
     buildDir.mkdirs();
 
+    baseDocumentTx = new ODatabaseDocumentTx("plocal:" + buildDir.getCanonicalPath() + "/" + baseIndexName);
+    if (baseDocumentTx.exists()) {
+      baseDocumentTx.open("admin", "admin");
+      baseDocumentTx.drop();
+    }
+
+    baseDocumentTx.create();
+
+    spawnServer();
+
+    final OServerAdmin serverAdmin = new OServerAdmin("remote:localhost:3500");
+    serverAdmin.connect("root", "root");
+    serverAdmin.createDatabase(testIndexName, "graph", "plocal");
+    serverAdmin.close();
+
+    testDocumentTx = new ODatabaseDocumentTx("remote:localhost:3500/" + testIndexName);
+    testDocumentTx.open("admin", "admin");
+  }
+
+  public void spawnServer() throws Exception {
     final File mutexFile = new File(buildDir, "mutex.ct");
     final RandomAccessFile mutex = new RandomAccessFile(mutexFile, "rw");
     mutex.seek(0);
     mutex.write(0);
 
-    buildDirectory = buildDir.getCanonicalPath();
-    buildDir = new File(buildDirectory);
-
     String javaExec = System.getProperty("java.home") + "/bin/java";
     javaExec = new File(javaExec).getCanonicalPath();
 
-    ProcessBuilder processBuilder = new ProcessBuilder(javaExec, "-Xmx2048m", "-XX:MaxDirectMemorySize=512g", "-classpath",
-        System.getProperty("java.class.path"), "-DmutexFile=" + mutexFile.getCanonicalPath(), "-DORIENTDB_HOME=" + buildDirectory,
-        RemoteDBRunner.class.getName());
+    ProcessBuilder processBuilder = new ProcessBuilder(javaExec, "-Xmx4096m", "-XX:MaxDirectMemorySize=512g", "-classpath",
+        System.getProperty("java.class.path"), "-DmutexFile=" + mutexFile.getCanonicalPath(),
+        "-DORIENTDB_HOME=" + buildDir.getCanonicalPath(), RemoteDBRunner.class.getName());
 
     processBuilder.inheritIO();
 
@@ -158,7 +166,9 @@ public class IndexCrashRestoreMultiValueIT {
     System.out.println("All loaders done");
 
     System.out.println("Open remote crashed DB in plocal to recover");
-    testDocumentTx = new ODatabaseDocumentTx("plocal:" + buildDir.getAbsolutePath() + "/" + testIndexName);
+    testDocumentTx = new ODatabaseDocumentTx(
+        "plocal:" + new File(new File(buildDir, "databases"), testIndexName).getCanonicalPath());
+
     testDocumentTx.open("admin", "admin");
     testDocumentTx.close();
 
@@ -311,8 +321,6 @@ public class IndexCrashRestoreMultiValueIT {
         } catch (Exception e) {
         }
       }
-
-      // return null;
     }
   }
 }

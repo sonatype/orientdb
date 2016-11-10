@@ -10,7 +10,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 /**
- * @author Luigi Dell'Aquila
+ * @author Luigi Dell'Aquila (l.dellaquila-(at)-orientdb.com)
  */
 public class OCreateClassStatementExecutionTest {
   static ODatabaseDocument db;
@@ -66,12 +66,20 @@ public class OCreateClassStatementExecutionTest {
     result.close();
   }
 
-  private void printExecutionPlan(String query, OTodoResultSet result) {
-    if (query != null) {
-      System.out.println(query);
-    }
-    result.getExecutionPlan().ifPresent(x -> System.out.println(x.prettyPrint(0, 3)));
-    System.out.println();
+
+  @Test public void testIfNotExists() {
+    String className = "testIfNotExists";
+    OTodoResultSet result = db.command("create class " + className + " if not exists");
+    OSchema schema = db.getMetadata().getSchema();
+    OClass clazz = schema.getClass(className);
+    Assert.assertNotNull(clazz);
+    result.close();
+
+    result = db.command("create class " + className + " if not exists");
+    clazz = schema.getClass(className);
+    Assert.assertNotNull(clazz);
+    result.close();
   }
+
 
 }

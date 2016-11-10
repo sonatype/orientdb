@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.sql.query;
@@ -30,10 +30,12 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.NoSuchElementException;
 
+import com.orientechnologies.orient.core.record.ORecord;
+
 /**
  * ResultSet class that implements List interface for retro compatibility.
  *
- * @author Luca Garulli
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  *
  * @param <T>
  * @see OSQLAsynchQuery
@@ -41,7 +43,9 @@ import java.util.NoSuchElementException;
 public class OBasicResultSet<T> implements OResultSet<T> {
   protected List<T>       underlying;
   protected transient int limit = -1;
-
+  // Reference to temporary record for avoid garbace collection
+  private List<ORecord> temporaryRecordCache;
+  
   public OBasicResultSet() {
     underlying = Collections.synchronizedList(new ArrayList<T>());
   }
@@ -239,4 +243,8 @@ public class OBasicResultSet<T> implements OResultSet<T> {
     return underlying.isEmpty();
   }
 
+  public void setTemporaryRecordCache(List<ORecord> temporaryRecordCache) {
+    this.temporaryRecordCache = temporaryRecordCache;
+  }
+  
 }

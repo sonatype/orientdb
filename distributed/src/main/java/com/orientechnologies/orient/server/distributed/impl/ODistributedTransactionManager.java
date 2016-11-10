@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.server.distributed.impl;
@@ -29,7 +29,6 @@ import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
 import com.orientechnologies.orient.core.db.OExecutionThreadLocal;
 import com.orientechnologies.orient.core.db.OScenarioThreadLocal;
-import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.db.record.OPlaceholder;
 import com.orientechnologies.orient.core.db.record.ORecordOperation;
 import com.orientechnologies.orient.core.exception.*;
@@ -58,7 +57,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Distributed transaction manager.
  *
- * @author Luca Garulli (l.garulli--at--orientechnologies.com)
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class ODistributedTransactionManager {
   private final ODistributedServerManager dManager;
@@ -247,7 +246,7 @@ public class ODistributedTransactionManager {
       for (ORecordOperation op : iTx.getAllRecordEntries()) {
         if (iTx.hasRecordCreation()) {
           final ORecordId lockEntireCluster = (ORecordId) op.getRecord().getIdentity().copy();
-          localDistributedDatabase.getDatabaseRapairer().repairCluster(lockEntireCluster.clusterId);
+          localDistributedDatabase.getDatabaseRapairer().repairCluster(lockEntireCluster.getClusterId());
         }
         localDistributedDatabase.getDatabaseRapairer().repairRecord((ORecordId) op.getRecord().getIdentity());
       }
@@ -264,10 +263,10 @@ public class ODistributedTransactionManager {
       switch (op.type) {
       case ORecordOperation.CREATED:
         final ORecordId newRid = rid.copy();
-        if (rid.clusterId < 1) {
+        if (rid.getClusterId() < 1) {
           final String clusterName = ((OTransactionAbstract) iTx).getClusterName(op.getRecord());
           if (clusterName != null) {
-            newRid.clusterId = ODatabaseRecordThreadLocal.INSTANCE.get().getClusterIdByName(clusterName);
+            newRid.setClusterId(ODatabaseRecordThreadLocal.INSTANCE.get().getClusterIdByName(clusterName));
             iTx.updateIdentityAfterCommit(rid, newRid);
           }
         }
@@ -363,7 +362,7 @@ public class ODistributedTransactionManager {
       switch (op.type) {
       case ORecordOperation.CREATED:
         // ADD UNDO TASK ONCE YHE RID OS KNOWN
-        undoTasks.add(new ODeleteRecordTask(record));
+        undoTasks.add(new OFixCreateRecordTask(record));
         break;
       }
     }
@@ -576,7 +575,7 @@ public class ODistributedTransactionManager {
               previousRecord.set(txEntry.getRecord());
             else {
               final OStorageOperationResult<ORawBuffer> loadedBuffer = ODatabaseRecordThreadLocal.INSTANCE.get().getStorage()
-                  .getUnderlying().readRecord(rid, null, true, null);
+                  .getUnderlying().readRecord(rid, null, true, false, null);
               if (loadedBuffer != null) {
                 // LOAD THE RECORD FROM THE STORAGE AVOIDING USING THE DB TO GET THE TRANSACTIONAL CHANGES
                 final ORecord loaded = Orient.instance().getRecordFactoryManager().newInstance(loadedBuffer.getResult().recordType);
@@ -595,7 +594,7 @@ public class ODistributedTransactionManager {
           throw new ORecordNotFoundException(rid);
 
         if (op.type == ORecordOperation.UPDATED)
-          undoTask = new OUpdateRecordTask(previousRecord.get(),
+          undoTask = new OFixUpdateRecordTask(previousRecord.get(),
               ORecordVersionHelper.clearRollbackMode(previousRecord.get().getVersion()));
         else
           undoTask = new OResurrectRecordTask(previousRecord.get());
@@ -667,7 +666,7 @@ public class ODistributedTransactionManager {
 
       // if this the the last retry (and it failed), we don't need to wait anymore
       if (autoRetryDelay > 0 && !isLastRetry)
-        Thread.sleep(autoRetryDelay);
+        Thread.sleep(autoRetryDelay / 2 + new Random().nextInt(autoRetryDelay));
 
       // acquireMultipleRecordLocks(iTx, maxAutoRetry, autoRetryDelay, eventListener, ctx);
 

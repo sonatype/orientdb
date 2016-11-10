@@ -1,6 +1,6 @@
 /*
  *
- *  * Copyright 2010-2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  * Copyright 2010-2016 OrientDB LTD (info(-at-)orientdb.com)
  *  *
  *  * Licensed under the Apache License, Version 2.0 (the "License");
  *  * you may not use this file except in compliance with the License.
@@ -20,14 +20,14 @@ package com.orientechnologies.orient.etl.loader;
 
 import com.orientechnologies.orient.core.command.OCommandContext;
 import com.orientechnologies.orient.core.record.impl.ODocument;
-import com.orientechnologies.orient.etl.OETLPipeline;
+import com.orientechnologies.orient.etl.OETLDatabaseProvider;
 
 /**
  * ETL Loader that saves record into OrientDB database.
  */
 public class OOutputLoader extends OAbstractLoader {
   @Override
-  public void load(OETLPipeline pipeline, final Object input, final OCommandContext context) {
+  public void load(OETLDatabaseProvider databaseProvider, final Object input, final OCommandContext context) {
     progress.incrementAndGet();
     System.out.println(input);
   }
@@ -38,7 +38,7 @@ public class OOutputLoader extends OAbstractLoader {
   }
 
   @Override
-  public void rollback(OETLPipeline pipeline) {
+  public void rollback(OETLDatabaseProvider databaseProvider) {
   }
 
   @Override

@@ -104,14 +104,15 @@ public class OFunctionCall extends SimpleNode {
       if (current instanceof OIdentifiable) {
         return function.execute(targetObjects, (OIdentifiable) current, null, paramValues.toArray(), ctx);
       } else if (current instanceof OResult) {
-        return function.execute(targetObjects, ((OResult) current).getElement(), null, paramValues.toArray(), ctx);
+        return function.execute(targetObjects, ((OResult) current).getElement().orElse(null), null, paramValues.toArray(), ctx);
       } else if (current == null) {
         return function.execute(targetObjects, null, null, paramValues.toArray(), ctx);
       } else {
         throw new OCommandExecutionException("Invalid value for $current: " + current);
       }
+    } else {
+      throw new OCommandExecutionException("Funciton not found: " + name);
     }
-    throw new UnsupportedOperationException("finish OFunctionCall implementation!");
   }
 
   public static ODatabaseDocumentInternal getDatabase() {
@@ -367,6 +368,13 @@ public class OFunctionCall extends SimpleNode {
 
   public OIdentifier getName() {
     return name;
+  }
+
+  public OMethodCall toMethod() {
+    OMethodCall result = new OMethodCall(-1);
+    result.methodName = name.copy();
+    result.params = params.stream().map(x -> x.copy()).collect(Collectors.toList());
+    return result;
   }
 }
 /* JavaCC - OriginalChecksum=290d4e1a3f663299452e05f8db718419 (do not edit this line) */

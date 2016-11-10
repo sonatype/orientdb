@@ -12,7 +12,7 @@ import java.util.Optional;
 /**
  * Assigns a class to documents coming from upstream
  *
- * @author Luigi Dell'Aquila
+ * @author Luigi Dell'Aquila (l.dellaquila-(at)-orientdb.com)
  */
 public class SetDocumentClassStep extends AbstractExecutionStep {
   private final String targetClass;
@@ -32,7 +32,7 @@ public class SetDocumentClassStep extends AbstractExecutionStep {
       @Override public OResult next() {
         OResult result = upstream.next();
         if (result.isElement()) {
-          OIdentifiable element = result.getElement().getRecord();
+          OIdentifiable element = result.getElement().get().getRecord();
           if (element instanceof ODocument) {
             ODocument doc = (ODocument) element;
             doc.setClassName(targetClass);

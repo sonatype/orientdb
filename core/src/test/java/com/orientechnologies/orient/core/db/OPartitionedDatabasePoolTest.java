@@ -2,10 +2,12 @@ package com.orientechnologies.orient.core.db;
 
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
+import com.orientechnologies.orient.core.metadata.security.OSecurityNull;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.query.OSQLSynchQuery;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TestName;
@@ -130,6 +132,17 @@ public class OPartitionedDatabasePoolTest {
     assertThat(dbFromPool.getProperty(STORAGE_ENCRYPTION_METHOD.getKey())).isEqualTo("aes");
     assertThat(dbFromPool.getProperty(STORAGE_ENCRYPTION_KEY.getKey())).isEqualTo("T1JJRU5UREJfSVNfQ09PTA==");
 
+  }
 
+  @Test
+  @Ignore
+  public void shouldBypassSecurity() throws Exception {
+    OPartitionedDatabasePool localpool = new OPartitionedDatabasePool("memory:shouldBypassSecurity", "admin", "invalid");
+    localpool.setProperty(ODatabase.OPTIONS.SECURITY.toString(), OSecurityNull.class);
+
+    ODatabaseDocumentTx dbFromPool = localpool.acquire();
+    dbFromPool.close();
+
+    localpool.close();
   }
 }

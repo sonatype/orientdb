@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2013 Luca Garulli (l.garulli--at--orientechnologies.com)
+ * Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ public abstract class AbstractHARemoveNode extends AbstractServerClusterTxTest {
     waitFor(2, new OCallable<Boolean, ODatabaseDocumentTx>() {
       @Override
       public Boolean call(ODatabaseDocumentTx db) {
-        final int node2Expected = lastNodeIsUp.get() ? expected : expected - (count * writerCount * (serverInstance.size() - 1));
+        final long node2Expected = lastNodeIsUp.get() ? expected : expected - (count * writerCount * (serverInstance.size() - 1));
 
         final boolean ok = db.countClass("Person") >= node2Expected;
         if (!ok)

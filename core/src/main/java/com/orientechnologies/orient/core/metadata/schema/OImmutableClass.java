@@ -1,6 +1,6 @@
 /*
   *
-  *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+  *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
   *  *
   *  *  Licensed under the Apache License, Version 2.0 (the "License");
   *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
   *  *  See the License for the specific language governing permissions and
   *  *  limitations under the License.
   *  *
-  *  * For more information: http://www.orientechnologies.com
+  *  * For more information: http://orientdb.com
   *
   */
 package com.orientechnologies.orient.core.metadata.schema;
@@ -37,7 +37,7 @@ import java.io.IOException;
 import java.util.*;
 
 /**
- * @author Andrey Lomakin (a.lomakin-at-orientechnologies.com)
+ * @author Andrey Lomakin (a.lomakin-at-orientdb.com)
  * @since 10/21/14
  */
 public class OImmutableClass implements OClass {
@@ -667,12 +667,12 @@ public class OImmutableClass implements OClass {
   }
 
   @Override
-  public void getClassIndexes(Collection<OIndex<?>> indexes) {
+  public void getClassIndexes(final Collection<OIndex<?>> indexes) {
     getDatabase().getMetadata().getIndexManager().getClassIndexes(name, indexes);
   }
 
   @Override
-  public void getIndexes(Collection<OIndex<?>> indexes) {
+  public void getIndexes(final Collection<OIndex<?>> indexes) {
     initSuperClasses();
 
     getClassIndexes(indexes);
@@ -683,7 +683,7 @@ public class OImmutableClass implements OClass {
 
   @Override
   public Set<OIndex<?>> getIndexes() {
-    Set<OIndex<?>> indexes = new HashSet<OIndex<?>>();
+    final Set<OIndex<?>> indexes = new HashSet<OIndex<?>>();
     getIndexes(indexes);
     return indexes;
   }

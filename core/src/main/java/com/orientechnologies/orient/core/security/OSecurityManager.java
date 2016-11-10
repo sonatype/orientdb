@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.security;
@@ -252,11 +252,12 @@ public class OSecurityManager {
    */
   private static boolean isAlgorithmSupported(final String algorithm) {
     // Java 7 specific checks.
-    String implementationVersion = Runtime.class.getPackage().getImplementationVersion();
-    if (implementationVersion!= null && implementationVersion.startsWith("1.7")) {
-      // Java 7 does not support the PBKDF2_SHA256_ALGORITHM.
-      if (algorithm.equals(PBKDF2_SHA256_ALGORITHM)) {
-        return false;
+    if (Runtime.class.getPackage() != null && Runtime.class.getPackage().getImplementationVersion() != null) {
+      if (Runtime.class.getPackage().getImplementationVersion().startsWith("1.7")) {
+        // Java 7 does not support the PBKDF2_SHA256_ALGORITHM.
+        if (algorithm != null && algorithm.equals(PBKDF2_SHA256_ALGORITHM)) {
+          return false;
+        }
       }
     }
 

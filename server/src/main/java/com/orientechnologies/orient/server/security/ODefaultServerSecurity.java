@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2016 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2016 OrientDB LTD (info(-at-)orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.server.security;
@@ -158,17 +158,22 @@ public class ODefaultServerSecurity implements OSecurityFactory, OServerLifecycl
           return superUser;
       }
 
+      List<OSecurityAuthenticator> active = new ArrayList<>();
       synchronized (authenticatorsList) {
         // Walk through the list of OSecurityAuthenticators.
         for (OSecurityAuthenticator sa : authenticatorsList) {
           if (sa.isEnabled()) {
-            String principal = sa.authenticate(username, password);
-
-            if (principal != null)
-              return principal;
+            active.add(sa);
           }
         }
       }
+      for (OSecurityAuthenticator sa : active) {
+        String principal = sa.authenticate(username, password);
+
+        if (principal != null)
+          return principal;
+      }
+      
     } catch (Exception ex) {
       OLogManager.instance().error(this, "ODefaultServerSecurity.authenticate() Exception: %s", ex.getMessage());
     }
@@ -203,7 +208,7 @@ public class ODefaultServerSecurity implements OSecurityFactory, OServerLifecycl
             if (sah != null && sah.trim().length() > 0) {
               // If we're not the first authenticator, then append "\n".
               if (sb.length() > 0) {
-                sb.append("\n");
+                sb.append("\r\n");
               }
               sb.append(sah);
             }

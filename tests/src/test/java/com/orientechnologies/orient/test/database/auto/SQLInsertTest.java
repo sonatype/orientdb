@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2012 Luca Garulli (l.garulli--at--orientechnologies.com)
+ * Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,14 +32,8 @@ import org.testng.annotations.Optional;
 import org.testng.annotations.Parameters;
 import org.testng.annotations.Test;
 
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Collection;
-import java.util.Date;
-import java.util.GregorianCalendar;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.math.BigDecimal;
+import java.util.*;
 
 /**
  * If some of the tests start to fail then check cluster number in queries, e.g #7:1. It can be because the order of clusters could
@@ -288,6 +282,7 @@ public class SQLInsertTest extends DocumentDBBaseTest {
     Assert.assertEquals(record.field("user"), new ORecordId(3, positions.get(0)));
   }
 
+  @Test
   public void insertSelect() {
     database.command(new OCommandSQL("CREATE CLASS UserCopy")).execute();
     database.getMetadata().getSchema().reload();
@@ -304,6 +299,7 @@ public class SQLInsertTest extends DocumentDBBaseTest {
     }
   }
 
+  @Test
   public void insertWithReturn() {
 
     if (!database.getMetadata().getSchema().existsClass("actor2")) {
@@ -333,7 +329,7 @@ public class SQLInsertTest extends DocumentDBBaseTest {
     ORID another = ((OIdentifiable) res1).getIdentity();
     final String sql = "INSERT INTO Actor2 RETURN $current.FirstName  FROM SELECT * FROM [" + doc.getIdentity().toString() + ","
         + another.toString() + "]";
-    ArrayList res3 = database.command(new OCommandSQL(sql)).execute();
+    List res3 = database.command(new OCommandSQL(sql)).execute();
     Assert.assertEquals(res3.size(), 2);
     Assert.assertTrue(((List) res3).get(0) instanceof ODocument);
     final ODocument res3doc = (ODocument) res3.get(0);
@@ -361,6 +357,7 @@ public class SQLInsertTest extends DocumentDBBaseTest {
     Assert.assertEquals(sql3doc.field("Name"), "Bingo owner");
   }
 
+  @Test
   public void testAutoConversionOfEmbeddededSetNoLinkedClass() {
     OClass c = database.getMetadata().getSchema().getOrCreateClass("TestConvert");
     c.createProperty("embeddedSetNoLinkedClass", OType.EMBEDDEDSET);
@@ -379,6 +376,7 @@ public class SQLInsertTest extends DocumentDBBaseTest {
     }
   }
 
+  @Test
   public void testAutoConversionOfEmbeddededSetWithLinkedClass() {
     OClass c = database.getMetadata().getSchema().getOrCreateClass("TestConvert");
     c.createProperty("embeddedSetWithLinkedClass", OType.EMBEDDEDSET,
@@ -399,6 +397,7 @@ public class SQLInsertTest extends DocumentDBBaseTest {
     }
   }
 
+  @Test
   public void testAutoConversionOfEmbeddededListNoLinkedClass() {
     OClass c = database.getMetadata().getSchema().getOrCreateClass("TestConvert");
     c.createProperty("embeddedListNoLinkedClass", OType.EMBEDDEDLIST);
@@ -417,6 +416,7 @@ public class SQLInsertTest extends DocumentDBBaseTest {
     }
   }
 
+  @Test
   public void testAutoConversionOfEmbeddededListWithLinkedClass() {
     OClass c = database.getMetadata().getSchema().getOrCreateClass("TestConvert");
     if (!c.existsProperty("embeddedListWithLinkedClass"))
@@ -438,6 +438,7 @@ public class SQLInsertTest extends DocumentDBBaseTest {
     }
   }
 
+  @Test
   public void testAutoConversionOfEmbeddededMapNoLinkedClass() {
     OClass c = database.getMetadata().getSchema().getOrCreateClass("TestConvert");
     c.createProperty("embeddedMapNoLinkedClass", OType.EMBEDDEDMAP);
@@ -456,6 +457,7 @@ public class SQLInsertTest extends DocumentDBBaseTest {
     }
   }
 
+  @Test
   public void testAutoConversionOfEmbeddededMapWithLinkedClass() {
     OClass c = database.getMetadata().getSchema().getOrCreateClass("TestConvert");
     c.createProperty("embeddedMapWithLinkedClass", OType.EMBEDDEDMAP,
@@ -476,6 +478,7 @@ public class SQLInsertTest extends DocumentDBBaseTest {
     }
   }
 
+  @Test
   public void testAutoConversionOfEmbeddededNoLinkedClass() {
     OClass c = database.getMetadata().getSchema().getOrCreateClass("TestConvert");
     c.createProperty("embeddedNoLinkedClass", OType.EMBEDDED);
@@ -488,6 +491,7 @@ public class SQLInsertTest extends DocumentDBBaseTest {
     Assert.assertTrue(doc.field("embeddedNoLinkedClass") instanceof ODocument);
   }
 
+  @Test
   public void testEmbeddedDates() {
     OClass c = database.getMetadata().getSchema().getOrCreateClass("TestEmbeddedDates");
 
@@ -518,6 +522,7 @@ public class SQLInsertTest extends DocumentDBBaseTest {
 
   }
 
+  @Test
   public void testAutoConversionOfEmbeddededWithLinkedClass() {
     OClass c = database.getMetadata().getSchema().getOrCreateClass("TestConvert");
     c.createProperty("embeddedWithLinkedClass", OType.EMBEDDED,
@@ -532,6 +537,7 @@ public class SQLInsertTest extends DocumentDBBaseTest {
     Assert.assertEquals(((ODocument) doc.field("embeddedWithLinkedClass")).getClassName(), "TestConvertLinkedClass");
   }
 
+  @Test
   public void testInsertEmbeddedWithRecordAttributes() {
     OClass c = database.getMetadata().getSchema().getOrCreateClass("EmbeddedWithRecordAttributes");
     c.createProperty("like", OType.EMBEDDED,
@@ -547,6 +553,7 @@ public class SQLInsertTest extends DocumentDBBaseTest {
     Assert.assertEquals(((ODocument) doc.field("like")).<Object>field("count"), 0);
   }
 
+  @Test
   public void testInsertEmbeddedWithRecordAttributes2() {
     OClass c = database.getMetadata().getSchema().getOrCreateClass("EmbeddedWithRecordAttributes2");
     c.createProperty("like", OType.EMBEDDED,
@@ -562,6 +569,7 @@ public class SQLInsertTest extends DocumentDBBaseTest {
     Assert.assertEquals(((ODocument) doc.field("like")).<Object>field("count"), 0);
   }
 
+  @Test
   public void testInsertWithClusterAsFieldName() {
     OClass c = database.getMetadata().getSchema().getOrCreateClass("InsertWithClusterAsFieldName");
 
@@ -573,6 +581,20 @@ public class SQLInsertTest extends DocumentDBBaseTest {
 
     Assert.assertEquals(result.size(), 1);
     Assert.assertEquals(result.get(0).field("cluster"), "foo");
+  }
+
+  @Test
+  public void testInsertEmbeddedBigDecimal() {
+    // issue #6670
+    database.getMetadata().getSchema().getOrCreateClass("TestInsertEmbeddedBigDecimal");
+    database.command(new OCommandSQL("create property TestInsertEmbeddedBigDecimal.ed embeddedlist decimal")).execute();
+    database.command(new OCommandSQL("INSERT INTO TestInsertEmbeddedBigDecimal CONTENT {\"ed\": [5,null,5]}")).execute();
+    List<ODocument> result = database.query(new OSQLSynchQuery<ODocument>("SELECT FROM TestInsertEmbeddedBigDecimal"));
+    Assert.assertEquals(result.size(), 1);
+    Iterable ed = result.get(0).field("ed");
+    Object o = ed.iterator().next();
+    Assert.assertEquals(o.getClass(), BigDecimal.class);
+    Assert.assertEquals(((BigDecimal)o).intValue(), 5);
   }
 
   private List<Long> getValidPositions(int clusterId) {

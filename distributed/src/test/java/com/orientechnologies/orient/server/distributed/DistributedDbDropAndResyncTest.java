@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2013 Luca Garulli (l.garulli--at--orientechnologies.com)
+ * Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ public class DistributedDbDropAndResyncTest extends AbstractServerClusterTxTest 
       db.open("admin", "admin");
 
       banner("RE-SYNC DATABASE ON SERVER " + s.getServerId());
-      db.command(new OCommandSQL("ha sync database FULL_REPLACE")).execute();
+      db.command(new OCommandSQL("ha sync database")).execute();
 
       ODistributedServerManager.DB_STATUS currentStatus = null;
 

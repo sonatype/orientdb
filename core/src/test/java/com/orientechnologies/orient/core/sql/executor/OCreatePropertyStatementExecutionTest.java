@@ -15,7 +15,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * @author Luigi Dell'Aquila
+ * @author Luigi Dell'Aquila (l.dellaquila-(at)-orientdb.com)
  */
 public class OCreatePropertyStatementExecutionTest {
   static ODatabaseDocument db;
@@ -282,12 +282,26 @@ public class OCreatePropertyStatementExecutionTest {
     assertFalse(idProperty.isMandatory());
   }
 
-  private void printExecutionPlan(String query, OTodoResultSet result) {
-    if (query != null) {
-      System.out.println(query);
-    }
-    result.getExecutionPlan().ifPresent(x -> System.out.println(x.prettyPrint(0, 3)));
-    System.out.println();
+  @Test public void testIfNotExists() throws Exception {
+    db.command("CREATE class testIfNotExists");
+    db.command("CREATE property testIfNotExists.name if not exists STRING");
+
+    OClass clazz = db.getMetadata().getSchema().getClass("testIfNotExists");
+    OProperty nameProperty = clazz.getProperty(PROP_NAME);
+
+    assertEquals(nameProperty.getName(), PROP_NAME);
+    assertEquals(nameProperty.getFullName(), "testIfNotExists.name");
+    assertEquals(nameProperty.getType(), OType.STRING);
+
+    db.command("CREATE property testIfNotExists.name if not exists STRING");
+
+    clazz = db.getMetadata().getSchema().getClass("testIfNotExists");
+    nameProperty = clazz.getProperty(PROP_NAME);
+
+    assertEquals(nameProperty.getName(), PROP_NAME);
+    assertEquals(nameProperty.getFullName(), "testIfNotExists.name");
+    assertEquals(nameProperty.getType(), OType.STRING);
+
   }
 
 }

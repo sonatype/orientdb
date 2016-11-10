@@ -1,8 +1,27 @@
+/*
+ *
+ *  *  Copyright 2014 OrientDB LTD (info(at)orientdb.com)
+ *  *
+ *  *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  *  you may not use this file except in compliance with the License.
+ *  *  You may obtain a copy of the License at
+ *  *
+ *  *       http://www.apache.org/licenses/LICENSE-2.0
+ *  *
+ *  *  Unless required by applicable law or agreed to in writing, software
+ *  *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  *  See the License for the specific language governing permissions and
+ *  *  limitations under the License.
+ *  *
+ *  * For more information: http://www.orientdb.com
+ *
+ */
+
 package com.orientechnologies.orient.core.metadata.sequence;
 
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.exception.OSequenceException;
-import com.orientechnologies.orient.core.metadata.OMetadataInternal;
 import com.orientechnologies.orient.core.metadata.schema.OClassImpl;
 import com.orientechnologies.orient.core.metadata.sequence.OSequence.SEQUENCE_TYPE;
 import com.orientechnologies.orient.core.record.impl.ODocument;
@@ -30,20 +49,21 @@ public class OSequenceLibraryImpl implements OSequenceLibrary {
   }
 
   @Override
+  @Deprecated
   public void load() {
-     throw new UnsupportedOperationException("use api with database for internal");
+    throw new UnsupportedOperationException("use api with database for internal");
   }
 
-  public void load(ODatabaseDocumentInternal database) {
+  @Override
+  public void load(final ODatabaseDocumentInternal db) {
     sequences.clear();
 
-    //
-    if (((OMetadataInternal) database.getMetadata()).getImmutableSchemaSnapshot().existsClass(OSequence.CLASS_NAME)) {
-      List<ODocument> result = database.query(new OSQLSynchQuery<ODocument>("SELECT FROM " + OSequence.CLASS_NAME));
+    if (db.getMetadata().getImmutableSchemaSnapshot().existsClass(OSequence.CLASS_NAME)) {
+      final List<ODocument> result = db.query(new OSQLSynchQuery<ODocument>("SELECT FROM " + OSequence.CLASS_NAME));
       for (ODocument document : result) {
         document.reload();
 
-        OSequence sequence = OSequenceHelper.createSequence(document);
+        final OSequence sequence = OSequenceHelper.createSequence(document);
         sequences.put(sequence.getName().toUpperCase(), sequence);
       }
     }
@@ -64,26 +84,38 @@ public class OSequenceLibraryImpl implements OSequenceLibrary {
     return sequences.size();
   }
 
+  @Override
+  public OSequence getSequence(final ODatabaseDocumentInternal database, final String iName) {
+    final String name = iName.toUpperCase();
 
-  public OSequence getSequence(ODatabaseDocumentInternal database, String iName) {
-    final OSequence seq = sequences.get(iName.toUpperCase());
-    if (seq == null)
+    OSequence seq = sequences.get(name);
+    if (seq == null) {
       load(database);
+      seq = sequences.get(name);
+    }
 
-    return sequences.get(iName.toUpperCase());
+    if (seq != null) {
+      seq.bindOnLocalThread();
+      seq.checkForUpdateToLastversion();
+    }
+
+    return seq;
   }
 
   @Override
-  public OSequence getSequence(String iName) {
-      throw new UnsupportedOperationException();
+  @Deprecated
+  public OSequence getSequence(final String iName) {
+    throw new UnsupportedOperationException();
   }
 
   @Override
-  public OSequence createSequence(String iName, SEQUENCE_TYPE sequenceType, OSequence.CreateParams params) {
+  public OSequence createSequence(final String iName, final SEQUENCE_TYPE sequenceType, final OSequence.CreateParams params) {
     throw new UnsupportedOperationException("use api with database for internal");
   }
 
-  public OSequence createSequence(ODatabaseDocumentInternal database, String iName, SEQUENCE_TYPE sequenceType, OSequence.CreateParams params) {
+  @Override
+  public OSequence createSequence(final ODatabaseDocumentInternal database, final String iName, final SEQUENCE_TYPE sequenceType,
+      final OSequence.CreateParams params) {
     init(database);
 
     final String key = iName.toUpperCase();
@@ -97,56 +129,68 @@ public class OSequenceLibraryImpl implements OSequenceLibrary {
   }
 
   @Override
-  public void dropSequence(String iName) {
+  @Deprecated
+  public void dropSequence(final String iName) {
     throw new UnsupportedOperationException();
   }
 
-  public void dropSequence(ODatabaseDocumentInternal database, String iName) {
-    String seqName = iName.toUpperCase();
-    OSequence seq = getSequence(database, seqName);
+  @Override
+  public void dropSequence(final ODatabaseDocumentInternal database, final String iName) {
+    final OSequence seq = getSequence(database, iName);
 
     if (seq != null) {
-      seq.getDocument().delete();
-      sequences.remove(seqName);
+      database.delete(seq.getDocument().getIdentity());
+      sequences.remove(iName.toUpperCase());
     }
   }
 
-  public OSequence onSequenceCreated(ODatabaseDocumentInternal database, ODocument iDocument) {
+  public OSequence onSequenceCreated(final ODatabaseDocumentInternal database, final ODocument iDocument) {
     init(database);
 
-    OSequence sequence = OSequenceHelper.createSequence(iDocument);
+    String name = OSequence.getSequenceName(iDocument);
+    if (name == null)
+      return null;
 
-    final String name = sequence.getName().toUpperCase();
-    validateSequenceNoExists(name);
+    name = name.toUpperCase();
+
+    final OSequence seq = getSequence(database, name);
+
+    if (seq != null)
+      return seq;
+
+    final OSequence sequence = OSequenceHelper.createSequence(iDocument);
 
     sequences.put(name, sequence);
-
     return sequence;
   }
 
-  public OSequence onSequenceUpdated(ODatabaseDocumentInternal database,ODocument iDocument) {
+  public OSequence onSequenceUpdated(final ODatabaseDocumentInternal database, final ODocument iDocument) {
     String name = OSequence.getSequenceName(iDocument);
-    if (name == null) {
+    if (name == null)
       return null;
-    }
-    OSequence sequence = getSequence(name);
-    if (sequence == null) {
+
+    name = name.toUpperCase();
+
+    final OSequence sequence = sequences.get(name);
+    if (sequence == null)
       return null;
-    }
 
     sequence.onUpdate(iDocument);
 
     return sequence;
   }
 
-  public void onSequenceDropped(ODatabaseDocumentInternal database,ODocument iDocument) {
+  public void onSequenceDropped(final ODatabaseDocumentInternal database, final ODocument iDocument) {
     String name = OSequence.getSequenceName(iDocument);
-    validateSequenceExists(name);
+    if (name == null)
+      return;
+
+    name = name.toUpperCase();
 
     sequences.remove(name);
   }
 
-  private void init(ODatabaseDocumentInternal database) {
+  private void init(final ODatabaseDocumentInternal database) {
     if (database.getMetadata().getSchema().existsClass(OSequence.CLASS_NAME)) {
       return;
     }

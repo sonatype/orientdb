@@ -9,7 +9,7 @@ import java.util.Optional;
 /**
  * Deletes records coming from upstream steps
  *
- * @author Luigi Dell'Aquila
+ * @author Luigi Dell'Aquila (l.dellaquila-(at)-orientdb.com)
  */
 public class DeleteStep extends AbstractExecutionStep {
   public DeleteStep(OCommandContext ctx) {
@@ -26,7 +26,7 @@ public class DeleteStep extends AbstractExecutionStep {
       @Override public OResult next() {
         OResult result = upstream.next();
         if (result.isElement()) {
-          ctx.getDatabase().delete(result.getElement());
+          ctx.getDatabase().delete(result.getElement().get());
         }
         return result;
       }

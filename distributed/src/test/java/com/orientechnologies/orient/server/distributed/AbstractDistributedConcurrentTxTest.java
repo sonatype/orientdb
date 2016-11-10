@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,11 +14,19 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *  
  */
 
 package com.orientechnologies.orient.server.distributed;
+
+import java.util.Date;
+import java.util.Random;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.junit.Assert;
 
 import com.orientechnologies.common.concur.ONeedRetryException;
 import com.orientechnologies.common.log.OLogManager;
@@ -29,13 +37,6 @@ import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.server.distributed.task.ODistributedRecordLockedException;
 import com.tinkerpop.blueprints.impls.orient.*;
-import org.junit.Assert;
-
-import java.util.Date;
-import java.util.Random;
-import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Test distributed TX
@@ -53,13 +54,15 @@ public abstract class AbstractDistributedConcurrentTxTest extends AbstractDistri
     public TxWriter(final int iServerId, final String db) {
       serverId = iServerId;
       databaseUrl = db;
+      System.out.println("\nCreated Writer " + databaseUrl + " id=" + Thread.currentThread().getId() + " managed " + "0/" + count
+          + " vertices so far");
     }
 
     @Override
     public Void call() throws Exception {
       String name = Integer.toString(serverId);
 
-      for (int i = 0; i < count; i += 2) {
+      for (int i = 0; i < count; i++) {
         final OrientGraph graph = factory.getTx();
 
         final OrientVertex localVertex = graph.getVertex(v);
@@ -83,7 +86,7 @@ public abstract class AbstractDistributedConcurrentTxTest extends AbstractDistri
               OLogManager.instance().info(this, "increment lockExceptions %d", lockExceptions.get());
 
             } catch (ONeedRetryException e) {
-              OLogManager.instance().info(this, "Concurrent Exceptions %s", e, e);
+              OLogManager.instance().debug(this, "Concurrent Exceptions " + e);
 
             } catch (Exception e) {
               graph.rollback();
@@ -116,6 +119,11 @@ public abstract class AbstractDistributedConcurrentTxTest extends AbstractDistri
       System.out.println("\nWriter " + name + " END. count = " + count + " lockExceptions: " + lockExceptions);
       return null;
     }
+  }
+
+  protected AbstractDistributedConcurrentTxTest() {
+    count = 200;
+    writerCount = 3;
   }
 
   protected void onAfterExecution() {
@@ -163,13 +171,10 @@ public abstract class AbstractDistributedConcurrentTxTest extends AbstractDistri
   protected OrientVertex createVertex(OrientBaseGraph graph, int serverId, int threadId, int i) {
     final String uniqueId = serverId + "-" + threadId + "-" + i;
 
-    final Object result = graph
-        .command(new OCommandSQL(
-            "create vertex Provider content {'id': '" + UUID.randomUUID().toString() + "', 'name': 'Billy" + uniqueId
-                + "', 'surname': 'Mayes" + uniqueId + "', 'birthday': '" + ODatabaseRecordThreadLocal.INSTANCE.get().getStorage()
-                    .getConfiguration().getDateFormatInstance().format(new Date())
-                + "', 'children': '" + uniqueId + "', 'saved': 0}"))
-        .execute();
+    final Object result = graph.command(new OCommandSQL("create vertex Provider content {'id': '" + UUID.randomUUID().toString()
+        + "', 'name': 'Billy" + uniqueId + "', 'surname': 'Mayes" + uniqueId + "', 'birthday': '"
+        + ODatabaseRecordThreadLocal.INSTANCE.get().getStorage().getConfiguration().getDateFormatInstance().format(new Date())
+        + "', 'children': '" + uniqueId + "', 'saved': 0}")).execute();
     return (OrientVertex) result;
   }
 

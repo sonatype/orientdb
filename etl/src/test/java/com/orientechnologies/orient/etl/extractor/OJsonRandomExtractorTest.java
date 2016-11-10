@@ -1,6 +1,6 @@
 /*
  *
- *  * Copyright 2010-2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  * Copyright 2010-2016 OrientDB LTD (info(-at-)orientdb.com)
  *  *
  *  * Licensed under the Apache License, Version 2.0 (the "License");
  *  * you may not use this file except in compliance with the License.
@@ -22,12 +22,12 @@ import com.orientechnologies.orient.core.command.OBasicCommandContext;
 import com.orientechnologies.orient.etl.OETLBaseTest;
 import org.junit.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.*;
 
 /**
  * Tests ETL JSON Extractor.
  *
- * @author Luca Garulli
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class OJsonRandomExtractorTest extends OETLBaseTest {
 
@@ -43,7 +43,9 @@ public class OJsonRandomExtractorTest extends OETLBaseTest {
 
     assertThat(graph.countVertices("Person")).isEqualTo(TOTAL);
 
-    graph.getRawGraph().browseClass("Person").forEach(doc -> assertThat(doc.fields()).isEqualTo(10));
+    graph.getRawGraph()
+        .browseClass("Person")
+        .forEach(doc -> assertThat(doc.fields()).isEqualTo(10));
   }
 
   @Test
@@ -56,7 +58,9 @@ public class OJsonRandomExtractorTest extends OETLBaseTest {
 
     assertThat(graph.countVertices("Person")).isEqualTo(TOTAL);
 
-    graph.getRawGraph().browseClass("Person").forEach(doc -> assertThat(doc.fields()).isEqualTo(10));
+    graph.getRawGraph()
+        .browseClass("Person")
+        .forEach(doc -> assertThat(doc.fields()).isEqualTo(10));
   }
 
   @Test
@@ -69,10 +73,9 @@ public class OJsonRandomExtractorTest extends OETLBaseTest {
 
     assertThat(graph.countVertices("Person")).isEqualTo(TOTAL);
 
-    graph.getRawGraph().browseClass("Person").forEach(doc -> assertThat(doc.fields()).isEqualTo(10));
+    graph.getRawGraph()
+        .browseClass("Person")
+        .forEach(doc -> assertThat(doc.fields()).isEqualTo(10));
   }
-
-
-
 
 }

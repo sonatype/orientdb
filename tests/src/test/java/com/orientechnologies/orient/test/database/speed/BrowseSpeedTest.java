@@ -21,7 +21,7 @@ import java.util.TimerTask;
  * BrowseSpeedTest <directory where the database is stored> <class to use for browsing>
  * </pre>
  * 
- * @author Luca Garulli
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  * @since 9/17/14
  */
 @Test
@@ -77,7 +77,7 @@ public class BrowseSpeedTest {
       OCluster cluster = db.getStorage().getClusterById(clId);
       final long clusterRecords = cluster.getEntries();
       for (long rid = 0; rid < clusterRecords; ++rid) {
-        final ORawBuffer buffer = cluster.readRecord(rid);
+        final ORawBuffer buffer = cluster.readRecord(rid, true);
         loaded++;
       }
     }

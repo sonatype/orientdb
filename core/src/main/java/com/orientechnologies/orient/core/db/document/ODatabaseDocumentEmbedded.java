@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,12 +14,13 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 
 package com.orientechnologies.orient.core.db.document;
 
+import com.orientechnologies.common.concur.ONeedRetryException;
 import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.orient.core.Orient;
@@ -27,10 +28,24 @@ import com.orientechnologies.orient.core.cache.OCommandCacheHook;
 import com.orientechnologies.orient.core.cache.OLocalRecordCache;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.db.*;
+import com.orientechnologies.orient.core.db.record.OClassTrigger;
 import com.orientechnologies.orient.core.exception.ODatabaseException;
 import com.orientechnologies.orient.core.hook.ORecordHook;
+import com.orientechnologies.orient.core.index.OClassIndexManager;
 import com.orientechnologies.orient.core.metadata.OMetadataDefault;
+import com.orientechnologies.orient.core.metadata.function.OFunctionTrigger;
+import com.orientechnologies.orient.core.metadata.schema.OClass;
+import com.orientechnologies.orient.core.metadata.schema.OSchema;
 import com.orientechnologies.orient.core.metadata.security.*;
+import com.orientechnologies.orient.core.metadata.sequence.OSequenceTrigger;
+import com.orientechnologies.orient.core.query.live.OLiveQueryHook;
+import com.orientechnologies.orient.core.record.ODirection;
+import com.orientechnologies.orient.core.record.OEdge;
+import com.orientechnologies.orient.core.record.OVertex;
+import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.record.impl.ODocumentInternal;
+import com.orientechnologies.orient.core.record.impl.OVertexDelegate;
+import com.orientechnologies.orient.core.schedule.OSchedulerTrigger;
 import com.orientechnologies.orient.core.serialization.serializer.record.ORecordSerializerFactory;
 import com.orientechnologies.orient.core.serialization.serializer.record.string.ORecordSerializerSchemaAware2CSV;
 import com.orientechnologies.orient.core.storage.OStorage;
@@ -44,10 +59,11 @@ import java.util.concurrent.Callable;
 /**
  * Created by tglman on 27/06/16.
  */
-public class ODatabaseDocumentEmbedded extends ODatabaseDocumentTx {
+public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract {
 
   private OrientDBConfig config;
-  
+  private OStorage       storage;
+
   public ODatabaseDocumentEmbedded(final OStorage storage) {
     activateOnCurrentThread();
 
@@ -72,7 +88,6 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentTx {
       throw OException.wrapException(new ODatabaseException("Error on opening database "), t);
     }
 
-    setSerializer(defaultSerializer);
   }
 
   public <DB extends ODatabase> DB open(final String iUserName, final String iUserPassword) {
@@ -82,10 +97,8 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentTx {
   public void internalOpen(final String iUserName, final String iUserPassword, OrientDBConfig config) {
     internalOpen(iUserName, iUserPassword, config, true);
   }
-  
+
   private void internalOpen(final String iUserName, final String iUserPassword, OrientDBConfig config, boolean checkPassword) {
-    boolean failure = true;
-    setupThreadOwner();
     activateOnCurrentThread();
     this.config = config;
     applyAttributes(config);
@@ -100,13 +113,13 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentTx {
       initAtFirstOpen();
 
       final OSecurity security = metadata.getSecurity();
-      
+
       if (user == null || user.getVersion() != security.getVersion() || !user.getName().equalsIgnoreCase(iUserName)) {
         final OUser usr;
         if (checkPassword) {
           usr = metadata.getSecurity().authenticate(iUserName, iUserPassword);
         } else {
-            usr = metadata.getSecurity().getUser(iUserName);
+          usr = metadata.getSecurity().getUser(iUserName);
         }
         if (usr != null)
           user = new OImmutableUser(security.getVersion(), usr);
@@ -119,22 +132,20 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentTx {
       // WAKE UP LISTENERS
       callOnOpenListeners();
 
-      failure = false;
     } catch (OException e) {
-      close();
+      ODatabaseRecordThreadLocal.INSTANCE.remove();
       throw e;
     } catch (Exception e) {
-      close();
+      ODatabaseRecordThreadLocal.INSTANCE.remove();
       throw OException.wrapException(new ODatabaseException("Cannot open database url=" + getURL()), e);
-    } finally {
-      if (failure)
-        owner.set(null);
     }
   }
 
   private void applyListeners(OrientDBConfig config) {
-    for (ODatabaseListener listener : config.getListeners()) {
-      registerListener(listener);
+    if (config != null) {
+      for (ODatabaseListener listener : config.getListeners()) {
+        registerListener(listener);
+      }
     }
   }
 
@@ -156,7 +167,8 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentTx {
 
   /**
    * {@inheritDoc}
-   * @param config 
+   *
+   * @param config
    */
   public void internalCreate(OrientDBConfig config) {
     this.status = STATUS.OPEN;
@@ -193,11 +205,13 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentTx {
   }
 
   private void applyAttributes(OrientDBConfig config) {
-    for (Entry<ATTRIBUTES, Object> attrs : config.getAttributes().entrySet()) {
-      this.set(attrs.getKey(), attrs.getValue());
+    if (config != null) {
+      for (Entry<ATTRIBUTES, Object> attrs : config.getAttributes().entrySet()) {
+        this.set(attrs.getKey(), attrs.getValue());
+      }
     }
   }
-  
+
   /**
    * {@inheritDoc}
    */
@@ -266,11 +280,10 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentTx {
 
     localCache.clear();
 
-    if (!keepStorageOpen && storage != null)
+    if (storage != null)
       storage.close();
 
     ODatabaseRecordThreadLocal.INSTANCE.remove();
-    clearOwner();
   }
 
   @Override
@@ -309,5 +322,26 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentTx {
     initialized = true;
   }
 
-}
+  protected void installHooksEmbedded() {
+    hooks.clear();
+    registerHook(new OClassTrigger(this), ORecordHook.HOOK_POSITION.FIRST);
+    registerHook(new ORestrictedAccessHook(this), ORecordHook.HOOK_POSITION.FIRST);
+    registerHook(new OUserTrigger(this), ORecordHook.HOOK_POSITION.EARLY);
+    registerHook(new OFunctionTrigger(this), ORecordHook.HOOK_POSITION.REGULAR);
+    registerHook(new OSequenceTrigger(this), ORecordHook.HOOK_POSITION.REGULAR);
+    registerHook(new OClassIndexManager(this), ORecordHook.HOOK_POSITION.LAST);
+    registerHook(new OSchedulerTrigger(this), ORecordHook.HOOK_POSITION.LAST);
+    registerHook(new OLiveQueryHook(this), ORecordHook.HOOK_POSITION.LAST);
+  }
 
+  @Override
+  public OStorage getStorage() {
+    return storage;
+  }
+
+  @Override
+  public void replaceStorage(OStorage iNewStorage) {
+    storage = iNewStorage;
+  }
+
+}

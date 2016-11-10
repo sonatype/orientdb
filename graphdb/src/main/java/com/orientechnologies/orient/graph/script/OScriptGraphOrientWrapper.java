@@ -1,6 +1,6 @@
 /*
   *
-  *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+  *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
   *  *
   *  *  Licensed under the Apache License, Version 2.0 (the "License");
   *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
   *  *  See the License for the specific language governing permissions and
   *  *  limitations under the License.
   *  *
-  *  * For more information: http://www.orientechnologies.com
+  *  * For more information: http://orientdb.com
   *
   */
 package com.orientechnologies.orient.graph.script;
@@ -22,15 +22,12 @@ package com.orientechnologies.orient.graph.script;
 import com.orientechnologies.orient.core.command.script.OScriptOrientWrapper;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
-import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
-import com.tinkerpop.blueprints.impls.orient.OrientGraph;
-import com.tinkerpop.blueprints.impls.orient.OrientGraphNoTx;
+import com.tinkerpop.blueprints.impls.orient.OrientGraphFactory;
 
 /**
  * Blueprints Graph wrapper class to use from scripts.
- * 
- * @author Luca Garulli (l.garulli--at--orientechnologies.com)
- * 
+ *
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class OScriptGraphOrientWrapper extends OScriptOrientWrapper {
 
@@ -39,12 +36,14 @@ public class OScriptGraphOrientWrapper extends OScriptOrientWrapper {
   }
 
   public OScriptGraphWrapper getGraphNoTx() {
-    final ODatabaseDocumentInternal threadDatabase = (ODatabaseDocumentInternal) ODatabaseRecordThreadLocal.INSTANCE.get().getDatabaseOwner();
-    return new OScriptGraphWrapper(new OrientGraphNoTx(threadDatabase));
+    final ODatabaseDocumentInternal threadDatabase = (ODatabaseDocumentInternal) ODatabaseRecordThreadLocal.INSTANCE.get()
+        .getDatabaseOwner();
+    return new OScriptGraphWrapper(OrientGraphFactory.getNoTxGraphImplFactory().getGraph(threadDatabase));
   }
 
   public OScriptGraphWrapper getGraph() {
-    final ODatabaseDocumentInternal threadDatabase = (ODatabaseDocumentInternal) ODatabaseRecordThreadLocal.INSTANCE.get().getDatabaseOwner();
-    return new OScriptGraphWrapper(new OrientGraph(threadDatabase));
+    final ODatabaseDocumentInternal threadDatabase = (ODatabaseDocumentInternal) ODatabaseRecordThreadLocal.INSTANCE.get()
+        .getDatabaseOwner();
+    return new OScriptGraphWrapper(OrientGraphFactory.getTxGraphImplFactory().getGraph(threadDatabase));
   }
 }

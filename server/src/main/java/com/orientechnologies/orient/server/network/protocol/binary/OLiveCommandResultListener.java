@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 
@@ -52,7 +52,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Asynchronous command result manager. As soon as a record is returned by the command is sent over the wire.
  *
- * @author Luca Garulli (l.garulli--at--orientechnologies.com)
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class OLiveCommandResultListener extends OAbstractCommandResultListener implements OLiveResultListener {
 
@@ -62,12 +62,12 @@ public class OLiveCommandResultListener extends OAbstractCommandResultListener i
   private final Set<ORID>     alreadySent = new HashSet<ORID>();
   private OClientSessions     session;
 
-  public OLiveCommandResultListener(OServer server, final OClientConnection connection, final int sessionId,
+  public OLiveCommandResultListener(OServer server, final OClientConnection connection,
       OCommandResultListener wrappedResultListener) {
     super(wrappedResultListener);
     this.connection = connection;
     session = server.getClientConnectionManager().getSession(connection);
-    this.sessionId = sessionId;
+    this.sessionId = connection.getId();
   }
 
   @Override
@@ -86,7 +86,7 @@ public class OLiveCommandResultListener extends OAbstractCommandResultListener i
             alreadySent.add(iLinked.getIdentity());
             try {
               protocol.channel.writeByte((byte) 2); // CACHE IT ON THE CLIENT
-              protocol.writeIdentifiable(connection, iLinked);
+              protocol.writeIdentifiable(protocol.channel, connection, iLinked);
             } catch (IOException e) {
               OLogManager.instance().error(this, "Cannot write against channel", e);
             }
@@ -95,7 +95,7 @@ public class OLiveCommandResultListener extends OAbstractCommandResultListener i
       });
       alreadySent.add(((OIdentifiable) iRecord).getIdentity());
       protocol.channel.writeByte((byte) 1); // ONE MORE RECORD
-      protocol.writeIdentifiable(connection, ((OIdentifiable) iRecord).getRecord());
+      protocol.writeIdentifiable(protocol.channel, connection, ((OIdentifiable) iRecord).getRecord());
       protocol.channel.flush();
     } catch (IOException e) {
       return false;

@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.server.distributed.task;
@@ -43,7 +43,7 @@ import java.util.Set;
 /**
  * Distributed create record task used for synchronization.
  *
- * @author Luca Garulli (l.garulli--at--orientechnologies.com)
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public abstract class OAbstractRecordReplicatedTask extends OAbstractReplicatedTask {
   protected ORecordId         rid;
@@ -66,7 +66,7 @@ public abstract class OAbstractRecordReplicatedTask extends OAbstractReplicatedT
 
     final ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
     if (db != null) {
-      final OClass clazz = db.getMetadata().getSchema().getClassByClusterId(rid.clusterId);
+      final OClass clazz = db.getMetadata().getSchema().getClassByClusterId(rid.getClusterId());
       if (clazz != null) {
         final Set<OIndex<?>> indexes = clazz.getIndexes();
         if (indexes != null && !indexes.isEmpty()) {
@@ -114,7 +114,7 @@ public abstract class OAbstractRecordReplicatedTask extends OAbstractReplicatedT
 
   @Override
   public int[] getPartitionKey() {
-    return new int[] { partitionKey > -1 ? partitionKey : rid.clusterId };
+    return new int[] { partitionKey > -1 ? partitionKey : rid.getClusterId() };
   }
 
   @Override
@@ -131,7 +131,7 @@ public abstract class OAbstractRecordReplicatedTask extends OAbstractReplicatedT
   }
 
   public boolean checkForClusterAvailability(final String localNode, final ODistributedConfiguration cfg) {
-    final String clusterName = ODatabaseRecordThreadLocal.INSTANCE.get().getClusterNameById(rid.clusterId);
+    final String clusterName = ODatabaseRecordThreadLocal.INSTANCE.get().getClusterNameById(rid.getClusterId());
     return cfg.isServerContainingCluster(localNode, clusterName);
   }
 
@@ -139,7 +139,7 @@ public abstract class OAbstractRecordReplicatedTask extends OAbstractReplicatedT
     if (previousRecord == null) {
       // READ DIRECTLY FROM THE UNDERLYING STORAGE
       final OStorageOperationResult<ORawBuffer> loaded = ODatabaseRecordThreadLocal.INSTANCE.get().getStorage().getUnderlying()
-          .readRecord(rid, null, true, null);
+          .readRecord(rid, null, true, false, null);
 
       if (loaded == null || loaded.getResult() == null)
         return null;

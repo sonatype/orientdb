@@ -1,6 +1,6 @@
 /*
  *
- *  * Copyright 2010-2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  * Copyright 2010-2016 OrientDB LTD (info(-at-)orientdb.com)
  *  *
  *  * Licensed under the Apache License, Version 2.0 (the "License");
  *  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 package com.orientechnologies.orient.etl.loader;
 
 import com.orientechnologies.orient.etl.OAbstractETLComponent;
-import com.orientechnologies.orient.etl.OAbstractETLPipelineComponent;
+import com.orientechnologies.orient.etl.OETLDatabaseProvider;
 import com.orientechnologies.orient.etl.OETLPipeline;
 
 import java.util.concurrent.atomic.AtomicLong;
@@ -35,7 +35,7 @@ public abstract class OAbstractLoader extends OAbstractETLComponent implements O
   }
 
   @Override
-  public void endLoader(OETLPipeline pipeline) {
+  public void endLoader(OETLDatabaseProvider databaseProvider) {
   }
 
   @Override

@@ -21,7 +21,6 @@ import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.query.OSQLSynchQuery;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.List;
@@ -42,12 +41,10 @@ import static org.junit.Assert.*;
 
 public class DBCreationAndUpdateOneNodeScenarioTest extends AbstractScenarioTest {
 
-  @Ignore
   @Test
   public void test() throws Exception {
     init(SERVERS);
     prepare(false);
-    super.executeWritesOnServers.addAll(super.serverInstance);
     execute();
   }
 
@@ -87,12 +84,12 @@ public class DBCreationAndUpdateOneNodeScenarioTest extends AbstractScenarioTest
     }
 
     // executing writes on server1
-    executeWritesOnServers.remove(2);
-    executeWritesOnServers.remove(1);
-    executeMultipleWrites(super.executeWritesOnServers, "plocal");
+    executeTestsOnServers.remove(2);
+    executeTestsOnServers.remove(1);
+    executeMultipleWrites(super.executeTestsOnServers, "plocal");
 
     // check consistency
-    checkWritesAboveCluster(serverInstance, executeWritesOnServers);
+    checkWritesAboveCluster(serverInstance, executeTestsOnServers);
   }
 
   @Override

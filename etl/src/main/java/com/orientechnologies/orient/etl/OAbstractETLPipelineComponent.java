@@ -1,6 +1,6 @@
 /*
  *
- *  * Copyright 2010-2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  * Copyright 2010-2016 OrientDB LTD (info(-at-)orientdb.com)
  *  *
  *  * Licensed under the Apache License, Version 2.0 (the "License");
  *  * you may not use this file except in compliance with the License.
@@ -18,15 +18,21 @@
 
 package com.orientechnologies.orient.etl;
 
+import com.orientechnologies.orient.core.command.OCommandContext;
+
 /**
  * ETL Pipeline abstract component.
  */
 public abstract class OAbstractETLPipelineComponent extends OAbstractETLComponent implements OETLPipelineComponent {
-  protected OETLPipeline pipeline;
+  protected OETLDatabaseProvider databaseProvider;
 
   @Override
-  public void setPipeline(final OETLPipeline iPipeline) {
-    pipeline = iPipeline;
-    context = iPipeline.getContext();
+  public void setDatabaseProvider(OETLDatabaseProvider databaseProvider) {
+    this.databaseProvider = databaseProvider;
+  }
+
+  @Override
+  public void setContext(OCommandContext context) {
+    this.context = context;
   }
 }

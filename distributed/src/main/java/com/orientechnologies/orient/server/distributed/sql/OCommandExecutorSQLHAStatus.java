@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.server.distributed.sql;
@@ -40,7 +40,7 @@ import java.util.Map;
 /**
  * SQL HA STATUS command: returns the high availability configuration.
  * 
- * @author Luca Garulli
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  * 
  */
 @SuppressWarnings("unchecked")
@@ -71,7 +71,7 @@ public class OCommandExecutorSQLHAStatus extends OCommandExecutorSQLAbstract imp
 
     pos = nextWord(parserText, parserTextUpperCase, pos, word, false, " \r\n");
     if (pos == -1)
-      throw new OCommandSQLParsingException("Missing parameter. Use " + getSyntax(), parserText, oldPos);
+      throw new OCommandSQLParsingException("Missing option. Use " + getSyntax(), parserText, oldPos);
 
     while (pos > -1) {
       final String option = word.toString();
@@ -96,7 +96,7 @@ public class OCommandExecutorSQLHAStatus extends OCommandExecutorSQLAbstract imp
   }
 
   /**
-   * Execute the REMOVE SERVER command.
+   * Execute the command.
    */
   public Object execute(final Map<Object, Object> iArgs) {
     final ODatabaseDocumentInternal database = getDatabase();

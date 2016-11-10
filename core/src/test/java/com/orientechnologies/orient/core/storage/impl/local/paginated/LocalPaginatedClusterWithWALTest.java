@@ -20,7 +20,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * @author Andrey Lomakin
+ * @author Andrey Lomakin (a.lomakin-at-orientdb.com)
  * @since 5/8/13
  */
 
@@ -44,6 +44,14 @@ public class LocalPaginatedClusterWithWALTest extends LocalPaginatedClusterTest 
   private String                 storageDir;
   private String                 expectedStorageDir;
   private OLocalPaginatedStorage storage;
+
+  @BeforeClass
+  public static void beforeClass() throws IOException {
+  }
+
+  @AfterClass
+  public static void afterClass() throws IOException {
+  }
 
   @Before
   @Override
@@ -122,6 +130,7 @@ public class LocalPaginatedClusterWithWALTest extends LocalPaginatedClusterTest 
       Assert.assertTrue(file.delete());
   }
 
+  @Test
   @Override
   public void testAddOneSmallRecord() throws IOException {
     super.testAddOneSmallRecord();

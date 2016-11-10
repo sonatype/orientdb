@@ -1,3 +1,20 @@
+/**
+ * Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * 	http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * For more information: http://orientdb.com
+ */
 package com.orientechnologies.orient.jdbc;
 
 import org.junit.Test;
@@ -6,9 +23,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-import static java.sql.ResultSet.CONCUR_READ_ONLY;
-import static java.sql.ResultSet.TYPE_FORWARD_ONLY;
-import static org.assertj.core.api.Assertions.assertThat;
+import static java.sql.ResultSet.*;
+import static org.assertj.core.api.Assertions.*;
 
 public class OrientJdbcPreparedStatementTest extends OrientJdbcBaseTest {
 
@@ -66,7 +82,6 @@ public class OrientJdbcPreparedStatementTest extends OrientJdbcBaseTest {
 
     assertThat(rowsInserted).isEqualTo(2);
   }
-
 
   @Test
   public void testInsertRIDReturning() throws Exception {
@@ -132,6 +147,23 @@ public class OrientJdbcPreparedStatementTest extends OrientJdbcBaseTest {
   @Test
   public void shouldCreatePreparedStatementWithExtendConstructor() throws Exception {
 
+    PreparedStatement stmt = conn.prepareStatement("SELECT * FROM Item WHERE intKey = ?", TYPE_FORWARD_ONLY, CONCUR_READ_ONLY);
+    stmt.setInt(1, 1);
+
+    ResultSet rs = stmt.executeQuery();
+
+    assertThat(rs.next()).isTrue();
+
+    assertThat(rs.getString("@class")).isEqualToIgnoringCase("Item");
+
+    assertThat(rs.getString("stringKey")).isEqualTo("1");
+    assertThat(rs.getInt("intKey")).isEqualTo(1);
+    //
+  }
+
+  @Test
+  public void shouldCreatePreparedStatementWithExtendConstructorWithOutProjection() throws Exception {
+    //same test as above, no projection at all
     PreparedStatement stmt = conn.prepareStatement("SELECT FROM Item WHERE intKey = ?", TYPE_FORWARD_ONLY, CONCUR_READ_ONLY);
     stmt.setInt(1, 1);
 

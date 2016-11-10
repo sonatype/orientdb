@@ -1,8 +1,9 @@
 package com.orientechnologies.orient.etl.extractor;
 
+import com.orientechnologies.orient.core.id.ORID;
+import com.orientechnologies.orient.core.id.ORecordId;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.etl.OETLBaseTest;
-import com.orientechnologies.orient.etl.transformer.OCSVTransformer;
 import org.junit.Test;
 
 import java.text.DateFormat;
@@ -14,6 +15,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.*;
+
 
 /**
  * Created by frank on 10/5/15.
@@ -228,14 +230,6 @@ public class OCSVExtractorTest extends OETLBaseTest {
   }
 
   @Test
-  public void testGetCellContentSingleQuoted() {
-    String singleQuotedString = "\"aaa\"";
-    String unQuotedString = "aaa";
-    OCSVTransformer ocsvTransformer = new OCSVTransformer();
-    assertEquals(unQuotedString, ocsvTransformer.getCellContent(singleQuotedString));
-  }
-
-  @Test
   public void testIsFiniteFloat() {
     OCSVExtractor ocsvExtractor = new OCSVExtractor();
     assertFalse(ocsvExtractor.isFinite(Float.NaN));
@@ -395,8 +389,7 @@ public class OCSVExtractorTest extends OETLBaseTest {
     assertThat(res).hasSize(1);
     ODocument doc = res.get(0);
 
-    assertThat(doc.<String>field("id")).isEqualTo("#1:1");
-
+    assertThat(doc.<ORID>field("id")).isEqualTo(new ORecordId("#1:1"));
   }
 
   @Test
@@ -419,7 +412,6 @@ public class OCSVExtractorTest extends OETLBaseTest {
     assertThat(res).hasSize(1);
     ODocument doc = res.get(0);
 
-    System.out.println(doc.toJSON());
     assertThat(doc.<Date>field("date")).isEqualTo("2008-04-30");
 
     //DATETIME: java.util.Date from DB,
@@ -429,7 +421,51 @@ public class OCSVExtractorTest extends OETLBaseTest {
 
     DateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm");
 
-    assertThat(df.format(doc.<Date>field("datetime"))).isEqualTo(formatter.format(time));
+    assertThat(df.format(doc.<Date>field("datetime"))).isEqualTo("2015-03-30 11:00");
 
   }
+
+  @Test
+  public void testCsvParsingFormat() {
+
+    //    CSVFormat format = CSVFormat.valueOf("MySQL");
+
+    String cfgJson = "{source: { content: { value: 'name,date,datetime\nfrank,2008-04-30,2015-03-30 11:00'} }, extractor : { csv : { \"predefinedFormat\": \"Default\",'columns':['name:string','date:date','datetime:datetime']} }, loader : { test: {} } }";
+    process(cfgJson);
+    List<ODocument> res = getResult();
+    assertThat(res).hasSize(1);
+    ODocument doc = res.get(0);
+
+    assertThat(doc.<Date>field("date")).isEqualTo("2008-04-30");
+
+    DateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm");
+
+    assertThat(df.format(doc.<Date>field("datetime"))).isEqualTo("2015-03-30 11:00");
+
+  }
+
+  @Test
+  public void testMissingColumns() {
+    String cfgJson = "{source: { content: { value: 'name,value,,\nfrank,myvalue,,'} }, extractor : { csv : { \"ignoreMissingColumns\": true } }, loader : { test: {} } }";
+    process(cfgJson);
+    List<ODocument> res = getResult();
+    assertThat(res).hasSize(1);
+    ODocument doc = res.get(0);
+
+    assertThat(doc.<String>field("name")).isEqualTo("frank");
+    assertThat(doc.<String>field("value")).isEqualTo("myvalue");
+  }
+
+  @Test
+  public void testExcelFormat() {
+    String cfgJson = "{source: { content: { value: 'name,value,,\nfrank,myvalue,,'} }, extractor : { csv : { \"predefinedFormat\": \"Excel\" } }, loader : { test: {} } }";
+    process(cfgJson);
+    List<ODocument> res = getResult();
+    assertThat(res).hasSize(1);
+    ODocument doc = res.get(0);
+
+    assertThat(doc.<String>field("name")).isEqualTo("frank");
+    assertThat(doc.<String>field("value")).isEqualTo("myvalue");
+  }
+
 }

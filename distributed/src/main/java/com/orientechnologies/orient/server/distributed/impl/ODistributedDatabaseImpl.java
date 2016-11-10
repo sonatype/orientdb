@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.server.distributed.impl;
@@ -54,7 +54,7 @@ import com.orientechnologies.orient.server.hazelcast.OHazelcastPlugin;
 /**
  * Distributed database implementation. There is one instance per database. Each node creates own instance to talk with each others.
  *
- * @author Luca Garulli (l.garulli--at--orientechnologies.com)
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class ODistributedDatabaseImpl implements ODistributedDatabase {
 
@@ -343,7 +343,7 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
           iNodes, localResult);
 
       // AFTER COMPUTED THE QUORUM, REMOVE THE OFFLINE NODES TO HAVE THE LIST OF REAL AVAILABLE NODES
-      final int availableNodes = manager.getAvailableNodes(iNodes, databaseName);
+      final int availableNodes = checkNodesAreOnline ? manager.getAvailableNodes(iNodes, databaseName) : iNodes.size();
 
       final int expectedResponses = localResult != null ? availableNodes + 1 : availableNodes;
 
@@ -592,12 +592,7 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
   }
 
   public boolean exists() {
-    try {
-      manager.getServerInstance().getStoragePath(databaseName);
-      return true;
-    } catch (OConfigurationException e) {
-      return false;
-    }
+    return manager.getServerInstance().existsDatabase(databaseName);
   }
 
   public ODistributedSyncConfiguration getSyncConfiguration() {
@@ -655,7 +650,7 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
 
   @Override
   public ODatabaseDocumentInternal getDatabaseInstance() {
-    return manager.getServerInstance().openDatabase(databaseName, "internal", "internal", null, true);
+    return manager.getServerInstance().openDatabase(databaseName);
   }
 
   @Override
@@ -680,7 +675,7 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
     // SEND THE SHUTDOWN TO ALL THE WORKER THREADS
     for (ODistributedWorker workerThread : workerThreads) {
       if (workerThread != null)
-        workerThread.shutdown();
+        workerThread.sendShutdown();
     }
 
     // WAIT A BIT FOR PROPER SHUTDOWN

@@ -1,3 +1,20 @@
+/**
+ * Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * 	http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * For more information: http://orientdb.com
+ */
 package com.orientechnologies.orient.jdbc;
 
 import org.junit.Test;
@@ -14,7 +31,6 @@ public class OrientJdbcStatementTest extends OrientJdbcBaseTest {
   public void shouldCreateStatement() throws Exception {
     Statement stmt = conn.createStatement();
     assertThat(stmt).isNotNull();
-    ;
     stmt.close();
     assertThat(stmt.isClosed()).isTrue();
 
@@ -23,6 +39,7 @@ public class OrientJdbcStatementTest extends OrientJdbcBaseTest {
   @Test
   public void shouldReturnEmptyResultSetOnEmptyQuery() throws SQLException {
     Statement stmt = conn.createStatement();
+
     assertThat(stmt.execute("")).isFalse();
     assertThat(stmt.getResultSet()).isNull();
     ;
@@ -44,11 +61,12 @@ public class OrientJdbcStatementTest extends OrientJdbcBaseTest {
 
 
   @Test(expected = SQLException.class)
-  public void shouldTrhowSqlExceptionOnError() throws SQLException {
+  public void shouldThrowSqlExceptionOnError() throws SQLException {
 
     String query = String.format("select sequence('%s').next()", "theSequence");
     Statement stmt = conn.createStatement();
     stmt.executeQuery(query);
+
 
   }
 }

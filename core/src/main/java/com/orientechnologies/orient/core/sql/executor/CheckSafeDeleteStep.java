@@ -15,7 +15,7 @@ import java.util.Optional;
  * Checks if a record can be safely deleted (throws OCommandExecutionException in case).
  * A record cannot be safely deleted if it's a vertex or an edge (it requires additional operations)
  *
- * @author Luigi Dell'Aquila
+ * @author Luigi Dell'Aquila (l.dellaquila-(at)-orientdb.com)
  */
 public class CheckSafeDeleteStep extends AbstractExecutionStep {
   public CheckSafeDeleteStep(OCommandContext ctx) {
@@ -32,7 +32,7 @@ public class CheckSafeDeleteStep extends AbstractExecutionStep {
       @Override public OResult next() {
         OResult result = upstream.next();
         if (result.isElement()) {
-          OIdentifiable elem = result.getElement();
+          OIdentifiable elem = result.getElement().get();
           ORecord record = elem.getRecord();
           if (record instanceof ODocument) {
             ODocument doc = (ODocument) record;

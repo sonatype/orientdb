@@ -1,6 +1,6 @@
 /*
   *
-  *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+  *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
   *  *
   *  *  Licensed under the Apache License, Version 2.0 (the "License");
   *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
   *  *  See the License for the specific language governing permissions and
   *  *  limitations under the License.
   *  *
-  *  * For more information: http://www.orientechnologies.com
+  *  * For more information: http://orientdb.com
   *
   */
 package com.orientechnologies.orient.core.metadata.schema;
@@ -24,6 +24,7 @@ import com.orientechnologies.orient.core.index.OIndex;
 import com.orientechnologies.orient.core.index.OIndexDefinition;
 import com.orientechnologies.orient.core.metadata.schema.validation.ValidationBinaryComparable;
 import com.orientechnologies.orient.core.metadata.schema.validation.ValidationCollectionComparable;
+import com.orientechnologies.orient.core.metadata.schema.validation.ValidationLinkbagComparable;
 import com.orientechnologies.orient.core.metadata.schema.validation.ValidationMapComparable;
 import com.orientechnologies.orient.core.metadata.schema.validation.ValidationStringComparable;
 import com.orientechnologies.orient.core.record.impl.ODocument;
@@ -39,7 +40,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * @author Andrey Lomakin (a.lomakin-at-orientechnologies.com)
+ * @author Andrey Lomakin (a.lomakin-at-orientdb.com)
  * @since 10/21/14
  */
 public class OImmutableProperty implements OProperty {
@@ -108,6 +109,8 @@ public class OImmutableProperty implements OProperty {
       else if (type.equals(OType.EMBEDDEDLIST) || type.equals(OType.EMBEDDEDSET) || type.equals(OType.LINKLIST)
           || type.equals(OType.LINKSET))
         minComparable = new ValidationCollectionComparable((Integer) OType.convert(min, Integer.class));
+      else if (type.equals(OType.LINKBAG))
+        minComparable = new ValidationLinkbagComparable((Integer) OType.convert(min, Integer.class));
       else if (type.equals(OType.EMBEDDEDMAP) || type.equals(OType.LINKMAP))
         minComparable = new ValidationMapComparable((Integer) OType.convert(min, Integer.class));
       else
@@ -134,6 +137,8 @@ public class OImmutableProperty implements OProperty {
       else if (type.equals(OType.EMBEDDEDLIST) || type.equals(OType.EMBEDDEDSET) || type.equals(OType.LINKLIST)
           || type.equals(OType.LINKSET))
         maxComparable = new ValidationCollectionComparable((Integer) OType.convert(max, Integer.class));
+      else if (type.equals(OType.LINKBAG))
+        maxComparable = new ValidationLinkbagComparable((Integer) OType.convert(max, Integer.class));
       else if (type.equals(OType.EMBEDDEDMAP) || type.equals(OType.LINKMAP))
         maxComparable = new ValidationMapComparable((Integer) OType.convert(max, Integer.class));
       else

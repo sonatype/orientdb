@@ -76,7 +76,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * batch.createVertex(Long) is needed only if you want to create unconnected vertices
  *
  * @since 2.0 M3
- * @author Luigi Dell'Aquila (l.dellaquila-at-orientechnologies.com)
+ * @author Luigi Dell'Aquila (l.dellaquila-(at)-orientdb.com) (l.dellaquila-at-orientdb.com)
  */
 public class OGraphBatchInsert {
 
@@ -119,8 +119,8 @@ public class OGraphBatchInsert {
 
     @Override
     public void run() {
+      ODatabaseDocument db = new ODatabaseDocumentTx(dbUrl);
       try {
-        ODatabaseDocument db = new ODatabaseDocumentTx(dbUrl);
         db.open(userName, password);
         run(db);
       } finally {

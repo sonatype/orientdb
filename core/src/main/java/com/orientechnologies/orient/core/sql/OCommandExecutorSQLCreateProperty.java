@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.sql;
@@ -40,7 +40,7 @@ import java.util.regex.Pattern;
 /**
  * SQL CREATE PROPERTY command: Creates a new property in the target class.
  *
- * @author Luca Garulli
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  * @author Michael MacFadden
  */
 @SuppressWarnings("unchecked")
@@ -57,6 +57,9 @@ public class OCommandExecutorSQLCreateProperty extends OCommandExecutorSQLAbstra
 
   private String             className;
   private String             fieldName;
+
+  private boolean            ifNotExists = false;
+
   private OType              type;
   private String             linked;
 
@@ -112,6 +115,26 @@ public class OCommandExecutorSQLCreateProperty extends OCommandExecutorSQLAbstra
       pos = nextWord(parserText, parserTextUpperCase, oldPos, word, true);
       if (pos == -1)
         throw new OCommandSQLParsingException("Missed property type", parserText, oldPos);
+      if("IF".equalsIgnoreCase(word.toString())){
+        oldPos = pos;
+        pos = nextWord(parserText, parserTextUpperCase, oldPos, word, true);
+        if (pos == -1)
+          throw new OCommandSQLParsingException("Missed property type", parserText, oldPos);
+        if(!"NOT".equalsIgnoreCase(word.toString())){
+          throw new OCommandSQLParsingException("Expected NOT EXISTS after IF", parserText, oldPos);
+        }
+        oldPos = pos;
+        pos = nextWord(parserText, parserTextUpperCase, oldPos, word, true);
+        if (pos == -1)
+          throw new OCommandSQLParsingException("Missed property type", parserText, oldPos);
+        if(!"EXISTS".equalsIgnoreCase(word.toString())){
+          throw new OCommandSQLParsingException("Expected EXISTS after IF NOT", parserText, oldPos);
+        }
+        this.ifNotExists = true;
+
+        oldPos = pos;
+        pos = nextWord(parserText, parserTextUpperCase, oldPos, word, true);
+      }
 
       type = OType.valueOf(word.toString());
 
@@ -259,9 +282,14 @@ public class OCommandExecutorSQLCreateProperty extends OCommandExecutorSQLAbstra
       throw new OCommandExecutionException("Source class '" + className + "' not found");
 
     OPropertyImpl prop = (OPropertyImpl) sourceClass.getProperty(fieldName);
-    if (prop != null)
+
+    if (prop != null) {
+      if(ifNotExists){
+        return sourceClass.properties().size();
+      }
       throw new OCommandExecutionException(
           "Property '" + className + "." + fieldName + "' already exists. Remove it before to retry.");
+    }
 
     // CREATE THE PROPERTY
     OClass linkedClass = null;
@@ -327,7 +355,7 @@ public class OCommandExecutorSQLCreateProperty extends OCommandExecutorSQLAbstra
 
   @Override
   public String getSyntax() {
-    return "CREATE PROPERTY <class>.<property> <type> [<linked-type>|<linked-class>] " +
+    return "CREATE PROPERTY <class>.<property> [IF NOT EXISTS] <type> [<linked-type>|<linked-class>] " +
         "[(mandatory <true|false>, notnull <true|false>, <true|false>, default <value>, min <value>, max <value>)] " + 
         "[UNSAFE]";
   }

@@ -24,6 +24,7 @@ import com.orientechnologies.orient.core.command.OCommandRequestText;
 import com.orientechnologies.orient.core.config.OContextConfiguration;
 import com.orientechnologies.orient.core.config.OStorageConfiguration;
 import com.orientechnologies.orient.core.conflict.ORecordConflictStrategy;
+import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.db.record.OCurrentStorageComponentsFactory;
 import com.orientechnologies.orient.core.db.record.ORecordOperation;
 import com.orientechnologies.orient.core.db.record.ridbag.sbtree.OSBTreeCollectionManager;
@@ -71,7 +72,7 @@ public class PostponedEngineStartTest {
 
       @Override
       public Orient shutdown() {
-        closeAllStorages();
+        ODatabaseDocumentTx.closeAll();
         return this;
       }
     };
@@ -139,7 +140,7 @@ public class PostponedEngineStartTest {
     OEngine engine = ORIENT.getEngineIfRunning(ENGINE2.getName());
     Assert.assertNull(engine);
 
-    final OStorage storage = ORIENT.loadStorage(ENGINE2.getName() + ":storage");
+    final OStorage storage = ENGINE2.createStorage(ENGINE2.getName() + ":storage", null);
     Assert.assertNotNull(storage);
 
     engine = ORIENT.getRunningEngine(ENGINE2.getName());
@@ -278,7 +279,7 @@ public class PostponedEngineStartTest {
 
         @Override
         public OStorageOperationResult<ORawBuffer> readRecord(ORecordId iRid, String iFetchPlan, boolean iIgnoreCache,
-            ORecordCallback<ORawBuffer> iCallback) {
+            boolean prefetchRecords, ORecordCallback<ORawBuffer> iCallback) {
           return null;
         }
 
@@ -318,11 +319,6 @@ public class PostponedEngineStartTest {
 
         @Override
         public List<ORecordOperation> commit(OTransaction iTx, Runnable callback) {
-          return null;
-        }
-
-        @Override
-        public OUncompletedCommit<List<ORecordOperation>> initiateCommit(OTransaction iTx, Runnable callback) {
           return null;
         }
 
@@ -494,11 +490,6 @@ public class PostponedEngineStartTest {
         @Override
         public String getType() {
           return null;
-        }
-
-        @Override
-        public void checkForClusterPermissions(String iClusterName) {
-
         }
 
         @Override

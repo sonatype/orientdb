@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 
@@ -114,14 +114,14 @@ public class ORecordSerializerBinary implements ORecordSerializer {
   }
 
   @Override
-  public String[] getFieldNames(final byte[] iSource) {
+  public String[] getFieldNames(ODocument reference, final byte[] iSource) {
     if (iSource == null || iSource.length == 0)
       return new String[0];
 
     final BytesContainer container = new BytesContainer(iSource).skip(1);
 
     try {
-      return serializerByVersion[iSource[0]].getFieldNames(container);
+      return serializerByVersion[iSource[0]].getFieldNames(reference, container);
     } catch (RuntimeException e) {
       OLogManager.instance().warn(this, "Error deserializing record to get field-names, send this data for debugging: %s ",
           OBase64Utils.encodeBytes(iSource));

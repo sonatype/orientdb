@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.storage.impl.local;
@@ -81,7 +81,7 @@ public class OStorageConfigurationSegment extends OStorageConfiguration {
 
         // @COMPATIBILITY0.9.25
         // CHECK FOR OLD VERSION OF DATABASE
-        final ORawBuffer rawRecord = storage.readRecord(CONFIG_RID, null, false, null).getResult();
+        final ORawBuffer rawRecord = storage.readRecord(CONFIG_RID, null, false, false, null).getResult();
         if (rawRecord != null)
           fromStream(rawRecord.buffer);
 

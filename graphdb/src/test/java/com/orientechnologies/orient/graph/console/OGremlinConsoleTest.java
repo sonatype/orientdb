@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2015 Orient Technologies LTD (info(at)orientdb.com)
+ *  *  Copyright 2015 OrientDB LTD (info(at)orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -25,26 +25,26 @@ import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.query.OSQLSynchQuery;
 import com.orientechnologies.orient.graph.graphml.OGraphMLReader;
+import com.orientechnologies.orient.graph.graphml.OGraphSONReader;
 import com.orientechnologies.orient.graph.graphml.OIgnoreGraphMLImportStrategy;
 import com.orientechnologies.orient.graph.graphml.ORenameGraphMLImportStrategy;
 import com.tinkerpop.blueprints.impls.orient.OrientGraphNoTx;
+import com.tinkerpop.blueprints.util.io.graphson.GraphSONMode;
+import com.tinkerpop.blueprints.util.io.graphson.GraphSONWriter;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.IOException;
-import java.io.PrintStream;
+import java.io.*;
 import java.util.List;
 
 /**
  * Test cases for gremlin console.
  * 
- * @author Luca Garulli
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class OGremlinConsoleTest {
 
-  private class TestOGremlinConsole extends  OGremlinConsole {
+  private class TestOGremlinConsole extends OGremlinConsole {
 
     public ByteArrayOutputStream output = new ByteArrayOutputStream();
 
@@ -54,6 +54,7 @@ public class OGremlinConsoleTest {
     }
 
   }
+
   @Test
   public void testGraphMLImport() {
     final String INPUT_FILE = "src/test/resources/graph-example-2.xml";
@@ -296,4 +297,50 @@ public class OGremlinConsoleTest {
       graph.shutdown();
     }
   }
+
+  @Test
+  public void testGraphSONImport() throws IOException {
+    final String INPUT_FILE = "src/test/resources/graph-example-fromexport.xml";
+    String dbUrl1 = "memory:testGraphSONImport1";
+    String dbUrl2 = "memory:testGraphSONImport2";
+
+    final OrientGraphNoTx g1 = new OrientGraphNoTx(dbUrl1);
+    new OGraphMLReader(g1).inputGraph(INPUT_FILE);
+
+    // EXPORT IN GRAPHSON FORMAT
+    final ByteArrayOutputStream output = new ByteArrayOutputStream();
+    new GraphSONWriter(g1).outputGraph(output, null, null, GraphSONMode.NORMAL);
+
+    final OrientGraphNoTx g2 = new OrientGraphNoTx(dbUrl2);
+    ByteArrayInputStream is = new ByteArrayInputStream(output.toByteArray());
+    new OGraphSONReader(g2).inputGraph(is);
+
+    ODatabaseDocumentTx db = new ODatabaseDocumentTx(dbUrl2);
+    db.open("admin", "admin");
+    try {
+      boolean foundTypeVAttr = false;
+      boolean foundFriendEAttr = false;
+
+      List<ODocument> result = db.query(new OSQLSynchQuery<ODocument>("select from V"));
+      Assert.assertFalse(result.isEmpty());
+      for (ODocument d : result) {
+        if (d.containsField("__type__"))
+          foundTypeVAttr = true;
+      }
+
+      Assert.assertTrue(foundTypeVAttr);
+
+      result = db.query(new OSQLSynchQuery<ODocument>("select from E"));
+      Assert.assertFalse(result.isEmpty());
+      for (ODocument d : result) {
+        if (d.containsField("friend"))
+          foundFriendEAttr = true;
+      }
+
+      Assert.assertTrue(foundFriendEAttr);
+    } finally {
+      db.close();
+    }
+  }
+
 }

@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.stresstest.workload;
@@ -25,6 +25,7 @@ import com.orientechnologies.orient.client.remote.OStorageRemote;
 import com.orientechnologies.orient.core.db.ODatabase;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocument;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
+import com.orientechnologies.orient.core.db.document.ODatabaseDocumentAbstract;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.db.tool.ODatabaseRepair;
 import com.orientechnologies.orient.core.db.tool.ODatabaseTool;
@@ -42,7 +43,7 @@ import java.util.List;
 /**
  * CRUD implementation of the workload.
  *
- * @author Luca Garulli
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class OCRUDWorkload extends OBaseDocumentWorkload implements OCheckWorkload {
 
@@ -238,7 +239,7 @@ public class OCRUDWorkload extends OBaseDocumentWorkload implements OCheckWorklo
   }
 
   public ODocument createOperation(final long n) {
-    return (ODocument) ODatabaseDocumentTx.executeWithRetries(new OCallable<Object, Integer>() {
+    return (ODocument) ODatabaseDocumentAbstract.executeWithRetries(new OCallable<Object, Integer>() {
       @Override
       public Object call(Integer iArgument) {
         ODocument doc = new ODocument(CLASS_NAME);
@@ -266,7 +267,7 @@ public class OCRUDWorkload extends OBaseDocumentWorkload implements OCheckWorklo
   }
 
   public void updateOperation(final ODatabase database, final OIdentifiable rec) {
-    ODatabaseDocumentTx.executeWithRetries(new OCallable<Object, Integer>() {
+    ODatabaseDocumentAbstract.executeWithRetries(new OCallable<Object, Integer>() {
       @Override
       public Object call(Integer iArgument) {
         final ODocument doc = rec.getRecord();
@@ -278,7 +279,7 @@ public class OCRUDWorkload extends OBaseDocumentWorkload implements OCheckWorklo
   }
 
   public void deleteOperation(final ODatabase database, final OIdentifiable rec) {
-    ODatabaseDocumentTx.executeWithRetries(new OCallable<Object, Integer>() {
+    ODatabaseDocumentAbstract.executeWithRetries(new OCallable<Object, Integer>() {
       @Override
       public Object call(Integer iArgument) {
         database.delete(rec.getIdentity());

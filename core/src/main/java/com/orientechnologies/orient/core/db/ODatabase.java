@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.db;
@@ -27,15 +27,22 @@ import com.orientechnologies.orient.core.conflict.ORecordConflictStrategy;
 import com.orientechnologies.orient.core.dictionary.ODictionary;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
 import com.orientechnologies.orient.core.exception.ODatabaseException;
+import com.orientechnologies.orient.core.exception.OSchemaException;
 import com.orientechnologies.orient.core.exception.OTransactionException;
 import com.orientechnologies.orient.core.hook.ORecordHook;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.intent.OIntent;
 import com.orientechnologies.orient.core.metadata.OMetadata;
+import com.orientechnologies.orient.core.metadata.schema.OClass;
+import com.orientechnologies.orient.core.metadata.schema.OSchema;
 import com.orientechnologies.orient.core.metadata.security.OSecurityUser;
 import com.orientechnologies.orient.core.query.OQuery;
+
 import com.orientechnologies.orient.core.sql.OCommandSQLParsingException;
 import com.orientechnologies.orient.core.sql.executor.OTodoResultSet;
+import com.orientechnologies.orient.core.record.OEdge;
+import com.orientechnologies.orient.core.record.OElement;
+import com.orientechnologies.orient.core.record.OVertex;
 import com.orientechnologies.orient.core.storage.ORecordCallback;
 import com.orientechnologies.orient.core.storage.ORecordMetadata;
 import com.orientechnologies.orient.core.storage.OStorage;
@@ -56,7 +63,7 @@ import java.util.*;
  * 2.147.483.648 x 9,223.372.036.854.775.808 Exabytes = 19.807,040.628.566.084.398.385.987.584 Yottabytes</li>
  * </ul>
  *
- * @author Luca Garulli
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public interface ODatabase<T> extends OBackupable, Closeable {
 
@@ -147,6 +154,7 @@ public interface ODatabase<T> extends OBackupable, Closeable {
    *
    * @return True if already exists, otherwise false.
    */
+  @Deprecated
   boolean exists();
 
   /**
@@ -447,6 +455,66 @@ public interface ODatabase<T> extends OBackupable, Closeable {
    */
   <RET extends Object> RET newInstance();
 
+  OElement newElement();
+
+  OElement newElement(final String className);
+
+  /**
+   * Creates a new Edge of type E
+   *
+   * @param from the starting point vertex
+   * @param to   the endpoint vertex
+   * @return the edge
+   */
+  default OEdge newEdge(OVertex from, OVertex to) {
+    return newEdge(from, to, "E");
+  }
+
+  /**
+   * Creates a new Edge
+   *
+   * @param from the starting point vertex
+   * @param to   the endpoint vertex
+   * @param type the edge type
+   * @return the edge
+   */
+  OEdge newEdge(OVertex from, OVertex to, OClass type);
+
+  /**
+   * Creates a new Edge
+   *
+   * @param from the starting point vertex
+   * @param to   the endpoint vertex
+   * @param type the edge type
+   * @return the edge
+   */
+  OEdge newEdge(OVertex from, OVertex to, String type);
+
+  /**
+   * Creates a new Vertex of type V
+   *
+   * @return
+   */
+  default OVertex newVertex() {
+    return newVertex("V");
+  }
+
+  /**
+   * Creates a new Vertex
+   *
+   * @param type the vertex type
+   * @return
+   */
+  OVertex newVertex(OClass type);
+
+  /**
+   * Creates a new Vertex
+   *
+   * @param type the vertex type (class name)
+   * @return
+   */
+  OVertex newVertex(String type);
+
   /**
    * Returns the Dictionary manual index.
    *
@@ -460,6 +528,88 @@ public interface ODatabase<T> extends OBackupable, Closeable {
    * @see com.orientechnologies.orient.core.metadata.security.OSecurity
    */
   OSecurityUser getUser();
+
+  /**
+   * retrieves a class from the schema
+   * @param className The class name
+   * @return The object representing the class in the schema. Null if the class does not exist.
+   */
+  default OClass getClass(String className) {
+    OSchema schema = getMetadata().getSchema();
+    schema.reload();
+    return schema.getClass(className);
+  }
+
+  /**
+   * creates a new vertex class (a class that extends V)
+   * @param className the class name
+   * @return The object representing the class in the schema
+   * @throws OSchemaException if the class already exists or if V class is not defined (Eg. if it was deleted from the schema)
+   */
+  default OClass createVertexClass(String className) throws OSchemaException{
+    return createClass(className, "V");
+  }
+
+  /**
+   * creates a new edge class (a class that extends E)
+   * @param className the class name
+   * @return The object representing the class in the schema
+   * @throws OSchemaException if the class already exists or if E class is not defined (Eg. if it was deleted from the schema)
+   */
+  default OClass createEdgeClass(String className) {
+    return createClass(className, "E");
+  }
+
+  /**
+   * If a class with given name already exists, it's just returned, otherwise the method creates a new class and returns it.
+   * @param className the class name
+   * @param superclasses a list of superclasses for the class (can be empty)
+   * @return the class with the given name
+   * @throws OSchemaException if one of the superclasses does not exist in the schema
+   */
+  default OClass createClassIfNotExist(String className, String... superclasses) throws OSchemaException{
+    OSchema schema = getMetadata().getSchema();
+    schema.reload();
+
+    OClass result = schema.getClass(className);
+    if (result == null) {
+      result = createClass(className, superclasses);
+    }
+    return result;
+  }
+
+  /**
+   * Creates a new class in the schema
+   * @param className the class name
+   * @param superclasses a list of superclasses for the class (can be empty)
+   * @return the class with the given name
+   * @throws OSchemaException if a class with this name already exists or if one of the superclasses does not exist.
+   */
+  default OClass createClass(String className, String... superclasses) throws OSchemaException{
+    OSchema schema = getMetadata().getSchema();
+    schema.reload();
+    OClass[] superclassInstances = null;
+    if (superclasses != null) {
+      superclassInstances = new OClass[superclasses.length];
+      for (int i = 0; i < superclasses.length; i++) {
+        String superclass = superclasses[i];
+        OClass superclazz = schema.getClass(superclass);
+        if (superclazz == null) {
+          throw new OSchemaException("Class " + superclazz + " does not exist");
+        }
+        superclassInstances[i] = superclazz;
+      }
+    }
+    OClass result = schema.getClass(className);
+    if (result != null) {
+      throw new OSchemaException("Class " + className + " already exists");
+    }
+    if (superclassInstances == null) {
+      return schema.createClass(className);
+    } else {
+      return schema.createClass(className, superclassInstances);
+    }
+  }
 
   /**
    * Loads the entity and return it.

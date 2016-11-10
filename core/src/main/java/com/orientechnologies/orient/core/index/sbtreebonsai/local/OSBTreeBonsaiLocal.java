@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,13 +14,14 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 
 package com.orientechnologies.orient.core.index.sbtreebonsai.local;
 
 import com.orientechnologies.common.comparator.ODefaultComparator;
+import com.orientechnologies.common.concur.lock.OLockManager;
 import com.orientechnologies.common.concur.lock.OPartitionedLockManager;
 import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.log.OLogManager;
@@ -50,13 +51,13 @@ import java.util.concurrent.locks.Lock;
  * <p>
  * Creation of several instances that represent the same collection is not allowed.
  *
- * @author Andrey Lomakin
+ * @author Andrey Lomakin (a.lomakin-at-orientdb.com)
  * @author Artem Orobets
  * @see OSBTree
  * @since 1.6.0
  */
 public class OSBTreeBonsaiLocal<K, V> extends ODurableComponent implements OSBTreeBonsai<K, V> {
-  private static final OPartitionedLockManager<Integer> fileLockManager = new OPartitionedLockManager<Integer>();
+  OLockManager<Long> fileLockManager = new OPartitionedLockManager<Long>();
 
   private static final int                  PAGE_SIZE             =
       OGlobalConfiguration.DISK_CACHE_PAGE_SIZE.getValueAsInteger() * 1024;
@@ -68,7 +69,7 @@ public class OSBTreeBonsaiLocal<K, V> extends ODurableComponent implements OSBTr
 
   private final Comparator<? super K> comparator = ODefaultComparator.INSTANCE;
 
-  private volatile long fileId = -1;
+  private volatile Long fileId = -1l;
 
   private OBinarySerializer<K> keySerializer;
   private OBinarySerializer<V> valueSerializer;
@@ -87,7 +88,7 @@ public class OSBTreeBonsaiLocal<K, V> extends ODurableComponent implements OSBTr
         throw OException.wrapException(new OSBTreeBonsaiLocalException("Error during sbtree creation", this), e);
       }
 
-      Lock lock = fileLockManager.acquireExclusiveLock(-1);
+      Lock lock = fileLockManager.acquireExclusiveLock(-1l);
       try {
         this.keySerializer = keySerializer;
         this.valueSerializer = valueSerializer;

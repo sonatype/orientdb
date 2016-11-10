@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.server.network.protocol.http.command.post;
@@ -23,6 +23,7 @@ import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.config.OStorageEntryConfiguration;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
+import com.orientechnologies.orient.core.db.OrientDBFactory.DatabaseType;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocument;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.engine.local.OEngineLocalPaginated;
@@ -71,18 +72,14 @@ public class OServerCommandPostDatabase extends OServerCommandAuthenticatedServe
       String url = getStoragePath(databaseName, storageMode);
       final String type = urlParts.length > 3 ? urlParts[3] : "document";
       if (url != null) {
-        final ODatabaseDocumentInternal database = new ODatabaseDocumentTx(url);
-        if (database.exists()) {
+        if (server.existsDatabase(databaseName)) {
           iResponse.send(OHttpUtils.STATUS_CONFLICT_CODE, OHttpUtils.STATUS_CONFLICT_DESCRIPTION, OHttpUtils.CONTENT_TEXT_PLAIN,
-              "Database '" + database.getURL() + "' already exists.", null);
+              "Database '" + databaseName + "' already exists.", null);
         } else {
-          for (OStorage stg : Orient.instance().getStorages()) {
-            if (stg.getName().equalsIgnoreCase(database.getName()) && stg.exists())
-              throw new ODatabaseException("Database named '" + database.getName() + "' already exists: " + stg);
+          server.createDatabase(databaseName, DatabaseType.valueOf(storageMode.toUpperCase()), null);
+          try (ODatabaseDocumentInternal database = server.openDatabase(databaseName, serverUser, serverPassword, null, false)) {
+            sendDatabaseInfo(iRequest, iResponse, database);
           }
-          OLogManager.instance().info(this, "Creating database: " + url);
-          database.create();
-          sendDatabaseInfo(iRequest, iResponse, database);
         }
       } else {
         throw new OCommandExecutionException("The '" + storageMode + "' storage mode does not exists.");

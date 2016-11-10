@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.server.distributed;
@@ -39,7 +39,7 @@ import java.util.concurrent.locks.Lock;
 /**
  * Server cluster interface to abstract cluster behavior.
  *
- * @author Luca Garulli (l.garulli--at--orientechnologies.com)
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  *
  */
 public interface ODistributedServerManager {
@@ -75,8 +75,12 @@ public interface ODistributedServerManager {
    */
   enum DB_STATUS {
     /**
-     * The database is not started or has been put in OFFLINE status by another node. In this status the server does not receive any
-     * request.
+     * The database is not installed. In this status the server does not receive any request.
+     */
+    NOT_AVAILABLE,
+
+    /**
+     * The database has been put in OFFLINE status. In this status the server does not receive any request.
      */
     OFFLINE,
 
@@ -98,6 +102,19 @@ public interface ODistributedServerManager {
      */
     BACKUP
   };
+
+  /**
+   * Checks the node status if it's one of the statuses received as argument.
+   * 
+   * @param iNodeName
+   *          Node name
+   * @param iDatabaseName
+   *          Database name
+   * @param statuses
+   *          vararg of statuses
+   * @return true if the node's status is equals to one of the passed statuses, otherwise false
+   */
+  boolean isNodeStatusEqualsTo(String iNodeName, String iDatabaseName, DB_STATUS... statuses);
 
   boolean isNodeAvailable(final String iNodeName);
 
@@ -131,7 +148,7 @@ public interface ODistributedServerManager {
 
   boolean checkNodeStatus(NODE_STATUS string);
 
-  void removeServer(String nodeLeftName);
+  void removeServer(String nodeLeftName, boolean removeOnlyDynamicServers);
 
   DB_STATUS getDatabaseStatus(String iNode, String iDatabaseName);
 
@@ -225,7 +242,8 @@ public interface ODistributedServerManager {
 
   List<String> getOnlineNodes(String iDatabaseName);
 
-  boolean installDatabase(boolean iStartup, String databaseName, ODocument config);
+  boolean installDatabase(boolean iStartup, String databaseName, ODocument config, boolean forceDeployment,
+      boolean tryWithDeltaFirst);
 
   ORemoteTaskFactory getTaskFactory();
 

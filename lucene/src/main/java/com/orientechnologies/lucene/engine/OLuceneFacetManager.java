@@ -1,6 +1,6 @@
 /*
  *
- *  * Copyright 2014 Orient Technologies.
+ *  * Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  * Licensed under the Apache License, Version 2.0 (the "License");
  *  * you may not use this file except in compliance with the License.
@@ -20,11 +20,12 @@ package com.orientechnologies.lucene.engine;
 
 import com.orientechnologies.common.io.OFileUtils;
 import com.orientechnologies.common.log.OLogManager;
-import com.orientechnologies.lucene.query.QueryContext;
+import com.orientechnologies.lucene.query.OLuceneQueryContext;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.index.OCompositeKey;
 import com.orientechnologies.orient.core.index.OIndexEngineException;
 import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.storage.OStorage;
 import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.OLocalPaginatedStorage;
 import org.apache.lucene.document.Document;
@@ -51,18 +52,19 @@ import java.util.Map;
  */
 public class OLuceneFacetManager {
 
-  public static final    String FACET_FIELDS = "facetFields";
-  protected static final String FACET        = "_facet";
-  protected TaxonomyWriter taxonomyWriter;
-  protected FacetsConfig config = new FacetsConfig();
-  protected String                     facetField;
+  public static final String         FACET_FIELDS = "facetFields";
+  protected static final String      FACET        = "_facet";
+  private final OStorage             storage;
+  protected TaxonomyWriter           taxonomyWriter;
+  protected FacetsConfig             config       = new FacetsConfig();
+  protected String                   facetField;
   // protected String facetDim;
-  private   OLuceneIndexEngineAbstract owner;
-  private   ODocument                  metadata;
+  private OLuceneIndexEngineAbstract owner;
+  private ODocument                  metadata;
 
-  public OLuceneFacetManager(OLuceneIndexEngineAbstract owner, ODocument metadata) throws IOException {
+  public OLuceneFacetManager(OStorage storage, OLuceneIndexEngineAbstract owner, ODocument metadata) throws IOException {
     this.owner = owner;
-
+    this.storage = storage;
     this.metadata = metadata;
     buildFacetIndexIfNeeded();
   }
@@ -99,17 +101,17 @@ public class OLuceneFacetManager {
   }
 
   protected String getIndexFacetPath(OLocalPaginatedStorage storageLocalAbstract) {
-    return storageLocalAbstract.getStoragePath() + File.separator + owner.OLUCENE_BASE_DIR + File.separator + owner.name
-        + FACET;
+    return storageLocalAbstract.getStoragePath() + File.separator + owner.OLUCENE_BASE_DIR + File.separator + owner.name + FACET;
   }
 
   public void delete() {
-    ODatabaseDocumentInternal database = owner.getDatabase();
-    final OAbstractPaginatedStorage storageLocalAbstract = (OAbstractPaginatedStorage) database.getStorage().getUnderlying();
-    if (storageLocalAbstract instanceof OLocalPaginatedStorage) {
-      File f = new File(getIndexFacetPath((OLocalPaginatedStorage) storageLocalAbstract));
+
+    OStorage underlying = storage.getUnderlying();
+
+    if (underlying instanceof OLocalPaginatedStorage) {
+      File f = new File(getIndexFacetPath((OLocalPaginatedStorage) underlying));
       OFileUtils.deleteRecursively(f);
-      f = new File(owner.getIndexBasePath((OLocalPaginatedStorage) storageLocalAbstract));
+      f = new File(owner.getIndexBasePath((OLocalPaginatedStorage) underlying));
       OFileUtils.deleteFolderIfEmpty(f);
     }
   }
@@ -162,7 +164,7 @@ public class OLuceneFacetManager {
     }
   }
 
-  public void addFacetContext(QueryContext queryContext, Object key) throws IOException {
+  public void addFacetContext(OLuceneQueryContext queryContext, Object key) throws IOException {
     queryContext.setFacet(true);
     queryContext.setFacetField(facetField);
     queryContext.setFacetConfig(config);

@@ -1,6 +1,6 @@
 /*
   *
-  *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+  *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
   *  *
   *  *  Licensed under the Apache License, Version 2.0 (the "License");
   *  *  you may not use this file except in compliance with the License.
@@ -14,14 +14,14 @@
   *  *  See the License for the specific language governing permissions and
   *  *  limitations under the License.
   *  *
-  *  * For more information: http://www.orientechnologies.com
+  *  * For more information: http://orientdb.com
   *
   */
 
 package com.tinkerpop.rexster;
 
 import com.tinkerpop.blueprints.Graph;
-import com.tinkerpop.blueprints.impls.orient.OrientGraph;
+import com.tinkerpop.blueprints.impls.orient.OrientGraphFactory;
 import com.tinkerpop.rexster.config.GraphConfiguration;
 import com.tinkerpop.rexster.config.GraphConfigurationContext;
 import com.tinkerpop.rexster.config.GraphConfigurationException;
@@ -83,7 +83,7 @@ public class OrientGraphConfiguration implements GraphConfiguration {
 
       // calling the open method opens the connection to graphdb. looks like the
       // implementation of shutdown will call the orientdb close method.
-      return new OrientGraph(graphFile, username, password);
+      return OrientGraphFactory.getTxGraphImplFactory().getGraph(graphFile, username, password);
 
     } catch (Exception ex) {
       throw new GraphConfigurationException(ex);

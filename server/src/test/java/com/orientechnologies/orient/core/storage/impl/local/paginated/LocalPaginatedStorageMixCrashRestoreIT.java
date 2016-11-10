@@ -2,6 +2,7 @@ package com.orientechnologies.orient.core.storage.impl.local.paginated;
 
 import com.orientechnologies.common.concur.lock.OOneEntryPerKeyLockManager;
 import com.orientechnologies.common.io.OFileUtils;
+import com.orientechnologies.orient.client.remote.OServerAdmin;
 import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.id.ORecordId;
@@ -31,7 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * @author Andrey Lomakin
+ * @author Andrey Lomakin (a.lomakin-at-orientdb.com)
  * @since 6/25/13
  */
 
@@ -56,19 +57,6 @@ public class LocalPaginatedStorageMixCrashRestoreIT {
   private final AtomicLong lastOperation = new AtomicLong();
 
   public void spawnServer() throws Exception {
-    String buildDirectory = System.getProperty("buildDirectory", ".");
-    buildDirectory += "/localPaginatedStorageMixCrashRestore";
-
-    buildDir = new File(buildDirectory);
-
-    buildDirectory = buildDir.getCanonicalPath();
-    buildDir = new File(buildDirectory);
-
-    if (buildDir.exists())
-      OFileUtils.deleteRecursively(buildDir);
-
-    buildDir.mkdir();
-
     final File mutexFile = new File(buildDir, "mutex.ct");
     final RandomAccessFile mutex = new RandomAccessFile(mutexFile, "rw");
     mutex.seek(0);
@@ -77,11 +65,11 @@ public class LocalPaginatedStorageMixCrashRestoreIT {
     String javaExec = System.getProperty("java.home") + "/bin/java";
     javaExec = new File(javaExec).getCanonicalPath();
 
-    System.setProperty("ORIENTDB_HOME", buildDirectory);
+    System.setProperty("ORIENTDB_HOME", buildDir.getCanonicalPath());
 
-    ProcessBuilder processBuilder = new ProcessBuilder(javaExec, "-Xmx2048m", "-XX:MaxDirectMemorySize=512g", "-classpath",
-        System.getProperty("java.class.path"), "-DmutexFile=" + mutexFile.getCanonicalPath(), "-DORIENTDB_HOME=" + buildDirectory,
-        RemoteDBRunner.class.getName());
+    ProcessBuilder processBuilder = new ProcessBuilder(javaExec,  "-Xmx4096m", "-XX:MaxDirectMemorySize=512g", "-classpath",
+        System.getProperty("java.class.path"), "-DmutexFile=" + mutexFile.getCanonicalPath(),
+        "-DORIENTDB_HOME=" + buildDir.getCanonicalPath(), RemoteDBRunner.class.getName());
 
     processBuilder.inheritIO();
 
@@ -114,7 +102,17 @@ public class LocalPaginatedStorageMixCrashRestoreIT {
 
   @Before
   public void setUp() throws Exception {
-    spawnServer();
+    String buildDirectory = System.getProperty("buildDirectory", ".");
+    buildDirectory += "/localPaginatedStorageMixCrashRestore";
+
+    buildDir = new File(buildDirectory);
+    buildDir = new File(buildDir.getCanonicalPath());
+
+    if (buildDir.exists())
+      OFileUtils.deleteRecursively(buildDir);
+
+    buildDir.mkdir();
+
     baseDocumentTx = new ODatabaseDocumentTx("plocal:" + buildDir.getAbsolutePath() + "/baseLocalPaginatedStorageMixCrashRestore");
     if (baseDocumentTx.exists()) {
       baseDocumentTx.open("admin", "admin");
@@ -122,6 +120,13 @@ public class LocalPaginatedStorageMixCrashRestoreIT {
     }
 
     baseDocumentTx.create();
+
+    spawnServer();
+
+    final OServerAdmin serverAdmin = new OServerAdmin("remote:localhost:3500");
+    serverAdmin.connect("root", "root");
+    serverAdmin.createDatabase("testLocalPaginatedStorageMixCrashRestore", "graph", "plocal");
+    serverAdmin.close();
 
     testDocumentTx = new ODatabaseDocumentTx("remote:localhost:3500/testLocalPaginatedStorageMixCrashRestore");
     testDocumentTx.open("admin", "admin");
@@ -166,7 +171,8 @@ public class LocalPaginatedStorageMixCrashRestoreIT {
     System.out.println(
         addedIds.size() + " records were added. " + updatedIds.size() + " were updated. " + deletedIds.size() + " were deleted.");
 
-    testDocumentTx = new ODatabaseDocumentTx("plocal:" + buildDir.getAbsolutePath() + "/testLocalPaginatedStorageMixCrashRestore");
+    testDocumentTx = new ODatabaseDocumentTx(
+        "plocal:" + new File(new File(buildDir, "databases"), "testLocalPaginatedStorageMixCrashRestore").getCanonicalPath());
     testDocumentTx.open("admin", "admin");
     testDocumentTx.close();
 
@@ -237,7 +243,7 @@ public class LocalPaginatedStorageMixCrashRestoreIT {
       final ORecordId rid = new ORecordId(clusterId);
 
       for (OPhysicalPosition physicalPosition : physicalPositions) {
-        rid.clusterPosition = physicalPosition.clusterPosition;
+        rid.setClusterPosition(physicalPosition.clusterPosition);
 
         ODatabaseRecordThreadLocal.INSTANCE.set(baseDocumentTx);
         ODocument baseDocument = baseDocumentTx.load(rid);

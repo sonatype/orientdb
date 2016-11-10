@@ -1,6 +1,6 @@
 /*
  *
- *  * Copyright 2010-2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  * Copyright 2010-2016 OrientDB LTD (info(-at-)orientdb.com)
  *  *
  *  * Licensed under the Apache License, Version 2.0 (the "License");
  *  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import java.util.List;
 /**
  * Tests ETL JSON Extractor.
  *
- * @author Luca Garulli
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public abstract class OETLBaseTest {
   protected String[] names    = new String[] { "Jay", "Luca", "Bill", "Steve", "Jill", "Luigi", "Enrico", "Emanuele" };
@@ -45,8 +45,10 @@ public abstract class OETLBaseTest {
   public void setUp() {
     graph = new OrientGraph("memory:OETLBaseTest");
     graph.setUseLightweightEdges(false);
-    OETLComponentFactory factory = new OETLComponentFactory().registerLoader(OETLStubLoader.class)
+    OETLComponentFactory factory = new OETLComponentFactory()
+        .registerLoader(OETLStubLoader.class)
         .registerExtractor(OETLStubRandomExtractor.class);
+
     configurator = new OETLProcessorConfigurator(factory);
   }
 
@@ -61,7 +63,7 @@ public abstract class OETLBaseTest {
 
   protected void process(final String cfgJson) {
 
-    process(cfgJson,new OBasicCommandContext());
+    process(cfgJson, new OBasicCommandContext());
   }
 
   protected void process(final String cfgJson, final OCommandContext iContext) {

@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,13 +14,12 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.tx;
 
 import com.orientechnologies.common.exception.OException;
-import com.orientechnologies.orient.core.OUncompletedCommit;
 import com.orientechnologies.orient.core.db.ODatabase.OPERATION_MODE;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.db.document.LatestVersionRecordReader;
@@ -50,7 +49,7 @@ import java.util.Set;
 /**
  * No operation transaction.
  * 
- * @author Luca Garulli (l.garulli--at--orientechnologies.com)
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  * 
  */
 public class OTransactionNoTx extends OTransactionAbstract {
@@ -81,16 +80,6 @@ public class OTransactionNoTx extends OTransactionAbstract {
   public void rollback() {
   }
 
-  @Override
-  public OUncompletedCommit<Void> initiateCommit() {
-    return OUncompletedCommit.NO_OPERATION;
-  }
-
-  @Override
-  public OUncompletedCommit<Void> initiateCommit(boolean force) {
-    return OUncompletedCommit.NO_OPERATION;
-  }
-
   @Deprecated
   public ORecord loadRecord(final ORID iRid, final ORecord iRecord, final String iFetchPlan, final boolean ignoreCache,
       final boolean loadTombstone, final OStorage.LOCKING_STRATEGY iLockingStrategy) {
@@ -98,7 +87,7 @@ public class OTransactionNoTx extends OTransactionAbstract {
       return null;
 
     return database.executeReadRecord((ORecordId) iRid, iRecord, -1, iFetchPlan, ignoreCache, !ignoreCache, loadTombstone,
-        iLockingStrategy, new SimpleRecordReader());
+        iLockingStrategy, new SimpleRecordReader(database.isPrefetchRecords()));
   }
 
   @Deprecated
@@ -108,7 +97,7 @@ public class OTransactionNoTx extends OTransactionAbstract {
       return null;
 
     return database.executeReadRecord((ORecordId) iRid, iRecord, -1, iFetchPlan, ignoreCache, iUpdateCache, loadTombstone,
-        iLockingStrategy, new SimpleRecordReader());
+        iLockingStrategy, new SimpleRecordReader(database.isPrefetchRecords()));
   }
 
   public ORecord loadRecord(final ORID iRid, final ORecord iRecord, final String iFetchPlan, final boolean ignoreCache) {
@@ -116,7 +105,7 @@ public class OTransactionNoTx extends OTransactionAbstract {
       return null;
 
     return database.executeReadRecord((ORecordId) iRid, iRecord, -1, iFetchPlan, ignoreCache, !ignoreCache, false,
-        OStorage.LOCKING_STRATEGY.NONE, new SimpleRecordReader());
+        OStorage.LOCKING_STRATEGY.NONE, new SimpleRecordReader(database.isPrefetchRecords()));
   }
 
   @Override
@@ -131,7 +120,7 @@ public class OTransactionNoTx extends OTransactionAbstract {
 
     final RecordReader recordReader;
     if (force) {
-      recordReader = new SimpleRecordReader();
+      recordReader = new SimpleRecordReader(database.isPrefetchRecords());
     } else {
       recordReader = new LatestVersionRecordReader();
     }

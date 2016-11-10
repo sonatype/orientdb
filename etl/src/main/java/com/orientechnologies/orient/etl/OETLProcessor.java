@@ -1,6 +1,6 @@
 /*
  *
- *  * Copyright 2010-2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  * Copyright 2010-2016 OrientDB LTD (info(-at-)orientdb.com)
  *  *
  *  * Licensed under the Apache License, Version 2.0 (the "License");
  *  * you may not use this file except in compliance with the License.
@@ -35,15 +35,21 @@ import com.tinkerpop.blueprints.impls.orient.OrientVertex;
 
 import java.util.List;
 import java.util.TimerTask;
-import java.util.concurrent.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static com.orientechnologies.orient.etl.OETLProcessor.LOG_LEVELS.*;
+
 /**
  * ETL processor class.
  *
- * @author Luca Garulli (l.garulli-at-orientechnologies.com)
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com) (l.garulli-at-orientdb.com)
  */
 public class OETLProcessor {
   protected final OETLComponentFactory factory;
@@ -126,8 +132,6 @@ public class OETLProcessor {
 
       if (cores >= 2)
         workers = cores - 1;
-
-      //      workers = cores;
     }
 
   }
@@ -186,22 +190,26 @@ public class OETLProcessor {
 
       final AtomicLong counter = new AtomicLong();
 
-      List<CompletableFuture<Void>> futures = IntStream.range(0, workers).boxed().map(i -> CompletableFuture
-          .runAsync(new OETLPipelineWorker(queue, new OETLPipeline(this, transformers, loader, logLevel, maxRetries, haltOnError)),
-              executor)).collect(Collectors.toList());
+      List<CompletableFuture<Void>> futures = IntStream.range(0, workers)
+          .boxed()
+          .map(i -> CompletableFuture.runAsync(
+              new OETLPipelineWorker(queue, new OETLPipeline(this, transformers, loader, logLevel, maxRetries, haltOnError)),
+              executor))
+          .collect(Collectors.toList());
 
       futures.add(CompletableFuture.runAsync(new OETLExtractorWorker(this, queue, counter), executor));
 
       futures.forEach(cf -> cf.join());
 
-      out(LOG_LEVELS.DEBUG, "all items extracted");
+      out(DEBUG, "all items extracted");
 
       executor.shutdown();
     } catch (OETLProcessHaltedException e) {
-      out(LOG_LEVELS.ERROR, "ETL process halted: %s", e);
+      out(ERROR, "ETL process halted: %s", e);
       executor.shutdownNow();
     } catch (Exception e) {
-      out(LOG_LEVELS.ERROR, "ETL process has problem: %s", e);
+      out(ERROR, "ETL process has problem: %s", e);
+      e.printStackTrace();
       executor.shutdownNow();
     }
   }

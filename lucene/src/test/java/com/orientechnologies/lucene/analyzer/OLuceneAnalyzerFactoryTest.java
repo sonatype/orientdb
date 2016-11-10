@@ -3,10 +3,10 @@ package com.orientechnologies.lucene.analyzer;
 import com.orientechnologies.common.io.OIOUtils;
 import com.orientechnologies.orient.core.index.OIndexDefinition;
 import com.orientechnologies.orient.core.record.impl.ODocument;
+import org.apache.lucene.analysis.StopwordAnalyzerBase;
 import org.apache.lucene.analysis.core.KeywordAnalyzer;
 import org.apache.lucene.analysis.en.EnglishAnalyzer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
-import org.apache.lucene.analysis.util.StopwordAnalyzerBase;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;
@@ -14,11 +14,10 @@ import org.mockito.Mockito;
 import java.io.File;
 import java.io.IOException;
 
-import static com.orientechnologies.lucene.analyzer.OLuceneAnalyzerFactory.AnalyzerKind.INDEX;
-import static com.orientechnologies.lucene.analyzer.OLuceneAnalyzerFactory.AnalyzerKind.QUERY;
-import static java.util.Arrays.asList;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.when;
+import static com.orientechnologies.lucene.analyzer.OLuceneAnalyzerFactory.AnalyzerKind.*;
+import static java.util.Arrays.*;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 /**
  * Created by frank on 30/10/2015.
@@ -66,6 +65,7 @@ public class OLuceneAnalyzerFactoryTest {
         .createAnalyzer(indexDef, INDEX, metadata);
     //default analyzer for indexing
     assertThat(analyzer.getWrappedAnalyzer("genre")).isInstanceOf(KeywordAnalyzer.class);
+    assertThat(analyzer.getWrappedAnalyzer("Song.genre")).isInstanceOf(KeywordAnalyzer.class);
 
   }
 
@@ -75,12 +75,16 @@ public class OLuceneAnalyzerFactoryTest {
     OLucenePerFieldAnalyzerWrapper analyzer = (OLucenePerFieldAnalyzerWrapper) analyzerFactory
         .createAnalyzer(indexDef, INDEX, metadata);
     assertThat(analyzer.getWrappedAnalyzer("title")).isInstanceOf(EnglishAnalyzer.class);
+    assertThat(analyzer.getWrappedAnalyzer("Song.title")).isInstanceOf(EnglishAnalyzer.class);
 
     assertThat(analyzer.getWrappedAnalyzer("author")).isInstanceOf(KeywordAnalyzer.class);
+    assertThat(analyzer.getWrappedAnalyzer("Song.author")).isInstanceOf(KeywordAnalyzer.class);
 
     assertThat(analyzer.getWrappedAnalyzer("lyrics")).isInstanceOf(EnglishAnalyzer.class);
+    assertThat(analyzer.getWrappedAnalyzer("Song.lyrics")).isInstanceOf(EnglishAnalyzer.class);
 
     assertThat(analyzer.getWrappedAnalyzer("description")).isInstanceOf(StandardAnalyzer.class);
+    assertThat(analyzer.getWrappedAnalyzer("Song.description")).isInstanceOf(StandardAnalyzer.class);
 
     StopwordAnalyzerBase description = (StopwordAnalyzerBase) analyzer.getWrappedAnalyzer("description");
 
@@ -97,17 +101,19 @@ public class OLuceneAnalyzerFactoryTest {
     OLucenePerFieldAnalyzerWrapper analyzer = (OLucenePerFieldAnalyzerWrapper) analyzerFactory
         .createAnalyzer(indexDef, QUERY, metadata);
     assertThat(analyzer.getWrappedAnalyzer("title")).isInstanceOf(EnglishAnalyzer.class);
+    assertThat(analyzer.getWrappedAnalyzer("Song.title")).isInstanceOf(EnglishAnalyzer.class);
 
     assertThat(analyzer.getWrappedAnalyzer("author")).isInstanceOf(KeywordAnalyzer.class);
+    assertThat(analyzer.getWrappedAnalyzer("Song.author")).isInstanceOf(KeywordAnalyzer.class);
+
     assertThat(analyzer.getWrappedAnalyzer("genre")).isInstanceOf(StandardAnalyzer.class);
+    assertThat(analyzer.getWrappedAnalyzer("Song.genre")).isInstanceOf(StandardAnalyzer.class);
 
   }
 
   @Test
   public void shouldUseClassNameToPrefixFieldName() throws Exception {
 
-    //modify metadata to force use of class name as prefix
-    metadata.field("prefix_with_class_name", Boolean.TRUE);
 
     OLucenePerFieldAnalyzerWrapper analyzer = (OLucenePerFieldAnalyzerWrapper) analyzerFactory
         .createAnalyzer(indexDef, QUERY, metadata);

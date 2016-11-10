@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 
@@ -26,7 +26,6 @@ import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.util.OPair;
 import com.orientechnologies.orient.core.OOrientListenerAbstract;
-import com.orientechnologies.orient.core.OUncompletedCommit;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.exception.OStorageException;
@@ -58,7 +57,7 @@ import java.util.concurrent.atomic.*;
 import java.util.concurrent.locks.LockSupport;
 
 /**
- * @author Andrey Lomakin (a.lomakin-at-orientechnologies.com)
+ * @author Andrey Lomakin (a.lomakin-at-orientdb.com)
  * @since 12/3/13
  */
 public class OAtomicOperationsManager implements OAtomicOperationsMangerMXBean {
@@ -435,19 +434,6 @@ public class OAtomicOperationsManager implements OAtomicOperationsMangerMXBean {
     return operation;
   }
 
-  public OUncompletedCommit<OAtomicOperation> initiateCommit() throws IOException {
-    final OAtomicOperation operation = currentOperation.get();
-    assert operation != null;
-
-    final int counter = operation.decrementCounter();
-    assert counter >= 0;
-
-    if (counter > 0)
-      return new OUncompletedCommit.NoOperation<OAtomicOperation>(operation);
-
-    return new UncompletedCommit(operation, operation.initiateCommit(useWal() ? writeAheadLog : null));
-  }
-
   /**
    * Acquires exclusive lock with the given lock name in the given atomic operation.
    *
@@ -609,65 +595,5 @@ public class OAtomicOperationsManager implements OAtomicOperationsMangerMXBean {
 
     final OStorageTransaction storageTransaction = storage.getStorageTransaction();
     return storageTransaction == null || storageTransaction.getClientTx().isUsingLog();
-  }
-
-  private class UncompletedCommit implements OUncompletedCommit<OAtomicOperation> {
-    private final OAtomicOperation         operation;
-    private final OUncompletedCommit<Void> nestedCommit;
-
-    public UncompletedCommit(OAtomicOperation operation, OUncompletedCommit<Void> nestedCommit) {
-      this.operation = operation;
-      this.nestedCommit = nestedCommit;
-    }
-
-    @Override
-    public OAtomicOperation complete() {
-      nestedCommit.complete();
-
-      try {
-        if (useWal())
-          writeAheadLog
-              .logAtomicOperationEndRecord(operation.getOperationUnitId(), false, operation.getStartLSN(), operation.getMetadata());
-      } catch (IOException e) {
-        throw OException.wrapException(new OStorageException("Error while completing an uncompleted commit."), e);
-      }
-
-      currentOperation.set(null);
-
-      if (trackAtomicOperations)
-        activeAtomicOperations.remove(operation.getOperationUnitId());
-
-      for (String lockObject : operation.lockedObjects())
-        lockManager.releaseLock(this, lockObject, OOneEntryPerKeyLockManager.LOCK.EXCLUSIVE);
-
-      atomicOperationsCount.decrement();
-
-      return operation;
-    }
-
-    @Override
-    public void rollback() {
-      operation.rollback(null);
-
-      nestedCommit.rollback();
-
-      try {
-        if (useWal())
-          writeAheadLog
-              .logAtomicOperationEndRecord(operation.getOperationUnitId(), true, operation.getStartLSN(), operation.getMetadata());
-      } catch (IOException e) {
-        throw OException.wrapException(new OStorageException("Error while rollbacking an uncompleted commit."), e);
-      }
-
-      currentOperation.set(null);
-
-      if (trackAtomicOperations)
-        activeAtomicOperations.remove(operation.getOperationUnitId());
-
-      for (String lockObject : operation.lockedObjects())
-        lockManager.releaseLock(this, lockObject, OOneEntryPerKeyLockManager.LOCK.EXCLUSIVE);
-
-      atomicOperationsCount.decrement();
-    }
   }
 }

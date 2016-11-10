@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.stresstest.workload;
@@ -23,6 +23,7 @@ import com.orientechnologies.common.concur.ONeedRetryException;
 import com.orientechnologies.common.util.OCallable;
 import com.orientechnologies.orient.client.remote.OStorageRemote;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
+import com.orientechnologies.orient.core.db.document.ODatabaseDocumentAbstract;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.stresstest.ODatabaseIdentifier;
 
@@ -34,7 +35,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * CRUD implementation of the workload.
  *
- * @author Luca Garulli
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public abstract class OBaseWorkload implements OWorkload {
   protected OStorageRemote.CONNECTION_STRATEGY connectionStrategy = OStorageRemote.CONNECTION_STRATEGY.STICKY;
@@ -132,7 +133,7 @@ public abstract class OBaseWorkload implements OWorkload {
             final AtomicInteger operationsExecutedInTx = new AtomicInteger();
 
             for (final AtomicInteger i = new AtomicInteger(); i.get() < context.totalPerThread; i.incrementAndGet()) {
-              ODatabaseDocumentTx.executeWithRetries(new OCallable<Object, Integer>() {
+              ODatabaseDocumentAbstract.executeWithRetries(new OCallable<Object, Integer>() {
                 @Override
                 public Object call(final Integer retry) {
                   if (retry > 0) {

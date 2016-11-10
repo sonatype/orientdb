@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *  
  */
 package com.orientechnologies.orient.server.distributed.impl;
@@ -40,7 +40,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * Hazelcast implementation of distributed peer. There is one instance per database. Each node creates own instance to talk with
  * each others.
  *
- * @author Luca Garulli (l.garulli--at--orientechnologies.com)
+ * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
 public class ODistributedWorker extends Thread {
 
@@ -56,9 +56,9 @@ public class ODistributedWorker extends Thread {
   protected volatile OUser                                lastUser;
   protected volatile boolean                              running              = true;
 
-  private AtomicLong                                      processedRequests    = new AtomicLong(0);
+  private AtomicLong processedRequests = new AtomicLong(0);
 
-  private static final long                               MAX_SHUTDOWN_TIMEOUT = 5000l;
+  private static final long MAX_SHUTDOWN_TIMEOUT = 5000l;
 
   public ODistributedWorker(final ODistributedDatabaseImpl iDistributed, final String iDatabaseName, final int i) {
     id = i;
@@ -153,7 +153,7 @@ public class ODistributedWorker extends Thread {
     } else if (database.isClosed()) {
       // DATABASE CLOSED, REOPEN IT
       database.close();
-      manager.getServerInstance().openDatabase(database, "internal", "internal", null, true);
+      database = distributed.getDatabaseInstance();
     }
   }
 
@@ -177,8 +177,9 @@ public class ODistributedWorker extends Thread {
               "Interrupted shutdown of distributed worker thread");
         }
 
-      ODistributedServerLog.debug(this, localNodeName, null, ODistributedServerLog.DIRECTION.NONE,
-          "Shutdown distributed worker '%s' completed", getName());
+      ODistributedServerLog
+          .debug(this, localNodeName, null, ODistributedServerLog.DIRECTION.NONE, "Shutdown distributed worker '%s' completed",
+              getName());
 
       localQueue.clear();
 
@@ -188,8 +189,9 @@ public class ODistributedWorker extends Thread {
       }
 
     } catch (Exception e) {
-      ODistributedServerLog.warn(this, localNodeName, null, ODistributedServerLog.DIRECTION.NONE,
-          "Error on shutting down distributed worker '%s'", e, getName());
+      ODistributedServerLog
+          .warn(this, localNodeName, null, ODistributedServerLog.DIRECTION.NONE, "Error on shutting down distributed worker '%s'",
+              e, getName());
 
     }
   }
@@ -207,8 +209,9 @@ public class ODistributedWorker extends Thread {
 
     if (ODistributedServerLog.isDebugEnabled()) {
       final String senderNodeName = manager.getNodeNameById(req.getId().getNodeId());
-      ODistributedServerLog.debug(this, localNodeName, senderNodeName, DIRECTION.IN,
-          "Processing request=(%s) sourceNode=%s worker=%d", req, senderNodeName, id);
+      ODistributedServerLog
+          .debug(this, localNodeName, senderNodeName, DIRECTION.IN, "Processing request=(%s) sourceNode=%s worker=%d", req,
+              senderNodeName, id);
     }
 
     return req;
@@ -250,11 +253,11 @@ public class ODistributedWorker extends Thread {
     final ORemoteTask task = iRequest.getTask();
 
     if (ODistributedServerLog.isDebugEnabled())
-      ODistributedServerLog.debug(this, localNodeName, senderNodeName, DIRECTION.IN, "Received request: (%s) (worker=%d)", iRequest,
-          id);
+      ODistributedServerLog
+          .debug(this, localNodeName, senderNodeName, DIRECTION.IN, "Received request: (%s) (worker=%d)", iRequest, id);
 
     // EXECUTE IT LOCALLY
-    Object responsePayload;
+    Object responsePayload = null;
     OSecurityUser origin = null;
     try {
       task.setNodeSource(senderNodeName);
@@ -268,8 +271,8 @@ public class ODistributedWorker extends Thread {
         database.activateOnCurrentThread();
         origin = database.getUser();
         try {
-          if (iRequest.getUserRID() != null && iRequest.getUserRID().isValid()
-              && (lastUser == null || !(lastUser.getIdentity()).equals(iRequest.getUserRID()))) {
+          if (iRequest.getUserRID() != null && iRequest.getUserRID().isValid() && (lastUser == null || !(lastUser.getIdentity())
+              .equals(iRequest.getUserRID()))) {
             lastUser = database.getMetadata().getSecurity().getUser(iRequest.getUserRID());
             database.setUser(lastUser);// set to new user
           } else
@@ -281,7 +284,7 @@ public class ODistributedWorker extends Thread {
       }
 
       // EXECUTE THE TASK
-      for (int retry = 1;; ++retry) {
+      for (int retry = 1; running; ++retry) {
         responsePayload = manager.executeOnLocalNode(iRequest.getId(), iRequest.getTask(), database);
 
         if (responsePayload instanceof OModificationOperationProhibitedException) {
@@ -296,8 +299,8 @@ public class ODistributedWorker extends Thread {
         } else {
           // OPERATION EXECUTED (OK OR ERROR), NO RETRY NEEDED
           if (retry > 1)
-            ODistributedServerLog.info(this, localNodeName, senderNodeName, DIRECTION.IN, "Request %s succeed after retry=%d",
-                iRequest, retry);
+            ODistributedServerLog
+                .info(this, localNodeName, senderNodeName, DIRECTION.IN, "Request %s succeed after retry=%d", iRequest, retry);
 
           break;
         }
@@ -320,8 +323,7 @@ public class ODistributedWorker extends Thread {
       }
     }
 
-    if (running)
-      sendResponseBack(iRequest, responsePayload);
+    sendResponseBack(iRequest, responsePayload);
   }
 
   protected String getLocalNodeName() {
@@ -349,14 +351,14 @@ public class ODistributedWorker extends Thread {
       // GET THE SENDER'S RESPONSE QUEUE
       final ORemoteServerController remoteSenderServer = manager.getRemoteServer(senderNodeName);
 
-      ODistributedServerLog.debug(current, localNodeName, senderNodeName, ODistributedServerLog.DIRECTION.OUT,
-          "Sending response %s back", response);
+      ODistributedServerLog
+          .debug(current, localNodeName, senderNodeName, ODistributedServerLog.DIRECTION.OUT, "Sending response %s back", response);
 
       remoteSenderServer.sendResponse(response);
 
     } catch (Exception e) {
       ODistributedServerLog.debug(current, localNodeName, senderNodeName, ODistributedServerLog.DIRECTION.OUT,
-          "Error on sending response %s back", response);
+          "Error on sending response '%s' back: %s", response, e.toString());
     }
   }
 
@@ -391,5 +393,10 @@ public class ODistributedWorker extends Thread {
 
   public long getProcessedRequests() {
     return processedRequests.get();
+  }
+
+  public void sendShutdown() {
+    running = false;
+    this.interrupt();
   }
 }

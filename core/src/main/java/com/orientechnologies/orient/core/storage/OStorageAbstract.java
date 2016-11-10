@@ -1,6 +1,6 @@
 /*
  *
- *  *  Copyright 2014 Orient Technologies LTD (info(at)orientechnologies.com)
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  *  *
  *  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  *  *  See the License for the specific language governing permissions and
  *  *  limitations under the License.
  *  *
- *  * For more information: http://www.orientechnologies.com
+ *  * For more information: http://orientdb.com
  *
  */
 package com.orientechnologies.orient.core.storage;
@@ -188,20 +188,6 @@ public abstract class OStorageAbstract implements OStorage, OSharedContainer {
 
   public STATUS getStatus() {
     return status;
-  }
-
-  public void checkForClusterPermissions(final String iClusterName) {
-    // CHECK FOR ORESTRICTED
-    OMetadata metaData = ODatabaseRecordThreadLocal.INSTANCE.get().getMetadata();
-    if (metaData != null) {
-      final Set<OClass> classes = ((OMetadataInternal) metaData).getImmutableSchemaSnapshot().getClassesRelyOnCluster(iClusterName);
-      for (OClass c : classes) {
-        if (c.isSubClassOf(OSecurityShared.RESTRICTED_CLASSNAME))
-          throw new OSecurityException(
-              "Class '" + c.getName() + "' cannot be truncated because has record level security enabled (extends '"
-                  + OSecurityShared.RESTRICTED_CLASSNAME + "')");
-      }
-    }
   }
 
   @Override

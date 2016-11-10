@@ -8,12 +8,11 @@ import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.query.OSQLSynchQuery;
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.util.List;
-
-import static org.junit.Assert.assertEquals;
 
 public class TestOrderByIndexPropDesc {
 
@@ -24,7 +23,7 @@ public class TestOrderByIndexPropDesc {
 
   @Before
   public void init() throws Exception {
-    db = new ODatabaseDocumentTx("memory:test");
+    db = new ODatabaseDocumentTx("memory:TestOrderByIndexPropDesc");
     db.create();
     OClass oclass = db.getMetadata().getSchema().createClass(DOCUMENT_CLASS_NAME);
     oclass.createProperty(PROP_INDEXED_STRING, OType.INTEGER);
@@ -63,7 +62,7 @@ public class TestOrderByIndexPropDesc {
       // System.out.println(d.<Integer>field(PROP_INDEXED_STRING));
     }
 
-    assertEquals(count, result.size());
+    Assert.assertEquals(count, result.size());
 
   }
 
