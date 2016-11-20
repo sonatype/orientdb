@@ -826,11 +826,26 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   /**
    * Returns the available nodes (not offline) and clears the node list by removing the offline nodes.
    */
+  @Override
   public int getAvailableNodes(final Collection<String> iNodes, final String databaseName) {
     for (Iterator<String> it = iNodes.iterator(); it.hasNext(); ) {
       final String node = it.next();
 
       if (!isNodeAvailable(node, databaseName))
+        it.remove();
+    }
+    return iNodes.size();
+  }
+
+  /**
+   * Returns the nodes with the requested status.
+   */
+  @Override
+  public int getNodesWithStatus(final Collection<String> iNodes, final String databaseName, final DB_STATUS... statuses) {
+    for (Iterator<String> it = iNodes.iterator(); it.hasNext(); ) {
+      final String node = it.next();
+
+      if (!isNodeStatusEqualsTo(node, databaseName, statuses))
         it.remove();
     }
     return iNodes.size();
@@ -1094,14 +1109,26 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
     final List<String> selectedNodes = new ArrayList<String>();
 
     if (!iAskToAllNodes) {
-      // GET THE FIRST ONE TO ASK FOR DATABASE. THIS FORCES TO HAVE ONE NODE TO DO BACKUP SAVING RESOURCES IN CASE BACKUP IS STILL
+      // GET THE FIRST ONE IN BACKUP STATUS. THIS FORCES TO HAVE ONE NODE TO DO BACKUP SAVING RESOURCES IN CASE BACKUP IS STILL
       // VALID FOR FURTHER NODES
-      final Iterator<String> it = nodes.iterator();
-      while (it.hasNext()) {
-        final String f = it.next();
-        if (isNodeAvailable(f, databaseName)) {
-          selectedNodes.add(f);
+      for (String n : nodes) {
+        if (isNodeStatusEqualsTo(n, databaseName, DB_STATUS.BACKUP)) {
+          // SERVER ALREADY IN BACKUP: USE IT
+          selectedNodes.add(n);
           break;
+        }
+      }
+
+      if (selectedNodes.isEmpty()) {
+        // GET THE FIRST ONE TO ASK FOR DATABASE. THIS FORCES TO HAVE ONE NODE TO DO BACKUP SAVING RESOURCES IN CASE BACKUP IS STILL
+        // VALID FOR FURTHER NODES
+        final Iterator<String> it = nodes.iterator();
+        while (it.hasNext()) {
+          final String f = it.next();
+          if (isNodeStatusEqualsTo(f, databaseName, DB_STATUS.ONLINE, DB_STATUS.BACKUP)) {
+            selectedNodes.add(f);
+            break;
+          }
         }
       }
     }

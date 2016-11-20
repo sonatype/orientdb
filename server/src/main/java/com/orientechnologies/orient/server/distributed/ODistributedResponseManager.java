@@ -533,13 +533,16 @@ public class ODistributedResponseManager {
         final List<String> missingNodes = getMissingNodes();
 
         final int expectingNodes = missingNodes.size();
-        dManager.getAvailableNodes(missingNodes, getDatabaseName());
+
+        // EXCLUDE THE SERVERS OFFLINE OR IN SYNCHRONIZATION
+        dManager.getNodesWithStatus(missingNodes, getDatabaseName(), ODistributedServerManager.DB_STATUS.ONLINE,
+            ODistributedServerManager.DB_STATUS.BACKUP);
         final int unreacheableServersDuringRequest = expectingNodes - missingNodes.size();
 
         if (responseGroups.get(0).size() + unreacheableServersDuringRequest >= quorum) {
-          ODistributedServerLog.warn(this, dManager.getLocalNodeName(), null, DIRECTION.NONE,
-              "%d server(s) became unreachable during the request, decreasing the quorum (%d) and accept the request: %s",
-              unreacheableServersDuringRequest, quorum, request);
+          ODistributedServerLog.info(this, dManager.getLocalNodeName(), null, DIRECTION.NONE,
+              "%d server(s) (%s) became unreachable during the request, decreasing the quorum (%d) and accept the request: %s",
+              unreacheableServersDuringRequest, missingNodes, quorum, request);
           return true;
         }
       }
