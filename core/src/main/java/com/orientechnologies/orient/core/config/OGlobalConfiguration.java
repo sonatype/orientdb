@@ -248,6 +248,7 @@ public enum OGlobalConfiguration {
   // DATABASE
   OBJECT_SAVE_ONLY_DIRTY("object.saveOnlyDirty", "Object Database only! It saves objects bound to dirty records", Boolean.class,
       false, true),
+  DOCUMENT_BINARY_MAPPING("document.binaryMapping", "Mapping approach for binary fields", Integer.class, 0),
 
   // DATABASE
   DB_POOL_MIN("db.pool.min", "Default database pool minimum size", Integer.class, 1),
@@ -438,7 +439,7 @@ public enum OGlobalConfiguration {
   NETWORK_HTTP_MAX_CONTENT_LENGTH("network.http.maxLength", "TCP/IP max content length (in bytes) for HTTP requests", Integer.class,
       1000000, true),
 
-  NETWORK_HTTP_STREAMING("network.http.streaming", "Enable Http chunked streaming for json responses", Boolean.class, true, false),
+  NETWORK_HTTP_STREAMING("network.http.streaming", "Enable Http chunked streaming for json responses", Boolean.class, false, true),
 
   NETWORK_HTTP_CONTENT_CHARSET("network.http.charset", "Http response charset", String.class, "utf-8", true),
 
