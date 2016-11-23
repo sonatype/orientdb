@@ -638,8 +638,8 @@ public class ODatabaseDocumentTx extends OListenerManger<ODatabaseListener> impl
     if (this.isClosed())
       throw new ODatabaseException("Cannot reload a closed db");
 
-    metadata.reload();
     storage.reload();
+    metadata.reload();
   }
 
   /**
