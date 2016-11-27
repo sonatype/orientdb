@@ -294,6 +294,9 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
             result = exec.mergeResults(results);
           }
 
+          if (result instanceof Throwable && results.containsKey(localNodeName))
+            undoCommandOnLocalServer(iCommand);
+
         } else {
           final OAbstractCommandTask task = iCommand instanceof OCommandScript ?
               new OScriptTask(iCommand) :
@@ -338,6 +341,10 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
                     localResult, null);
 
             result = dResponse.getPayload();
+
+            if (executedLocally && result instanceof Throwable)
+              undoCommandOnLocalServer(iCommand);
+
           } else
             result = localResult;
         }
@@ -375,6 +382,27 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
       // UNREACHABLE
       return null;
     }
+  }
+
+  protected void undoCommandOnLocalServer(final OCommandRequestText iCommand) {
+    // UNDO LOCALLY
+    OScenarioThreadLocal.executeAsDistributed(new Callable() {
+      @Override
+      public Object call() throws Exception {
+        final OCommandExecutor executor = OCommandManager.instance().getExecutor(iCommand);
+
+        // COPY THE CONTEXT FROM THE REQUEST
+        executor.setContext(iCommand.getContext());
+        executor.setProgressListener(iCommand.getProgressListener());
+        executor.parse(iCommand);
+
+        final String undoCommand = ((OCommandDistributedReplicateRequest) executor).getUndoCommand();
+        if (undoCommand != null) {
+          wrapped.command(new OCommandSQL(undoCommand));
+        }
+        return null;
+      }
+    });
   }
 
   protected Map<String, Object> executeOnServers(final OCommandRequestText iCommand, final OCommandExecutor exec,
@@ -629,13 +657,16 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
             }
           });
 
-    } catch (ONeedRetryException e) {
+    } catch (ODistributedRecordLockedException e) {
       // PASS THROUGH
+      throw e;
+    } catch (ONeedRetryException e) {
       localDistributedDatabase.getDatabaseRapairer().repairRecord(iRecordId);
       final ORecordId lockEntireCluster = iRecordId.copy();
       lockEntireCluster.setClusterPosition(-1);
       localDistributedDatabase.getDatabaseRapairer().repairRecord(lockEntireCluster);
 
+      // PASS THROUGH
       throw e;
     } catch (HazelcastInstanceNotActiveException e) {
       throw new OOfflineNodeException("Hazelcast instance is not available");
@@ -1840,7 +1871,12 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
 
       dbCfg = ((OLocalClusterWrapperStrategy) clSel).readConfiguration();
 
-      newClusterName = getPhysicalClusterNameById(clSel.getCluster(cls, null));
+      newClusterName = getPhysicalClusterNameById(clSel.getCluster(cls, (ODocument) iRecordId.getRecord()));
+
+      OLogManager.instance().info(this,
+          "Local node '" + localNodeName + "' is not the owner for cluster '" + clusterName + "' (it is '" + ownerNode
+              + "'). Switching to a valid cluster of the same class: '" + newClusterName + "'");
+
       ownerNode = dbCfg.getClusterOwner(newClusterName);
 
       // FORCE THE RETRY OF THE OPERATION

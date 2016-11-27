@@ -318,10 +318,18 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
     Set<PatternNode> traversedNodes = new HashSet<PatternNode>();
     List<PatternNode> nextNodes = new ArrayList<PatternNode>();
 
+    //pattern to direction (true -> out)
+    Map<PatternEdge, Boolean> lateEvaluatedEdges = new IdentityHashMap<PatternEdge, Boolean>();
+
+    //    do {
     while (result.size() < pattern.getNumOfEdges()) {
       for (OPair<Long, String> rootPair : rootWeights) {
         PatternNode root = pattern.get(rootPair.getValue());
         if (root.isOptionalNode()) {
+          continue;
+        }
+        OWhereClause filter = aliasFilters.get(root.alias);
+        if (filter != null && filter.baseExpression != null && filter.baseExpression.getMatchPatternInvolvedAliases() != null) {
           continue;
         }
         if (!traversedNodes.contains(root)) {
@@ -332,6 +340,59 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
 
       if (nextNodes.isEmpty()) {
         break;
+      }
+      //first evaluation, no $matched.xx nodes
+      while (!nextNodes.isEmpty()) {
+        PatternNode node = nextNodes.remove(0);
+        traversedNodes.add(node);
+        for (PatternEdge edge : node.out) {
+          if (!traversedEdges.contains(edge)) {
+            OWhereClause nextNodeFilter = aliasFilters.get(edge.in.alias);
+            if (nextNodeFilter != null && nextNodeFilter.baseExpression != null
+                && nextNodeFilter.baseExpression.getMatchPatternInvolvedAliases() != null) {
+              //late processing
+              lateEvaluatedEdges.put(edge, true);
+            } else {
+              result.add(new EdgeTraversal(edge, true));
+              traversedEdges.add(edge);
+              if (!traversedNodes.contains(edge.in) && !nextNodes.contains(edge.in)) {
+                nextNodes.add(edge.in);
+              }
+            }
+          }
+        }
+        for (PatternEdge edge : node.in) {
+          OWhereClause nextNodeFilter = aliasFilters.get(edge.out.alias);
+          if (nextNodeFilter != null && nextNodeFilter.baseExpression != null
+              && nextNodeFilter.baseExpression.getMatchPatternInvolvedAliases() != null) {
+            //late processing
+            lateEvaluatedEdges.put(edge, false);
+          } else {
+            if (!traversedEdges.contains(edge) && edge.item.isBidirectional()) {
+              result.add(new EdgeTraversal(edge, false));
+              traversedEdges.add(edge);
+              if (!traversedNodes.contains(edge.out) && !nextNodes.contains(edge.out)) {
+                nextNodes.add(edge.out);
+              }
+            }
+          }
+        }
+      }
+
+      //second traverse, restart from $matched.xx
+
+      for (Map.Entry<PatternEdge, Boolean> edgeEntry : lateEvaluatedEdges.entrySet()) {
+        PatternEdge edge = edgeEntry.getKey();
+        boolean directionOut = edgeEntry.getValue();
+
+        PatternNode nextNode = directionOut ? edge.in : edge.out;
+        if (!traversedEdges.contains(edge) && edge.item.isBidirectional()) {
+          result.add(new EdgeTraversal(edge, directionOut));
+          traversedEdges.add(edge);
+          if (!traversedNodes.contains(nextNode) && !nextNodes.contains(nextNode)) {
+            nextNodes.add(nextNode);
+          }
+        }
       }
       while (!nextNodes.isEmpty()) {
         PatternNode node = nextNodes.remove(0);
@@ -346,6 +407,7 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
           }
         }
         for (PatternEdge edge : node.in) {
+          OWhereClause nextNodeFilter = aliasFilters.get(edge.out.alias);
           if (!traversedEdges.contains(edge) && edge.item.isBidirectional()) {
             result.add(new EdgeTraversal(edge, false));
             traversedEdges.add(edge);
@@ -357,7 +419,38 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
       }
     }
 
+    //    } while (lateEvaluatedEdges.size() > 0 && nextNodes.add(startingNode(lateEvaluatedEdges.get(0))));
+
+    checkConsistency(result);
     return result;
+  }
+
+  /**
+   * checks if this traversal is consistent, ie. if it can actually be calculated
+   *
+   * @param traversal
+   */
+  private void checkConsistency(List<EdgeTraversal> traversal) {
+    //    Set<String>
+    for (EdgeTraversal edge : traversal) {
+      PatternNode from = edge.out ? edge.edge.out : edge.edge.in;
+      PatternNode to = edge.out ? edge.edge.in : edge.edge.out;
+      //TODO
+    }
+  }
+
+  private boolean hasConditionOnPattern(EdgeTraversal node) {
+    PatternNode terminalNode;
+    if (node.out) {
+      terminalNode = node.edge.in;
+    } else {
+      terminalNode = node.edge.out;
+    }
+    OWhereClause filter = aliasFilters.get(terminalNode.alias);
+    if (filter == null) {
+      return false;
+    }
+    return filter.toString().contains("$matched.");
   }
 
   protected Object getResult(OSQLAsynchQuery<ODocument> request) {
@@ -413,6 +506,11 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
     }
     executionPlan.rootAlias = smallestAlias;
     Iterable<OIdentifiable> allCandidates = matchContext.candidates.get(smallestAlias);
+
+    if (allCandidates == null) {
+      OSelectStatement select = buildSelectStatement(aliasClasses.get(smallestAlias), aliasFilters.get(smallestAlias));
+      allCandidates = (Iterable) getDatabase().query(new OSQLSynchQuery<Object>(select.toString()));
+    }
 
     if (!processContextFromCandidates(pattern, executionPlan, matchContext, aliasClasses, aliasFilters, iCommandContext, request,
         allCandidates, smallestAlias, 0)) {
@@ -495,9 +593,15 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
         if (!(rightValues instanceof Iterable)) {
           rightValues = Collections.singleton(rightValues);
         }
+        String rightClassName = aliasClasses.get(outEdge.in.alias);
+        OClass rightClass = getDatabase().getMetadata().getSchema().getClass(rightClassName);
         for (OIdentifiable rightValue : (Iterable<OIdentifiable>) rightValues) {
           if (rightValue == null) {
             continue; //broken graph?, null reference
+          }
+
+          if (rightClass != null && !matchesClass(rightValue, rightClass)) {
+            continue;
           }
           Iterable<OIdentifiable> prevMatchedRightValues = matchContext.candidates.get(outEdge.in.alias);
 
@@ -555,9 +659,17 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
           if (!(leftValues instanceof Iterable)) {
             leftValues = Collections.singleton(leftValues);
           }
+
+          String leftClassName = aliasClasses.get(inEdge.out.alias);
+          OClass leftClass = getDatabase().getMetadata().getSchema().getClass(leftClassName);
+
           for (OIdentifiable leftValue : (Iterable<OIdentifiable>) leftValues) {
             if (leftValue == null) {
               continue; //broken graph? null reference
+            }
+
+            if (leftClass != null && !matchesClass(leftValue, leftClass)) {
+              continue;
             }
             Iterable<OIdentifiable> prevMatchedRightValues = matchContext.candidates.get(inEdge.out.alias);
 
@@ -585,9 +697,12 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
                   }
                 }
               }
-            } else {// searching for neighbors
+            } else { // searching for neighbors
               OWhereClause where = aliasFilters.get(inEdge.out.alias);
-              if (where == null || where.matchesFilters(leftValue, iCommandContext)) {
+              String className = aliasClasses.get(inEdge.out.alias);
+              OClass oClass = getDatabase().getMetadata().getSchema().getClass(className);
+              if ((oClass == null || matchesClass(leftValue, oClass)) && (where == null || where
+                  .matchesFilters(leftValue, iCommandContext))) {
                 MatchContext childContext = matchContext.copy(inEdge.out.alias, leftValue.getIdentity());
                 childContext.currentEdgeNumber = matchContext.currentEdgeNumber + 1;
                 childContext.matchedEdges.put(inEdge, true);
@@ -601,6 +716,20 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
       }
     }
     return true;
+  }
+
+  private boolean matchesClass(OIdentifiable identifiable, OClass oClass) {
+    if (identifiable == null) {
+      return false;
+    }
+    ORecord record = identifiable.getRecord();
+    if (record == null) {
+      return false;
+    }
+    if (record instanceof ODocument) {
+      return ((ODocument) record).getSchemaClass().isSubClassOf(oClass);
+    }
+    return false;
   }
 
   private boolean contains(Object rightValues, OIdentifiable oIdentifiable) {
@@ -741,7 +870,7 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
       ODocument mapDoc = new ODocument();
       mapDoc.setTrackingChanges(false);
       mapDoc.fromMap((Map) matchContext.matched);
-
+      ctx.setVariable("$current", mapDoc);
       for (OExpression item : returnItems) {
         OIdentifier returnAliasIdentifier = returnAliases.get(i);
         OIdentifier returnAlias;
@@ -864,7 +993,12 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
     } else {
       StringBuilder builder = new StringBuilder();
       oWhereClause.toString(ctx.getInputParameters(), builder);
-      text = "(select from " + className + " where " + builder.toString() + ")";
+
+      synchronized (oWhereClause) { //this instance is shared...
+        replaceIdentifier(oWhereClause, "$currentMatch", "@this");
+        text = "(select from " + className + " where " + builder.toString().replaceAll("\\$currentMatch", "@this") + ")";
+        replaceIdentifier(oWhereClause, "@this", "$currentMatch");
+      }
     }
     OSQLTarget target = new OSQLTarget(text, ctx);
 
@@ -873,6 +1007,19 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
       return null;
     }
     return targetResult.iterator();
+  }
+
+  private void replaceIdentifier(SimpleNode node, String from, String to) {
+    if (node instanceof OIdentifier) {
+      if (from.equals(node.getValue())) {
+        ((OIdentifier) node).setValue(to);
+      }
+    } else {
+      for (int i = 0; i < node.jjtGetNumChildren(); i++) {
+        replaceIdentifier((SimpleNode) node.jjtGetChild(i), from, to);
+      }
+    }
+
   }
 
   private OSelectStatement buildSelectStatement(String className, OWhereClause oWhereClause) {
@@ -927,6 +1074,10 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
       long upperBound;
       OWhereClause filter = aliasFilters.get(alias);
       if (filter != null) {
+        if (filter.toString().contains(
+            "$matched.")) {//skip root nodes that have a condition on $matched, because they have to be calculated as downstream
+          continue;
+        }
         upperBound = filter.estimate(oClass, this.threshold, ctx);
       } else {
         upperBound = oClass.count();
@@ -985,6 +1136,12 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
     OSchema schema = getDatabase().getMetadata().getSchema();
     OClass class1 = schema.getClass(className1);
     OClass class2 = schema.getClass(className2);
+    if(class1==null){
+      throw new OCommandExecutionException("Class "+className1+" not found in the schema");
+    }
+    if(class2==null){
+      throw new OCommandExecutionException("Class "+className2+" not found in the schema");
+    }
     if (class1.isSubClassOf(class2)) {
       return class1.getName();
     }
@@ -1069,11 +1226,17 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
     }
     builder.append(" RETURN ");
     first = true;
+    int i = 0;
     for (OExpression expr : this.returnItems) {
       if (!first) {
         builder.append(", ");
       }
       expr.toString(params, builder);
+      if (returnAliases != null && i < returnAliases.size() && returnAliases.get(i) != null) {
+        builder.append(" AS ");
+        returnAliases.get(i).toString(params, builder);
+      }
+      i++;
       first = false;
     }
     if (limit != null) {
