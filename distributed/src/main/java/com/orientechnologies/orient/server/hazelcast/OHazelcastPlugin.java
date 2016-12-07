@@ -43,6 +43,7 @@ import com.orientechnologies.orient.core.exception.ODatabaseException;
 import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.record.ORecordInternal;
 import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.storage.impl.local.paginated.OLocalPaginatedStorage;
 import com.orientechnologies.orient.server.OServer;
 import com.orientechnologies.orient.server.config.OServerParameterConfiguration;
 import com.orientechnologies.orient.server.distributed.*;
@@ -55,7 +56,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.security.SecureRandom;
 import java.util.*;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.Lock;
 
 /**
@@ -150,6 +150,11 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
       lifecycleService.addLifecycleListener(this);
 
       OLogManager.instance().info(this, "Starting distributed server '%s' (hzID=%s)...", localNodeName, nodeUuid);
+
+      final long clusterTime = getClusterTime();
+      final long deltaTime = System.currentTimeMillis() - clusterTime;
+      OLogManager.instance().info(this, "Distributed cluster time=%s (delta from local node=%d)...", new Date(clusterTime),
+          deltaTime);
 
       activeNodes.put(localNodeName, hazelcastInstance.getCluster().getLocalMember());
       activeNodesNamesByUuid.put(nodeUuid, localNodeName);
@@ -394,7 +399,11 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
 
   @Override
   public long getClusterTime() {
-    return hazelcastInstance.getCluster().getClusterTime();
+    try {
+      return hazelcastInstance.getCluster().getClusterTime();
+    } catch (HazelcastInstanceNotActiveException e) {
+      return -1;
+    }
   }
 
   @Override
@@ -476,7 +485,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
       Member member = activeNodes.get(rNodeName);
       if (member == null) {
         // SYNC PROBLEMS? TRY TO RETRIEVE THE SERVER INFORMATION FROM THE CLUSTER MAP
-        for (Iterator<Map.Entry<String, Object>> it = getConfigurationMap().entrySet().iterator(); it.hasNext();) {
+        for (Iterator<Map.Entry<String, Object>> it = getConfigurationMap().localEntrySet().iterator(); it.hasNext();) {
           final Map.Entry<String, Object> entry = it.next();
           if (entry.getKey().startsWith(CONFIG_NODE_PREFIX)) {
             final ODocument nodeCfg = (ODocument) entry.getValue();
@@ -628,7 +637,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
         ODistributedServerLog.info(this, nodeName, null, DIRECTION.NONE, "Opening database '%s'...", databaseName);
 
         // INIT THE STORAGE
-        getStorage(databaseName);
+        final ODistributedStorage stg = getStorage(databaseName);
 
         executeInDistributedDatabaseLock(databaseName, 0, new OCallable<Object, ODistributedConfiguration>() {
           @Override
@@ -637,6 +646,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
                 cfg.getServerRole(nodeName), databaseName);
 
             final ODistributedDatabaseImpl ddb = messageService.registerDatabase(databaseName);
+            ddb.setParsing(true);
 
             // 1ST NODE TO HAVE THE DATABASE
             cfg.addNewNodeInServerList(nodeName);
@@ -662,6 +672,14 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
               updateCachedDatabaseConfiguration(databaseName, cfg.getDocument(), true, true);
 
             ddb.setOnline();
+
+            try {
+              ddb.getSyncConfiguration().setLastLSN(nodeName, ((OLocalPaginatedStorage) stg.getUnderlying()).getLSN(), false);
+            } catch (IOException e) {
+              ODistributedServerLog.error(this, nodeName, null, DIRECTION.NONE,
+                  "Error on saving distributed LSN for database '%s' (err=%s).", databaseName, e.getMessage());
+            }
+
             return null;
           }
         });
@@ -670,7 +688,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
   }
 
   @Override
-  public ConcurrentMap<String, Object> getConfigurationMap() {
+  public OHazelcastDistributedMap getConfigurationMap() {
     return configurationMap;
   }
 
@@ -1006,6 +1024,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
       getStorage(dbName);
 
       final ODistributedDatabaseImpl distribDatabase = messageService.registerDatabase(dbName);
+      distribDatabase.setParsing(true);
       distribDatabase.setOnline();
 
       // TODO: TEMPORARY PATCH TO WAIT FOR DB PROPAGATION IN CFG TO ALL THE OTHER SERVERS
