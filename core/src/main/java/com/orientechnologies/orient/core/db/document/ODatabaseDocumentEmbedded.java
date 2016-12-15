@@ -20,7 +20,6 @@
 
 package com.orientechnologies.orient.core.db.document;
 
-import com.orientechnologies.common.concur.ONeedRetryException;
 import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.orient.core.Orient;
@@ -29,40 +28,42 @@ import com.orientechnologies.orient.core.cache.OLocalRecordCache;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.db.*;
 import com.orientechnologies.orient.core.db.record.OClassTrigger;
+import com.orientechnologies.orient.core.exception.OCommandExecutionException;
 import com.orientechnologies.orient.core.exception.ODatabaseException;
 import com.orientechnologies.orient.core.hook.ORecordHook;
 import com.orientechnologies.orient.core.index.OClassIndexManager;
 import com.orientechnologies.orient.core.metadata.OMetadataDefault;
 import com.orientechnologies.orient.core.metadata.function.OFunctionTrigger;
-import com.orientechnologies.orient.core.metadata.schema.OClass;
-import com.orientechnologies.orient.core.metadata.schema.OSchema;
 import com.orientechnologies.orient.core.metadata.security.*;
 import com.orientechnologies.orient.core.metadata.sequence.OSequenceTrigger;
 import com.orientechnologies.orient.core.query.live.OLiveQueryHook;
-import com.orientechnologies.orient.core.record.ODirection;
-import com.orientechnologies.orient.core.record.OEdge;
-import com.orientechnologies.orient.core.record.OVertex;
-import com.orientechnologies.orient.core.record.impl.ODocument;
-import com.orientechnologies.orient.core.record.impl.ODocumentInternal;
-import com.orientechnologies.orient.core.record.impl.OVertexDelegate;
 import com.orientechnologies.orient.core.schedule.OSchedulerTrigger;
 import com.orientechnologies.orient.core.serialization.serializer.record.ORecordSerializerFactory;
 import com.orientechnologies.orient.core.serialization.serializer.record.string.ORecordSerializerSchemaAware2CSV;
+import com.orientechnologies.orient.core.sql.OSQLEngine;
+import com.orientechnologies.orient.core.sql.executor.OTodoResultSet;
+import com.orientechnologies.orient.core.sql.parser.OLocalResultSetLifecycleDecorator;
+import com.orientechnologies.orient.core.sql.parser.OStatement;
 import com.orientechnologies.orient.core.storage.OStorage;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Created by tglman on 27/06/16.
  */
-public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract {
+public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract implements OQueryLifecycleListener {
 
   private OrientDBConfig config;
   private OStorage       storage;
+
+  AtomicLong nextRunningQuery = new AtomicLong(0);
+  private Map<String, OLocalResultSetLifecycleDecorator> activeQueries = new HashMap<>();
 
   public ODatabaseDocumentEmbedded(final OStorage storage) {
     activateOnCurrentThread();
@@ -155,13 +156,11 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract {
    * @param iToken Authentication token
    * @return The Database instance itself giving a "fluent interface". Useful to call multiple methods in chain.
    */
-  @Deprecated
-  public <DB extends ODatabase> DB open(final OToken iToken) {
+  @Deprecated public <DB extends ODatabase> DB open(final OToken iToken) {
     throw new UnsupportedOperationException("Deprecated Method");
   }
 
-  @Override
-  public <DB extends ODatabase> DB create() {
+  @Override public <DB extends ODatabase> DB create() {
     throw new UnsupportedOperationException("Deprecated Method");
   }
 
@@ -179,8 +178,7 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract {
     installHooksEmbedded();
     // CREATE THE DEFAULT SCHEMA WITH DEFAULT USER
     OSharedContext shared = getStorage().getResource(OSharedContext.class.getName(), new Callable<OSharedContext>() {
-      @Override
-      public OSharedContext call() throws Exception {
+      @Override public OSharedContext call() throws Exception {
         OSharedContext shared = new OSharedContext(getStorage());
         return shared;
       }
@@ -215,21 +213,18 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract {
   /**
    * {@inheritDoc}
    */
-  @Override
-  public <DB extends ODatabase> DB create(String incrementalBackupPath) {
+  @Override public <DB extends ODatabase> DB create(String incrementalBackupPath) {
     throw new UnsupportedOperationException("use OrientDBFactory");
   }
 
-  @Override
-  public <DB extends ODatabase> DB create(final Map<OGlobalConfiguration, Object> iInitialSettings) {
+  @Override public <DB extends ODatabase> DB create(final Map<OGlobalConfiguration, Object> iInitialSettings) {
     throw new UnsupportedOperationException("use OrientDBFactory");
   }
 
   /**
    * {@inheritDoc}
    */
-  @Override
-  public void drop() {
+  @Override public void drop() {
     throw new UnsupportedOperationException("use OrientDBFactory");
   }
 
@@ -244,14 +239,14 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract {
     return database;
   }
 
-  @Override
-  public boolean exists() {
+  @Override public boolean exists() {
     throw new UnsupportedOperationException("use OrientDBFactory");
   }
 
-  @Override
-  public void close() {
+  @Override public void close() {
     checkIfActive();
+
+    closeActiveQueries();
 
     localCache.shutdown();
 
@@ -286,8 +281,13 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract {
     ODatabaseRecordThreadLocal.INSTANCE.remove();
   }
 
-  @Override
-  public boolean isClosed() {
+  protected void closeActiveQueries() {
+    while (activeQueries.size() > 0) {
+      this.activeQueries.values().iterator().next().close();//the query automatically unregisters itself
+    }
+  }
+
+  @Override public boolean isClosed() {
     return status == STATUS.CLOSED || storage.isClosed();
   }
 
@@ -334,14 +334,66 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract {
     registerHook(new OLiveQueryHook(this), ORecordHook.HOOK_POSITION.LAST);
   }
 
-  @Override
-  public OStorage getStorage() {
+  @Override public OStorage getStorage() {
     return storage;
   }
 
-  @Override
-  public void replaceStorage(OStorage iNewStorage) {
+  @Override public void replaceStorage(OStorage iNewStorage) {
     storage = iNewStorage;
+  }
+
+  public void queryStarted(OLocalResultSetLifecycleDecorator rs) {
+    this.activeQueries.put(rs.getQueryId(), rs);
+  }
+
+  public void queryClosed(OLocalResultSetLifecycleDecorator rs) {
+    this.activeQueries.remove(rs.getQueryId());
+  }
+
+  @Override public OTodoResultSet query(String query, Object[] args) {
+    OStatement statement = OSQLEngine.parse(query, this);
+    if (!statement.isIdempotent()) {
+      throw new OCommandExecutionException("Cannot execute query on non idempotent statement: " + query);
+    }
+    OTodoResultSet original = statement.execute(this, args);
+    OLocalResultSetLifecycleDecorator result = new OLocalResultSetLifecycleDecorator(original);
+    this.queryStarted(result);
+    result.addLifecycleListener(this);
+    return result;
+  }
+
+  @Override public OTodoResultSet query(String query, Map args) {
+    OStatement statement = OSQLEngine.parse(query, this);
+    if (!statement.isIdempotent()) {
+      throw new OCommandExecutionException("Cannot execute query on non idempotent statement: " + query);
+    }
+    OTodoResultSet original = statement.execute(this, args);
+    OLocalResultSetLifecycleDecorator result = new OLocalResultSetLifecycleDecorator(original);
+    this.queryStarted(result);
+    result.addLifecycleListener(this);
+    return result;
+  }
+
+  @Override public OTodoResultSet command(String query, Object[] args) {
+    OStatement statement = OSQLEngine.parse(query, this);
+    OTodoResultSet original = statement.execute(this, args);
+    OLocalResultSetLifecycleDecorator result = new OLocalResultSetLifecycleDecorator(original);
+    this.queryStarted(result);
+    result.addLifecycleListener(this);
+    return result;
+  }
+
+  @Override public OTodoResultSet command(String query, Map args) {
+    OStatement statement = OSQLEngine.parse(query, this);
+    OTodoResultSet original = statement.execute(this, args);
+    OLocalResultSetLifecycleDecorator result = new OLocalResultSetLifecycleDecorator(original);
+    this.queryStarted(result);
+    result.addLifecycleListener(this);
+    return result;
+  }
+
+  public OLocalResultSetLifecycleDecorator getActiveQuery(String id) {
+    return activeQueries.get(id);
   }
 
 }

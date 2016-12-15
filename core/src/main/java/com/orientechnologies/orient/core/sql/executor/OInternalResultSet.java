@@ -23,7 +23,11 @@ public class OInternalResultSet implements OTodoResultSet {
   }
 
   @Override public Optional<OExecutionPlan> getExecutionPlan() {
-    return Optional.of(plan);
+    return Optional.ofNullable(plan);
+  }
+
+  public void setPlan(OExecutionPlan plan) {
+    this.plan = plan;
   }
 
   @Override public Map<String, Object> getQueryStats() {
