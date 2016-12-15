@@ -393,7 +393,7 @@ public enum OGlobalConfiguration {
   NETWORK_MAX_CONCURRENT_SESSIONS("network.maxConcurrentSessions", "Maximum number of concurrent sessions", Integer.class, 1000,
       true),
 
-  NETWORK_SOCKET_BUFFER_SIZE("network.socketBufferSize", "TCP/IP Socket buffer size", Integer.class, 32768, true),
+  NETWORK_SOCKET_BUFFER_SIZE("network.socketBufferSize", "TCP/IP Socket buffer size, if 0 use the OS default", Integer.class, 0, true),
 
   NETWORK_LOCK_TIMEOUT("network.lockTimeout", "Timeout (in ms) to acquire a lock against a channel", Integer.class, 15000, true),
 
@@ -631,7 +631,10 @@ public enum OGlobalConfiguration {
   // DISTRIBUTED
 
   DISTRIBUTED_CRUD_TASK_SYNCH_TIMEOUT("distributed.crudTaskTimeout", "Maximum timeout (in ms) to wait for CRUD remote tasks",
-      Long.class, 3000l, true),
+      Long.class, 10000l, true),
+
+  DISTRIBUTED_MAX_STARTUP_DELAY("distributed.maxStartupDelay", "Maximum delay time (in ms) to wait for a server to start",
+      Long.class, 10000l, true),
 
   DISTRIBUTED_COMMAND_TASK_SYNCH_TIMEOUT("distributed.commandTaskTimeout",
       "Maximum timeout (in ms) to wait for command distributed tasks", Long.class, 2 * 60 * 1000l, true),
