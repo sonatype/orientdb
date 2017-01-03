@@ -163,6 +163,10 @@
             <outputDirectory>config</outputDirectory>
         </fileSet>
         <fileSet>
+            <directory>${basedir}/../etl/config</directory>
+            <outputDirectory>config</outputDirectory>
+        </fileSet>
+        <fileSet>
             <directory>${basedir}/../tools/config</directory>
             <outputDirectory>config</outputDirectory>
         </fileSet>
@@ -241,6 +245,17 @@
             <outputDirectory>lib</outputDirectory>
             <includes>
                 <include>*:jar:*</include>
+            </includes>
+            <excludes>
+                <exclude>*:ant:*</exclude>
+                <exclude>*:ant-launcher:*</exclude>
+                <exclude>*:ivy:*</exclude>
+            </excludes>
+        </dependencySet>
+        <dependencySet>
+            <outputDirectory>plugins</outputDirectory>
+            <includes>
+                <include>*:zip:*</include>
             </includes>
             <excludes>
                 <exclude>*:ant:*</exclude>
