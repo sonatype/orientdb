@@ -22,10 +22,11 @@ package com.orientechnologies.orient.server.distributed.impl.task;
 import com.orientechnologies.orient.core.command.OCommandDistributedReplicateRequest;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
-import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.server.OServer;
-import com.orientechnologies.orient.server.distributed.*;
-import com.orientechnologies.orient.server.distributed.impl.ODistributedStorage;
+import com.orientechnologies.orient.server.distributed.ODistributedConfiguration;
+import com.orientechnologies.orient.server.distributed.ODistributedRequestId;
+import com.orientechnologies.orient.server.distributed.ODistributedServerManager;
+import com.orientechnologies.orient.server.distributed.ORemoteTaskFactory;
 import com.orientechnologies.orient.server.distributed.task.OAbstractRemoteTask;
 
 import java.io.DataInput;
@@ -33,38 +34,31 @@ import java.io.DataOutput;
 import java.io.IOException;
 
 /**
- * Task to update the database configuration across all the servers. This task is executed inside a distributed lock.
+ * Task to request last database configuration across all the servers. This task is executed inside a distributed lock.
  *
  * @author Luca Garulli (l.garulli--at---orientdb.com)
- *
  */
-public class OUpdateDatabaseConfigurationTask extends OAbstractRemoteTask {
-  public static final int FACTORYID = 24;
+public class ORequestDatabaseConfigurationTask extends OAbstractRemoteTask {
+  public static final int FACTORYID = 27;
 
-  private String          databaseName;
-  private ODocument       configuration;
+  private String databaseName;
 
-  public OUpdateDatabaseConfigurationTask() {
+  public ORequestDatabaseConfigurationTask() {
   }
 
-  public OUpdateDatabaseConfigurationTask(final String databaseName, final ODocument cfg) {
+  public ORequestDatabaseConfigurationTask(final String databaseName) {
     this.databaseName = databaseName;
-    this.configuration = cfg;
   }
 
   @Override
   public Object execute(final ODistributedRequestId msgId, final OServer iServer, ODistributedServerManager iManager,
       final ODatabaseDocumentInternal database) throws Exception {
 
-    final ODistributedStorage stg = (ODistributedStorage) iManager.getStorage(databaseName);
-    if (stg != null) {
-      ODistributedServerLog.debug(this, iManager.getLocalNodeName(), getNodeSource(), ODistributedServerLog.DIRECTION.IN,
-          "Replacing distributed cfg for database '%s'\nnew: %s", databaseName, configuration);
+    final ODistributedConfiguration cfg = iManager.getDatabaseConfiguration(databaseName);
+    if (cfg != null)
+      return cfg.getDocument();
 
-      stg.setDistributedConfiguration(new OModifiableDistributedConfiguration(configuration));
-    }
-
-    return true;
+    return null;
   }
 
   @Override
@@ -85,18 +79,11 @@ public class OUpdateDatabaseConfigurationTask extends OAbstractRemoteTask {
   @Override
   public void toStream(final DataOutput out) throws IOException {
     out.writeUTF(databaseName);
-    final byte[] stream = configuration.toStream();
-    out.writeInt(stream.length);
-    out.write(stream);
   }
 
   @Override
   public void fromStream(final DataInput in, final ORemoteTaskFactory factory) throws IOException {
     databaseName = in.readUTF();
-    final int length = in.readInt();
-    final byte[] stream = new byte[length];
-    in.readFully(stream);
-    configuration = new ODocument().fromStream(stream);
   }
 
   @Override
@@ -116,7 +103,7 @@ public class OUpdateDatabaseConfigurationTask extends OAbstractRemoteTask {
 
   @Override
   public String getName() {
-    return "upd_db_cfg";
+    return "req_db_cfg";
   }
 
   @Override

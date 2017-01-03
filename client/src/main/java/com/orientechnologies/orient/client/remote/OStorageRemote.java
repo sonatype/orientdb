@@ -228,8 +228,10 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy {
         OStorageRemoteNodeSession nodeSession = session.getServerSession(network.getServerURL());
         if (nodeSession == null || !nodeSession.isValid()) {
           openRemoteDatabase(network);
-          if (!network.tryLock())
+          if (!network.tryLock()) {
+            connectionManager.release(network);
             continue;
+          }
         }
 
         return operation.execute(network, session);
@@ -1715,6 +1717,7 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy {
           OStorageRemoteNodeSession nodeSession = session.getOrCreateServerSession(network.getServerURL());
           if (nodeSession == null || !nodeSession.isValid()) {
             openRemoteDatabase(network);
+            connectionManager.release(network);
             return network.getServerURL();
           } else {
             try {
@@ -1850,7 +1853,6 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy {
           network.readString();
 
         status = STATUS.OPEN;
-        connectionManager.release(network);
       } finally {
         endResponse(network);
       }
@@ -1866,6 +1868,7 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy {
         try {
           network = getNetwork(currentURL);
           openRemoteDatabase(network);
+          connectionManager.release(network);
           return currentURL;
         } catch (OIOException e) {
           if (network != null) {

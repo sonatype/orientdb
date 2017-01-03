@@ -22,49 +22,63 @@ package com.orientechnologies.orient.server.distributed.impl.task;
 import com.orientechnologies.orient.core.command.OCommandDistributedReplicateRequest;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
-import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.server.OServer;
-import com.orientechnologies.orient.server.distributed.*;
-import com.orientechnologies.orient.server.distributed.impl.ODistributedStorage;
-import com.orientechnologies.orient.server.distributed.task.OAbstractRemoteTask;
+import com.orientechnologies.orient.server.distributed.ODistributedRequestId;
+import com.orientechnologies.orient.server.distributed.ODistributedServerManager;
+import com.orientechnologies.orient.server.distributed.ORemoteTaskFactory;
+import com.orientechnologies.orient.server.distributed.task.OAbstractReplicatedTask;
+import com.orientechnologies.orient.server.distributed.task.ORemoteTask;
 
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
 /**
- * Task to update the database configuration across all the servers. This task is executed inside a distributed lock.
+ * Task to acquire and release a distributed exclusive lock across the entire cluster. In case the server is declared unreachable,
+ * the lock is freed.
  *
- * @author Luca Garulli (l.garulli--at---orientdb.com)
- *
+ * @author Luca Garulli (l.garulli--at--orientdb.com)
  */
-public class OUpdateDatabaseConfigurationTask extends OAbstractRemoteTask {
-  public static final int FACTORYID = 24;
+public class ODistributedLockTask extends OAbstractReplicatedTask {
+  public static final int FACTORYID = 26;
 
-  private String          databaseName;
-  private ODocument       configuration;
+  private String  resource;
+  private long    timeout;
+  private boolean acquire;
 
-  public OUpdateDatabaseConfigurationTask() {
+  public ODistributedLockTask() {
   }
 
-  public OUpdateDatabaseConfigurationTask(final String databaseName, final ODocument cfg) {
-    this.databaseName = databaseName;
-    this.configuration = cfg;
+  public ODistributedLockTask(final String resource, final long timeout, final boolean acquire) {
+    this.resource = resource;
+    this.timeout = timeout;
+    this.acquire = acquire;
   }
 
   @Override
   public Object execute(final ODistributedRequestId msgId, final OServer iServer, ODistributedServerManager iManager,
       final ODatabaseDocumentInternal database) throws Exception {
 
-    final ODistributedStorage stg = (ODistributedStorage) iManager.getStorage(databaseName);
-    if (stg != null) {
-      ODistributedServerLog.debug(this, iManager.getLocalNodeName(), getNodeSource(), ODistributedServerLog.DIRECTION.IN,
-          "Replacing distributed cfg for database '%s'\nnew: %s", databaseName, configuration);
-
-      stg.setDistributedConfiguration(new OModifiableDistributedConfiguration(configuration));
-    }
+    if (acquire)
+      iManager.getLockManagerExecutor().acquireExclusiveLock(resource, getNodeSource(), timeout);
+    else
+      iManager.getLockManagerExecutor().releaseExclusiveLock(resource, getNodeSource());
 
     return true;
+  }
+
+  @Override
+  public ORemoteTask getUndoTask(final ODistributedRequestId reqId) {
+    if (acquire)
+      // RELEASE
+      return new ODistributedLockTask(resource, timeout, false);
+
+    return null;
+  }
+
+  @Override
+  public int[] getPartitionKey() {
+    return ANY;
   }
 
   @Override
@@ -73,30 +87,25 @@ public class OUpdateDatabaseConfigurationTask extends OAbstractRemoteTask {
   }
 
   @Override
+  public RESULT_STRATEGY getResultStrategy() {
+    return RESULT_STRATEGY.ANY;
+  }
+
+  @Override
   public boolean isUsingDatabase() {
     return false;
   }
 
   @Override
-  public RESULT_STRATEGY getResultStrategy() {
-    return RESULT_STRATEGY.UNION;
-  }
-
-  @Override
   public void toStream(final DataOutput out) throws IOException {
-    out.writeUTF(databaseName);
-    final byte[] stream = configuration.toStream();
-    out.writeInt(stream.length);
-    out.write(stream);
+    out.writeUTF(resource);
+    out.writeBoolean(acquire);
   }
 
   @Override
   public void fromStream(final DataInput in, final ORemoteTaskFactory factory) throws IOException {
-    databaseName = in.readUTF();
-    final int length = in.readInt();
-    final byte[] stream = new byte[length];
-    in.readFully(stream);
-    configuration = new ODocument().fromStream(stream);
+    resource = in.readUTF();
+    acquire = in.readBoolean();
   }
 
   @Override
@@ -106,17 +115,17 @@ public class OUpdateDatabaseConfigurationTask extends OAbstractRemoteTask {
 
   @Override
   public boolean isIdempotent() {
-    return true;
+    return false;
   }
 
   @Override
   public long getDistributedTimeout() {
-    return OGlobalConfiguration.DISTRIBUTED_HEARTBEAT_TIMEOUT.getValueAsLong();
+    return timeout > 0 ? timeout : OGlobalConfiguration.DISTRIBUTED_COMMAND_LONG_TASK_SYNCH_TIMEOUT.getValueAsLong();
   }
 
   @Override
   public String getName() {
-    return "upd_db_cfg";
+    return "exc_lock";
   }
 
   @Override
@@ -126,6 +135,6 @@ public class OUpdateDatabaseConfigurationTask extends OAbstractRemoteTask {
 
   @Override
   public String toString() {
-    return getName();
+    return getName() + " " + (acquire ? "acquire" : "release") + " resource=" + resource;
   }
 }

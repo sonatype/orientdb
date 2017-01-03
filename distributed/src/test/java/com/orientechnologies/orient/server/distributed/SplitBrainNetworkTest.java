@@ -16,7 +16,6 @@
 package com.orientechnologies.orient.server.distributed;
 
 import com.orientechnologies.common.log.OLogManager;
-import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -41,31 +40,42 @@ public class SplitBrainNetworkTest extends AbstractHARemoveNode {
 
   @Override
   protected void onAfterExecution() throws Exception {
+    Assert.assertEquals("europe-0", serverInstance.get(0).getServerInstance().getDistributedManager().getCoordinatorServer());
+    Assert.assertEquals("europe-0", serverInstance.get(1).getServerInstance().getDistributedManager().getCoordinatorServer());
+    Assert.assertEquals("europe-0", serverInstance.get(2).getServerInstance().getDistributedManager().getCoordinatorServer());
+
     banner("SIMULATE ISOLATION OF SERVER " + (SERVERS - 1) + "...");
 
-    checkRecordCount();
+    checkInsertedEntries();
+    checkIndexedEntries();
 
     serverInstance.get(2).disconnectFrom(serverInstance.get(0), serverInstance.get(1));
 
     banner("SERVER " + (SERVERS - 1) + " HAS BEEN ISOLATED, WAITING FOR THE DATABASE ON SERVER 2 TO BE OFFLINE...");
 
-    // CHECK THE SPLIT
-    waitForDatabaseStatus(0, "europe-2", getDatabaseName(), ODistributedServerManager.DB_STATUS.NOT_AVAILABLE, 90000);
-    waitForDatabaseStatus(2, "europe-0", getDatabaseName(), ODistributedServerManager.DB_STATUS.NOT_AVAILABLE, 90000);
-    waitForDatabaseStatus(2, "europe-1", getDatabaseName(), ODistributedServerManager.DB_STATUS.NOT_AVAILABLE, 90000);
+    Assert.assertEquals("europe-0", serverInstance.get(0).getServerInstance().getDistributedManager().getCoordinatorServer());
+    Assert.assertEquals("europe-0", serverInstance.get(1).getServerInstance().getDistributedManager().getCoordinatorServer());
+    Assert.assertEquals("europe-2", serverInstance.get(2).getServerInstance().getDistributedManager().getCoordinatorServer());
 
+    // CHECK THE SPLIT
+    waitForDatabaseStatus(0, "europe-2", getDatabaseName(), ODistributedServerManager.DB_STATUS.NOT_AVAILABLE, 30000);
     assertDatabaseStatusEquals(0, "europe-2", getDatabaseName(), ODistributedServerManager.DB_STATUS.NOT_AVAILABLE);
+    assertDatabaseStatusEquals(0, "europe-1", getDatabaseName(), ODistributedServerManager.DB_STATUS.ONLINE);
 
     waitForDatabaseStatus(1, "europe-2", getDatabaseName(), ODistributedServerManager.DB_STATUS.NOT_AVAILABLE, 90000);
     assertDatabaseStatusEquals(1, "europe-2", getDatabaseName(), ODistributedServerManager.DB_STATUS.NOT_AVAILABLE);
+    assertDatabaseStatusEquals(1, "europe-0", getDatabaseName(), ODistributedServerManager.DB_STATUS.ONLINE);
 
-    assertDatabaseStatusEquals(2, "europe-2", getDatabaseName(), ODistributedServerManager.DB_STATUS.ONLINE);
-    assertDatabaseStatusEquals(2, "europe-1", getDatabaseName(), ODistributedServerManager.DB_STATUS.NOT_AVAILABLE);
+    waitForDatabaseStatus(2, "europe-0", getDatabaseName(), ODistributedServerManager.DB_STATUS.NOT_AVAILABLE, 30000);
     assertDatabaseStatusEquals(2, "europe-0", getDatabaseName(), ODistributedServerManager.DB_STATUS.NOT_AVAILABLE);
+    waitForDatabaseStatus(2, "europe-1", getDatabaseName(), ODistributedServerManager.DB_STATUS.NOT_AVAILABLE, 30000);
+    assertDatabaseStatusEquals(2, "europe-1", getDatabaseName(), ODistributedServerManager.DB_STATUS.NOT_AVAILABLE);
+    assertDatabaseStatusEquals(2, "europe-2", getDatabaseName(), ODistributedServerManager.DB_STATUS.ONLINE);
 
     banner("RUN TEST WITHOUT THE OFFLINE SERVER " + (SERVERS - 1) + "...");
 
-    checkRecordCount();
+    checkInsertedEntries();
+    checkIndexedEntries();
 
     count = 10;
     final long currentRecords = expected;
@@ -95,20 +105,36 @@ public class SplitBrainNetworkTest extends AbstractHARemoveNode {
 
     expected += count * 2;
 
-    Thread.sleep(5000);
-
     count = 10;
 
     // dumpDistributedMap();
 
-    waitForDatabaseIsOnline(0, "europe-2", getDatabaseName(), 90000);
+    waitForDatabaseIsOnline(0, "europe-0", getDatabaseName(), 90000);
+    waitForDatabaseIsOnline(0, "europe-1", getDatabaseName(), 5000);
+    waitForDatabaseIsOnline(0, "europe-2", getDatabaseName(), 5000);
+
+    waitForDatabaseIsOnline(1, "europe-0", getDatabaseName(), 5000);
+    waitForDatabaseIsOnline(1, "europe-1", getDatabaseName(), 5000);
+    waitForDatabaseIsOnline(1, "europe-2", getDatabaseName(), 5000);
+
+    waitForDatabaseIsOnline(2, "europe-0", getDatabaseName(), 5000);
+    waitForDatabaseIsOnline(2, "europe-1", getDatabaseName(), 5000);
+    waitForDatabaseIsOnline(2, "europe-2", getDatabaseName(), 5000);
+
     assertDatabaseStatusEquals(0, "europe-2", getDatabaseName(), ODistributedServerManager.DB_STATUS.ONLINE);
     assertDatabaseStatusEquals(1, "europe-2", getDatabaseName(), ODistributedServerManager.DB_STATUS.ONLINE);
     assertDatabaseStatusEquals(2, "europe-2", getDatabaseName(), ODistributedServerManager.DB_STATUS.ONLINE);
 
+    Assert.assertEquals("europe-0", serverInstance.get(0).getServerInstance().getDistributedManager().getCoordinatorServer());
+    Assert.assertEquals("europe-0", serverInstance.get(1).getServerInstance().getDistributedManager().getCoordinatorServer());
+    Assert.assertEquals("europe-0", serverInstance.get(2).getServerInstance().getDistributedManager().getCoordinatorServer());
+
     banner("NETWORK FOR THE ISOLATED NODE " + (SERVERS - 1) + " HAS BEEN RESTORED");
 
-    checkRecordCount();
+    poolFactory.reset();
+
+    checkInsertedEntries();
+    checkIndexedEntries();
 
     banner("RESTARTING TESTS WITH SERVER " + (SERVERS - 1) + " CONNECTED...");
 
@@ -122,18 +148,6 @@ public class SplitBrainNetworkTest extends AbstractHARemoveNode {
       OLogManager.instance().info(this, "MAP SERVER %s", s.getServerId());
       for (Map.Entry<String, Object> entry : s.server.getDistributedManager().getConfigurationMap().entrySet()) {
         OLogManager.instance().info(this, " %s=%s", entry.getKey(), entry.getValue());
-      }
-    }
-  }
-
-  private void checkRecordCount() {
-    for (ServerRun s : serverInstance) {
-      final ODatabaseDocumentTx db = new ODatabaseDocumentTx(getDatabaseURL(s)).open("admin", "admin");
-      try {
-        final long found = db.countClass("Person");
-        Assert.assertEquals("Server " + s + " expected " + expected + " but found " + found, expected, found);
-      } finally {
-        db.close();
       }
     }
   }

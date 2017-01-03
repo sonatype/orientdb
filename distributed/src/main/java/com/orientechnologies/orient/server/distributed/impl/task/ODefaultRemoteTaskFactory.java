@@ -104,6 +104,18 @@ public class ODefaultRemoteTaskFactory implements ORemoteTaskFactory {
 
     case OUpdateDatabaseConfigurationTask.FACTORYID: // 24
       return new OUpdateDatabaseConfigurationTask();
+
+    case OUpdateDatabaseStatusTask.FACTORYID: // 25
+      return new OUpdateDatabaseStatusTask();
+
+    case ODistributedLockTask.FACTORYID: // 26
+      return new ODistributedLockTask();
+
+    case ORequestDatabaseConfigurationTask.FACTORYID: // 27
+      return new ORequestDatabaseConfigurationTask();
+
+    case OUnreachableServerLocalTask.FACTORYID: // 28
+      new IllegalArgumentException("Task with code " + code + " is not supported in remote configuration");
     }
 
     throw new IllegalArgumentException("Task with code " + code + " is not supported");
