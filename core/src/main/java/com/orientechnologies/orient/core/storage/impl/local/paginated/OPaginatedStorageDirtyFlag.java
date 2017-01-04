@@ -159,7 +159,7 @@ public class OPaginatedStorageDirtyFlag {
         if (fileLock != null) {
           fileLock.release();
           fileLock = null;
-        } else {
+        } else if (OGlobalConfiguration.FILE_LOCK.getValueAsBoolean()) {
           OLogManager.instance().error(this, "File lock is null , file lock is not released");
         }
 
