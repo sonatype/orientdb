@@ -39,7 +39,7 @@ import com.orientechnologies.orient.core.serialization.serializer.record.ORecord
 import com.orientechnologies.orient.core.serialization.serializer.record.ORecordSerializerFactory;
 import com.orientechnologies.orient.core.shutdown.OShutdownHandler;
 import com.orientechnologies.orient.core.sql.OCommandSQLParsingException;
-import com.orientechnologies.orient.core.sql.executor.OTodoResultSet;
+import com.orientechnologies.orient.core.sql.executor.OResultSet;
 import com.orientechnologies.orient.core.storage.ORecordCallback;
 import com.orientechnologies.orient.core.storage.ORecordMetadata;
 import com.orientechnologies.orient.core.storage.OStorage;
@@ -819,6 +819,11 @@ public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
   }
 
   @Override
+  public void rawBegin(OTransaction transaction) {
+    throw new UnsupportedOperationException("private api");
+  }
+
+  @Override
   public ODatabase<ORecord> commit() throws OTransactionException {
     checkOpenness();
     internal.commit();
@@ -1418,13 +1423,13 @@ public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
   }
 
   @Override
-  public OTodoResultSet query(String query, Object... args) {
+  public OResultSet query(String query, Object... args) {
     checkOpenness();
     return internal.query(query, args);
   }
 
   @Override
-  public OTodoResultSet query(String query, Map args) throws OCommandSQLParsingException, OCommandExecutionException {
+  public OResultSet query(String query, Map args) throws OCommandSQLParsingException, OCommandExecutionException {
     checkOpenness();
     return internal.query(query, args);
   }
@@ -1470,12 +1475,12 @@ public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
   }
 
   @Override
-  public OTodoResultSet command(String query, Object... args) throws OCommandSQLParsingException, OCommandExecutionException {
+  public OResultSet command(String query, Object... args) throws OCommandSQLParsingException, OCommandExecutionException {
     checkOpenness();
     return internal.command(query, args);
   }
 
-  public OTodoResultSet command(String query, Map args) throws OCommandSQLParsingException, OCommandExecutionException {
+  public OResultSet command(String query, Map args) throws OCommandSQLParsingException, OCommandExecutionException {
     checkOpenness();
     return internal.command(query, args);
   }
