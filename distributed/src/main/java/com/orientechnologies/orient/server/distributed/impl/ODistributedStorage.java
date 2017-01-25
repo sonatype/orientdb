@@ -727,6 +727,10 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
   public OStorageOperationResult<ORawBuffer> readRecord(final ORecordId iRecordId, final String iFetchPlan,
       final boolean iIgnoreCache, final boolean prefetchRecords, final ORecordCallback<ORawBuffer> iCallback) {
 
+    final ORawBuffer memCopy = localDistributedDatabase.getRecordIfLocked(iRecordId);
+    if (memCopy != null)
+      return new OStorageOperationResult<ORawBuffer>(memCopy);
+
     try {
       final String clusterName = getClusterNameByRID(iRecordId);
 
@@ -781,6 +785,9 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
   @Override
   public OStorageOperationResult<ORawBuffer> readRecordIfVersionIsNotLatest(final ORecordId rid, final String fetchPlan,
       final boolean ignoreCache, final int recordVersion) throws ORecordNotFoundException {
+    final ORawBuffer memCopy = localDistributedDatabase.getRecordIfLocked(rid);
+    if (memCopy != null)
+      return new OStorageOperationResult<ORawBuffer>(memCopy);
 
     try {
       final String clusterName = getClusterNameByRID(rid);
@@ -1354,9 +1361,18 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
   public List<ORecordOperation> commit(final OTransaction iTx, final Runnable callback) {
     resetLastValidBackup();
 
-    if (OScenarioThreadLocal.INSTANCE.isRunModeDistributed())
+    if (OScenarioThreadLocal.INSTANCE.isRunModeDistributed()) {
       // ALREADY DISTRIBUTED
-      return wrapped.commit(iTx, callback);
+      try {
+        return wrapped.commit(iTx, callback);
+      } catch (ORecordDuplicatedException e) {
+        // CHECK THE RECORD HAS THE SAME KEY IS STILL UNDER DISTRIBUTED TX
+        final ODistributedDatabase dDatabase = dManager.getMessageService().getDatabase(getName());
+        if (dDatabase.getRecordIfLocked(e.getRid()) != null) {
+          throw new OPossibleDuplicatedRecordException(e);
+        }
+      }
+    }
 
     final ODistributedConfiguration dbCfg = distributedConfiguration;
 
@@ -2015,11 +2031,11 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
           "Local node '" + localNodeName + "' is not the owner for cluster '" + clusterName + "' (it is '" + ownerNode
               + "'). Switching to a valid cluster of the same class: '" + newClusterName + "'");
 
-      ownerNode = dbCfg.getClusterOwner(newClusterName);
+      dbCfg.getClusterOwner(newClusterName);
 
       // FORCE THE RETRY OF THE OPERATION
-      // throw new ODistributedConfigurationChangedException(
-      // "Local node '" + localNodeName + "' is not the owner for cluster '" + clusterName + "' (it is '" + ownerNode + "')");
+      throw new ODistributedConfigurationChangedException(
+          "Local node '" + localNodeName + "' is not the owner for cluster '" + clusterName + "' (it is '" + ownerNode + "')");
     }
 
     if (!ownerNode.equals(localNodeName))

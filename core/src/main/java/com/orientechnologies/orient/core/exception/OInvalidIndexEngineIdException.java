@@ -17,17 +17,11 @@
 package com.orientechnologies.orient.core.exception;
 
 /**
- * Exception which is thrown by {@link com.orientechnologies.orient.core.index.OIndexChangesWrapper}
- * if index which is related to wrapped cursor is being rebuilt.
- *
- * @see com.orientechnologies.orient.core.index.OIndexAbstract#getRebuildVersion()
+ * Special type of exception which indicates that invalid index id was passed into
+ * storage and index data should be reloaded
  */
-public class OIndexIsRebuildingException extends ORetryQueryException {
-  public OIndexIsRebuildingException(OIndexIsRebuildingException exception) {
-    super(exception);
-  }
-
-  public OIndexIsRebuildingException(String message) {
+public class OInvalidIndexEngineIdException extends Exception {
+  public OInvalidIndexEngineIdException(String message) {
     super(message);
   }
 }

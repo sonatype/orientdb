@@ -21,6 +21,7 @@ package com.orientechnologies.orient.core.index;
 
 import com.orientechnologies.orient.core.db.ODatabase;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
+import com.orientechnologies.orient.core.exception.OInvalidIndexEngineIdException;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.storage.ORecordDuplicatedException;
 import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
@@ -61,6 +62,9 @@ public class OIndexUnique extends OIndexOneValue {
 
   @Override
   public OIndexOneValue put(Object key, final OIdentifiable iSingleValue) {
+    if (iSingleValue != null && !iSingleValue.getIdentity().isPersistent())
+      throw new IllegalArgumentException("Cannot index a non persistent record (" + iSingleValue.getIdentity() + ")");
+
     key = getCollatingValue(key);
 
     final ODatabase database = getDatabase();
@@ -73,7 +77,13 @@ public class OIndexUnique extends OIndexOneValue {
     try {
       acquireSharedLock();
       try {
-        storage.validatedPutIndexValue(indexId, key, iSingleValue, UNIQUE_VALIDATOR);
+        while (true)
+          try {
+            storage.validatedPutIndexValue(indexId, key, iSingleValue, UNIQUE_VALIDATOR);
+            break;
+          } catch (OInvalidIndexEngineIdException e) {
+            doReloadIndexEngine();
+          }
         return this;
       } finally {
         releaseSharedLock();
@@ -91,7 +101,12 @@ public class OIndexUnique extends OIndexOneValue {
 
   @Override
   public boolean supportsOrderedIterations() {
-    return storage.hasIndexRangeQuerySupport(indexId);
+    while (true)
+      try {
+        return storage.hasIndexRangeQuerySupport(indexId);
+      } catch (OInvalidIndexEngineIdException e) {
+        doReloadIndexEngine();
+      }
   }
 
   @Override
