@@ -87,16 +87,16 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class OStorageRemote extends OStorageAbstract implements OStorageProxy {
   @Deprecated
-  public static final  String        PARAM_CONNECTION_STRATEGY = "connectionStrategy";
+  public static final String PARAM_CONNECTION_STRATEGY = "connectionStrategy";
 
-  private static final String        DEFAULT_HOST              = "localhost";
-  private static final int           DEFAULT_PORT              = 2424;
-  private static final int           DEFAULT_SSL_PORT          = 2434;
-  private static final String        ADDRESS_SEPARATOR         = ";";
-  public static final  String        DRIVER_NAME               = "OrientDB Java";
-  private static final String        LOCAL_IP                  = "127.0.0.1";
-  private static final String        LOCALHOST                 = "localhost";
-  private static       AtomicInteger sessionSerialId           = new AtomicInteger(-1);
+  private static final String        DEFAULT_HOST      = "localhost";
+  private static final int           DEFAULT_PORT      = 2424;
+  private static final int           DEFAULT_SSL_PORT  = 2434;
+  private static final String        ADDRESS_SEPARATOR = ";";
+  public static final  String        DRIVER_NAME       = "OrientDB Java";
+  private static final String        LOCAL_IP          = "127.0.0.1";
+  private static final String        LOCALHOST         = "localhost";
+  private static       AtomicInteger sessionSerialId   = new AtomicInteger(-1);
 
   public enum CONNECTION_STRATEGY {
     STICKY, ROUND_ROBIN_CONNECT, ROUND_ROBIN_REQUEST
@@ -530,7 +530,7 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy {
     ORecordCallback<OCreateRecordResponse> realCallback = null;
     if (iCallback != null) {
       realCallback = (iRID, response) -> {
-        iCallback.call(iRID, response.getIdentity().getClusterPosition());
+        iCallback.call(response.getIdentity(), response.getIdentity().getClusterPosition());
         updateCollectionsFromChanges(collectionManager, response.getChangedIds());
       };
     }
@@ -799,25 +799,25 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy {
   }
 
   public ORemoteQueryResult query(ODatabase db, String query, Object[] args) {
-    OQueryRequest request = new OQueryRequest(query, args, true, ((ODatabaseDocumentInternal) db).getSerializer(), 100);
+    OQueryRequest request = new OQueryRequest("sql", query, args, true, ((ODatabaseDocumentInternal) db).getSerializer(), 100);
     OQueryResponse response = networkOperation(request, "Error on executing command: " + query);
     return new ORemoteQueryResult(response.getResult(), response.isTxChanges());
   }
 
   public ORemoteQueryResult query(ODatabase db, String query, Map args) {
-    OQueryRequest request = new OQueryRequest(query, args, true, ((ODatabaseDocumentInternal) db).getSerializer(), 100);
+    OQueryRequest request = new OQueryRequest("sql", query, args, true, ((ODatabaseDocumentInternal) db).getSerializer(), 100);
     OQueryResponse response = networkOperation(request, "Error on executing command: " + query);
     return new ORemoteQueryResult(response.getResult(), response.isTxChanges());
   }
 
-  public ORemoteQueryResult command(ODatabase db, String query, Object[] args) {
-    OQueryRequest request = new OQueryRequest(query, args, false, ((ODatabaseDocumentInternal) db).getSerializer(), 100);
+  public ORemoteQueryResult command(ODatabase db, String language, String query, Object[] args) {
+    OQueryRequest request = new OQueryRequest(language, query, args, false, ((ODatabaseDocumentInternal) db).getSerializer(), 100);
     OQueryResponse response = networkOperation(request, "Error on executing command: " + query);
     return new ORemoteQueryResult(response.getResult(), response.isTxChanges());
   }
 
-  public ORemoteQueryResult command(ODatabase db, String query, Map args) {
-    OQueryRequest request = new OQueryRequest(query, args, false, ((ODatabaseDocumentInternal) db).getSerializer(), 100);
+  public ORemoteQueryResult command(ODatabase db, String language, String query, Map args) {
+    OQueryRequest request = new OQueryRequest(language, query, args, false, ((ODatabaseDocumentInternal) db).getSerializer(), 100);
     OQueryResponse response = networkOperation(request, "Error on executing command: " + query);
     return new ORemoteQueryResult(response.getResult(), response.isTxChanges());
   }
@@ -875,6 +875,10 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy {
   }
 
   public void rollback(OTransaction iTx) {
+    if (((OTransactionOptimistic) iTx).isAlreadyCleared()) {
+      ORollbackTransactionRequest request = new ORollbackTransactionRequest(iTx.getId());
+      ORollbackTransactionResponse response = networkOperation(request, "Error on fetching next page for statment: " + request);
+    }
   }
 
   public int getClusterIdByName(final String iClusterName) {

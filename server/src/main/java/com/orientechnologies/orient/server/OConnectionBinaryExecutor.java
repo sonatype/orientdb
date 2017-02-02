@@ -980,6 +980,7 @@ final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
     }
     OResultSet rs;
     if (request.isIdempotent()) {
+      //TODO Assert is sql.
       if (request.isNamedParams()) {
         rs = database.query(request.getStatement(), request.getNamedParameters());
       } else {
@@ -987,9 +988,9 @@ final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
       }
     } else {
       if (request.isNamedParams()) {
-        rs = database.command(request.getStatement(), request.getNamedParameters());
+        rs = database.execute(request.getLanguage(), request.getStatement(), request.getNamedParameters());
       } else {
-        rs = database.command(request.getStatement(), request.getPositionalParameters());
+        rs = database.execute(request.getLanguage(), request.getStatement(), request.getPositionalParameters());
       }
     }
     OQueryResponse result = new OQueryResponse();
@@ -1112,5 +1113,14 @@ final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
       throw new ODatabaseException("No Transaction Active");
     OTransactionOptimistic tx = (OTransactionOptimistic) database.getTransaction();
     return new OFetchTransactionResponse(tx.getId(), tx.getAllRecordEntries(), tx.getIndexEntries());
+  }
+
+  @Override
+  public OBinaryResponse executeRollback(ORollbackTransactionRequest request) {
+    ODatabaseDocumentInternal database = connection.getDatabase();
+    if (!database.getTransaction().isActive())
+      throw new ODatabaseException("No Transaction Active");
+    database.rollback(true);
+    return new ORollbackTransactionResponse();
   }
 }
