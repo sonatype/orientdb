@@ -138,6 +138,10 @@ public class OClusterRemote implements OCluster {
   public void truncate() throws IOException {
   }
 
+  @Override
+  public void compact() throws IOException {
+  }
+
   public OPhysicalPosition getPhysicalPosition(OPhysicalPosition iPPosition) throws IOException {
     return null;
   }

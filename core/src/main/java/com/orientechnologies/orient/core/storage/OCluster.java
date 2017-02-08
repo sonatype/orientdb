@@ -58,6 +58,8 @@ public interface OCluster {
    */
   void truncate() throws IOException;
 
+  void compact() throws IOException;
+
   /**
    * Allocates a physical position pointer on the storage for generate an id without a content.
    *

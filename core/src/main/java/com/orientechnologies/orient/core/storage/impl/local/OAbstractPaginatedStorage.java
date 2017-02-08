@@ -624,6 +624,29 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
     }
   }
 
+  public void compactCluster(String clusterName) {
+    final OCluster cluster = getClusterByName(clusterName);
+
+    if (cluster == null)
+      throw new OStorageException("Cluster with name `" + clusterName + "` does not exist");
+
+    checkOpeness();
+    checkLowDiskSpaceFullCheckpointRequestsAndBackgroundDataFlushExceptions();
+
+    stateLock.acquireWriteLock();
+    try {
+      checkOpeness();
+      makeStorageDirty();
+
+      cluster.compact();
+
+    } catch (IOException e) {
+      throw OException.wrapException(new OStorageException("Error during compaction of new cluster '" + clusterName), e);
+    } finally {
+      stateLock.releaseWriteLock();
+    }
+  }
+
   public int addCluster(String clusterName, int requestedId, boolean forceListBased, Object... parameters) {
     checkOpeness();
     checkLowDiskSpaceFullCheckpointRequestsAndBackgroundDataFlushExceptions();
@@ -1892,7 +1915,7 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
     }
   }
 
-  public void putIndexValue(int indexId, Object key, Object value)  throws OInvalidIndexEngineIdException {
+  public void putIndexValue(int indexId, Object key, Object value) throws OInvalidIndexEngineIdException {
     if (transaction.get() != null) {
       doPutIndexValue(indexId, key, value);
       return;
@@ -2059,7 +2082,7 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
   }
 
   private OIndexCursor doIterateIndexEntriesMajor(int indexId, Object fromKey, boolean isInclusive, boolean ascSortOrder,
-      OIndexEngine.ValuesTransformer transformer)  throws OInvalidIndexEngineIdException {
+      OIndexEngine.ValuesTransformer transformer) throws OInvalidIndexEngineIdException {
     checkIndexId(indexId);
 
     final OIndexEngine engine = indexEngines.get(indexId);
@@ -2373,9 +2396,14 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
 
       long size = 0;
 
-      for (OCluster c : clusters)
-        if (c != null)
-          size += c.getRecordsSize();
+      stateLock.acquireReadLock();
+      try {
+        for (OCluster c : clusters)
+          if (c != null)
+            size += c.getRecordsSize();
+      } finally {
+        stateLock.releaseReadLock();
+      }
 
       return size;
 
@@ -2428,6 +2456,10 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
   public boolean cleanOutRecord(final ORecordId recordId, final int recordVersion, final int iMode,
       final ORecordCallback<Boolean> callback) {
     return deleteRecord(recordId, recordVersion, iMode, callback).getResult();
+  }
+
+  public boolean isFrozen() {
+    return atomicOperationsManager.isFrozen();
   }
 
   public void freeze(final boolean throwException) {
