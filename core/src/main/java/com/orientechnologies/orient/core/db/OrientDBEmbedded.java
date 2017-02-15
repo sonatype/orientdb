@@ -19,19 +19,6 @@
  */
 package com.orientechnologies.orient.core.db;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.Callable;
-
 import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.io.OIOUtils;
 import com.orientechnologies.common.log.OLogManager;
@@ -48,12 +35,19 @@ import com.orientechnologies.orient.core.storage.OStorage;
 import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.OLocalPaginatedStorage;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Paths;
+import java.util.*;
+import java.util.concurrent.Callable;
+
 /**
  * Created by tglman on 08/04/16.
  */
-public class OrientDBEmbedded implements OrientDB {
+public class OrientDBEmbedded implements OrientDBInternal {
   protected final Map<String, OAbstractPaginatedStorage> storages = new HashMap<>();
-  protected final Set<ODatabasePool>                     pools    = new HashSet<>();
+  protected final Set<ODatabasePoolInternal>             pools    = new HashSet<>();
   protected final    OrientDBConfig configurations;
   protected final    String         basePath;
   protected final    OEngine        memory;
@@ -123,8 +117,12 @@ public class OrientDBEmbedded implements OrientDB {
     if (config != null) {
       config.setParent(this.configurations);
       return config;
-    } else
-      return this.configurations;
+    } else {
+      OrientDBConfig cfg = OrientDBConfig.defaultConfig();
+      cfg.setParent(this.configurations);
+      return cfg;
+    }
+
   }
 
   public synchronized OEmbeddedDatabasePool poolOpen(String name, String user, String password, OEmbeddedPoolByFactory pool) {
@@ -152,17 +150,17 @@ public class OrientDBEmbedded implements OrientDB {
     return basePath + "/" + name;
   }
 
-  public void create(String name, String user, String password, DatabaseType type) {
+  public void create(String name, String user, String password, ODatabaseType type) {
     create(name, user, password, type, null);
   }
 
   @Override
-  public synchronized void create(String name, String user, String password, DatabaseType type, OrientDBConfig config) {
+  public synchronized void create(String name, String user, String password, ODatabaseType type, OrientDBConfig config) {
     if (!exists(name, user, password)) {
       try {
         config = solveConfig(config);
         OAbstractPaginatedStorage storage;
-        if (type == DatabaseType.MEMORY) {
+        if (type == ODatabaseType.MEMORY) {
           storage = (OAbstractPaginatedStorage) memory.createStorage(name, new HashMap<>());
         } else {
           storage = (OAbstractPaginatedStorage) disk.createStorage(buildName(name), new HashMap<>());
@@ -276,12 +274,12 @@ public class OrientDBEmbedded implements OrientDB {
     }
   }
 
-  public ODatabasePool openPool(String name, String user, String password) {
+  public ODatabasePoolInternal openPool(String name, String user, String password) {
     return openPool(name, user, password, null);
   }
 
   @Override
-  public ODatabasePool openPool(String name, String user, String password, OrientDBConfig config) {
+  public ODatabasePoolInternal openPool(String name, String user, String password, OrientDBConfig config) {
     checkOpen();
     OEmbeddedPoolByFactory pool = new OEmbeddedPoolByFactory(this, name, user, password, solveConfig(config));
     pools.add(pool);
