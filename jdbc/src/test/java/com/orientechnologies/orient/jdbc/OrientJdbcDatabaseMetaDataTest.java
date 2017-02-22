@@ -20,25 +20,15 @@ package com.orientechnologies.orient.jdbc;
 import com.orientechnologies.orient.core.OConstants;
 import org.junit.Before;
 import org.junit.Test;
-import sun.text.resources.BreakIteratorInfo;
 
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 public class OrientJdbcDatabaseMetaDataTest extends OrientJdbcBaseTest {
 
@@ -128,14 +118,14 @@ public class OrientJdbcDatabaseMetaDataTest extends OrientJdbcBaseTest {
     ResultSetMetaData rsMetaData = rs.getMetaData();
 
     int cc = rsMetaData.getColumnCount();
-    Set<String> colset = new HashSet<String>();
-    List<Map<String, Object>> columns = new ArrayList<Map<String, Object>>(cc);
+    Set<String> colset = new HashSet<>();
+    List<Map<String, Object>> columns = new ArrayList<>(cc);
     for (int i = 1; i <= cc; i++) {
       String name = rsMetaData.getColumnLabel(i);
       //      if (colset.contains(name))
       //        continue;
       colset.add(name);
-      Map<String, Object> field = new HashMap<String, Object>();
+      Map<String, Object> field = new HashMap<>();
       field.put("name", name);
 
       try {
@@ -181,7 +171,7 @@ public class OrientJdbcDatabaseMetaDataTest extends OrientJdbcBaseTest {
   @Test
   public void shouldGetAllTablesFilteredByAllTypes() throws SQLException {
     ResultSet rs = metaData.getTableTypes();
-    List<String> tableTypes = new ArrayList<String>(2);
+    List<String> tableTypes = new ArrayList<>(2);
     while (rs.next()) {
       tableTypes.add(rs.getString(1));
     }
