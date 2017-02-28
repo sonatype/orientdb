@@ -467,6 +467,12 @@ public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
   }
 
   @Override
+  public boolean isFrozen() {
+    checkOpenness();
+    return internal.isFrozen();
+  }
+
+  @Override
   public void release() {
     checkOpenness();
     internal.release();
@@ -1181,6 +1187,13 @@ public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
       intent = iIntent;
       return true;
     }
+  }
+
+  @Override
+  public OIntent getActiveIntent() {
+    if (internal == null)
+      return intent;
+    return internal.getActiveIntent();
   }
 
   @Override

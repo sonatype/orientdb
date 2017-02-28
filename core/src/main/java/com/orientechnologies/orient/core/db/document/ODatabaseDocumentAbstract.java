@@ -805,6 +805,11 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
   }
 
   @Override
+  public OIntent getActiveIntent() {
+    return currentIntent;
+  }
+
+  @Override
   public void close() {
     checkIfActive();
 
@@ -817,7 +822,7 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
       }
 
       try {
-        commit(true);
+        rollback(true);
       } catch (Exception e) {
         OLogManager.instance().error(this, "Exception during commit of active transaction", e);
       }
@@ -2002,6 +2007,17 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
 
     Orient.instance().getProfiler()
         .stopChrono("db." + getName() + ".freeze", "Time to freeze the database", startTime, "db.*.freeze");
+  }
+
+  @Override
+  public boolean isFrozen() {
+    if (!(getStorage() instanceof OFreezableStorageComponent))
+      return false;
+
+    final OFreezableStorageComponent storage = getFreezableStorage();
+    if (storage != null)
+      return storage.isFrozen();
+    return false;
   }
 
   /**

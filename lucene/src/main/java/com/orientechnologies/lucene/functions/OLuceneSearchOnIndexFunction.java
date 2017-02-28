@@ -43,16 +43,17 @@ public class OLuceneSearchOnIndexFunction extends OSQLFunctionAbstract implement
   public Object execute(Object iThis, OIdentifiable iCurrentRecord, Object iCurrentResult, Object[] params, OCommandContext ctx) {
 
     OResult result = (OResult) iThis;
-    OElement doc = result.toElement();
+    OElement element = result.toElement();
 
     String indexName = (String) params[0];
-    OLuceneFullTextIndex index = searchForIndex(doc.getSchemaType().get().getName(), ctx, indexName);
+
+    OLuceneFullTextIndex index = searchForIndex(ctx, indexName);
 
     String query = (String) params[1];
 
     MemoryIndex memoryIndex = getOrCreateMemoryIndex(ctx);
 
-    List<Object> key = index.getDefinition().getFields().stream().map(s -> doc.getProperty(s)).collect(Collectors.toList());
+    List<Object> key = index.getDefinition().getFields().stream().map(s -> element.getProperty(s)).collect(Collectors.toList());
 
     try {
       for (IndexableField field : index.buildDocument(key).getFields()) {
@@ -97,20 +98,20 @@ public class OLuceneSearchOnIndexFunction extends OSQLFunctionAbstract implement
 
     OLuceneFullTextIndex index = searchForIndex(target, ctx, indexName);
 
-    OExpression query = args[1];
-    Object queryVal = query.execute((OIdentifiable) null, ctx);
-    String queryValue = queryVal == null ? null : String.valueOf(queryVal);
-    if (index != null) {
+    OExpression expression = args[1];
+    String query = (String) expression.execute((OIdentifiable) null, ctx);
+//    String queryValue = query == null ? null : String.valueOf(query);
+    if (index != null && query != null) {
 
       if (args.length == 3) {
         ODocument metadata = new ODocument().fromJSON(args[2].toString());
 
         //TODO handle metadata
         System.out.println("metadata.toJSON() = " + metadata.toJSON());
-        Set<OIdentifiable> luceneResultSet = index.get(queryValue);
+        Set<OIdentifiable> luceneResultSet = index.get(query);
       }
 
-      Set<OIdentifiable> luceneResultSet = index.get(queryValue);
+      Set<OIdentifiable> luceneResultSet = index.get(query);
 
       return luceneResultSet;
     }
@@ -135,6 +136,19 @@ public class OLuceneSearchOnIndexFunction extends OSQLFunctionAbstract implement
     //TODO maybe better to trhow
     return null;
   }
+
+  protected OLuceneFullTextIndex searchForIndex(OCommandContext ctx, String indexName) {
+
+    OIndex<?> index = ctx.getDatabase().getMetadata().getIndexManager().getIndex(indexName);
+
+    if (index != null && index.getInternal() instanceof OLuceneFullTextIndex) {
+      return (OLuceneFullTextIndex) index;
+    }
+
+    //TODO maybe better to trhow
+    return null;
+  }
+
 
   @Override
   public Object getResult() {

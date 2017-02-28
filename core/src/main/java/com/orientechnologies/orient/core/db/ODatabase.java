@@ -147,6 +147,12 @@ public interface ODatabase<T> extends OBackupable, Closeable {
    */
   boolean declareIntent(final OIntent iIntent);
 
+  /** Get the active intent in the current session.
+   *
+   * @return
+   */
+  OIntent getActiveIntent();
+
   /**
    * Checks if the database exists.
    *
@@ -156,7 +162,8 @@ public interface ODatabase<T> extends OBackupable, Closeable {
   boolean exists();
 
   /**
-   * Closes an opened database.
+   * Closes an opened database, if the database is already closed does nothing, if a transaction is active will be rollbacked.
+   *
    */
   void close();
 
@@ -445,6 +452,11 @@ public interface ODatabase<T> extends OBackupable, Closeable {
    * @see #release()
    */
   void freeze();
+
+  /**
+   * Returns true if the database is frozen ({@link #freeze()} operation), otherwise false.
+   */
+  boolean isFrozen();
 
   /**
    * Allows to execute write-related commands on DB. Called after {@link #freeze()} command.
