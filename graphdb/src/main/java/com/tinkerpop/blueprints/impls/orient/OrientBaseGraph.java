@@ -48,6 +48,7 @@ import com.orientechnologies.orient.core.exception.ORecordNotFoundException;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.id.ORecordId;
 import com.orientechnologies.orient.core.index.*;
+import com.orientechnologies.orient.core.index.hashindex.local.OHashIndexBucket;
 import com.orientechnologies.orient.core.intent.OIntent;
 import com.orientechnologies.orient.core.metadata.schema.*;
 import com.orientechnologies.orient.core.record.ORecord;
@@ -82,6 +83,7 @@ public abstract class OrientBaseGraph extends OrientConfigurableGraph implements
   public static final     String                              ADMIN               = "admin";
   private static volatile ThreadLocal<OrientBaseGraph>        activeGraph         = new ThreadLocal<OrientBaseGraph>();
   private static volatile ThreadLocal<Deque<OrientBaseGraph>> initializationStack = new InitializationStackThreadLocal();
+  private Map<String, Object> properties;
 
   static {
     Orient.instance().registerListener(new OOrientListenerAbstract() {
@@ -1150,6 +1152,8 @@ public abstract class OrientBaseGraph extends OrientConfigurableGraph implements
         if (storage instanceof OAbstractPaginatedStorage) {
           if (((OAbstractPaginatedStorage) storage).getWALInstance() != null)
             getDatabase().commit();
+        } else {
+          getDatabase().commit();
         }
 
       }
@@ -1948,8 +1952,9 @@ public abstract class OrientBaseGraph extends OrientConfigurableGraph implements
     if (pool == null) {
       database = new ODatabaseDocumentTx(url);
 
-      final String connMode = settings.getConnectionStrategy();
-      getDatabase().setProperty(OStorageRemote.PARAM_CONNECTION_STRATEGY, connMode);
+      if (properties != null) {
+        properties.entrySet().forEach(e -> database.setProperty(e.getKey(), e.getValue()));
+      }
 
       if (url.startsWith("remote:") || getDatabase().exists()) {
         if (getDatabase().isClosed())
@@ -2253,4 +2258,24 @@ public abstract class OrientBaseGraph extends OrientConfigurableGraph implements
     return this;
   }
 
+  @Override
+  protected Object setProperty(String iName, Object iValue) {
+    if (properties == null)
+      properties = new HashMap<String, Object>();
+
+    return properties.put(iName, iValue);
+  }
+
+  @Override
+  protected Object getProperty(String iName) {
+    if (properties == null) {
+      return null;
+    }
+    return properties.get(iName);
+  }
+
+  @Override
+  public Map<String, Object> getProperties() {
+    return properties;
+  }
 }

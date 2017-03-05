@@ -53,7 +53,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 public class LuceneAutomaticBackupRestoreTest {
 
-  private final static String          DBNAME     = "LuceneAutomaticBackupRestoreTest";
+  private final static String          DBNAME     = "OLuceneAutomaticBackupRestoreTest";
   @Rule
   public               TemporaryFolder tempFolder = new TemporaryFolder();
   private OrientDB orientDB;
@@ -136,7 +136,7 @@ public class LuceneAutomaticBackupRestoreTest {
 
     doc.field("targetDirectory", BACKUPDIR);
 
-    doc.field("dbInclude", new String[] { "LuceneAutomaticBackupRestoreTest" });
+    doc.field("dbInclude", new String[] { "OLuceneAutomaticBackupRestoreTest" });
 
     doc.field("firstTime", new SimpleDateFormat("HH:mm:ss").format(new Date(System.currentTimeMillis() + 2000)));
 
@@ -208,7 +208,7 @@ public class LuceneAutomaticBackupRestoreTest {
     doc.field("targetDirectory", BACKUPDIR);
     doc.field("mode", "EXPORT");
 
-    doc.field("dbInclude", new String[] { "LuceneAutomaticBackupRestoreTest" });
+    doc.field("dbInclude", new String[] { "OLuceneAutomaticBackupRestoreTest" });
 
     doc.field("firstTime", new SimpleDateFormat("HH:mm:ss").format(new Date(System.currentTimeMillis() + 2000)));
 

@@ -1,6 +1,7 @@
 package com.orientechnologies.orient.core.sql.executor;
 
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
+import com.orientechnologies.orient.core.id.OContextualRecordId;
 import com.orientechnologies.orient.core.record.OElement;
 import com.orientechnologies.orient.core.record.impl.OBlob;
 import com.orientechnologies.orient.core.record.impl.ODocument;
@@ -13,7 +14,8 @@ import java.util.stream.Collectors;
  */
 public class OResultInternal implements OResult {
   protected Map<String, Object> content = new HashMap<>();
-  protected OIdentifiable element;
+  protected Map<String, Object> metadata;
+  protected OIdentifiable       element;
 
   public void setProperty(String name, Object value) {
     if (value instanceof Optional) {
@@ -91,6 +93,50 @@ public class OResultInternal implements OResult {
     return null;
   }
 
+  @Override
+  public Object getMetadata(String key) {
+    if (key == null) {
+      return null;
+    }
+    return metadata == null ? null : metadata.get(key);
+  }
+
+  public void setMetadata(String key, Object value) {
+    if (key == null) {
+      return;
+    }
+    if (metadata == null) {
+      metadata = new HashMap<>();
+    }
+    metadata.put(key, value);
+  }
+
+  public void clearMetadata() {
+    metadata = null;
+  }
+
+  public void removeMetadata(String key) {
+    if (key == null || metadata == null) {
+      return;
+    }
+    metadata.remove(key);
+  }
+
+  public void addMetadata(Map<String, Object> values) {
+    if (values == null) {
+      return;
+    }
+    if (this.metadata == null) {
+      this.metadata = new HashMap<>();
+    }
+    this.metadata.putAll(values);
+  }
+
+  @Override
+  public Set<String> getMetadataKeys() {
+    return metadata == null ? Collections.emptySet() : metadata.keySet();
+  }
+
   private Object convertToElement(Object property) {
     if (property instanceof OResult) {
       return ((OResult) property).toElement();
@@ -113,6 +159,9 @@ public class OResultInternal implements OResult {
       this.element = element.getRecord();
     } else {
       this.element = element;
+    }
+    if (element instanceof OContextualRecordId) {
+      this.addMetadata(((OContextualRecordId) element).getContext());
     }
   }
 

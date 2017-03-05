@@ -5,6 +5,8 @@ package com.orientechnologies.orient.core.sql.parser;
 import com.orientechnologies.orient.core.command.OCommandContext;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
+import com.orientechnologies.orient.core.id.OContextualRecordId;
+import com.orientechnologies.orient.core.record.OElement;
 import com.orientechnologies.orient.core.record.ORecord;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.executor.AggregationContext;
@@ -61,7 +63,14 @@ public class OSuffixIdentifier extends SimpleNode {
       if (ctx != null && ctx.getVariable(varName) != null) {
         return ctx.getVariable(varName);
       }
+
       if (iCurrentRecord != null) {
+        if (iCurrentRecord instanceof OContextualRecordId) {
+          Map<String, Object> meta = ((OContextualRecordId) iCurrentRecord).getContext();
+          if (meta != null && meta.containsKey(varName)) {
+            return meta.get(varName);
+          }
+        }
         return ((ODocument) iCurrentRecord.getRecord()).field(varName);
       }
       return null;
@@ -85,7 +94,12 @@ public class OSuffixIdentifier extends SimpleNode {
         return ctx.getVariable(varName);
       }
       if (iCurrentRecord != null) {
-        return iCurrentRecord.getProperty(varName);
+        if (iCurrentRecord.getPropertyNames().contains(varName)) {
+          return iCurrentRecord.getProperty(varName);
+        }
+        if (iCurrentRecord.getMetadataKeys().contains(varName)) {
+          return iCurrentRecord.getMetadata(varName);
+        }
       }
       return null;
     }
@@ -244,7 +258,8 @@ public class OSuffixIdentifier extends SimpleNode {
     return result;
   }
 
-  @Override public boolean equals(Object o) {
+  @Override
+  public boolean equals(Object o) {
     if (this == o)
       return true;
     if (o == null || getClass() != o.getClass())
@@ -262,7 +277,8 @@ public class OSuffixIdentifier extends SimpleNode {
     return true;
   }
 
-  @Override public int hashCode() {
+  @Override
+  public int hashCode() {
     int result = identifier != null ? identifier.hashCode() : 0;
     result = 31 * result + (recordAttribute != null ? recordAttribute.hashCode() : 0);
     result = 31 * result + (star ? 1 : 0);
@@ -334,6 +350,21 @@ public class OSuffixIdentifier extends SimpleNode {
       }
     } else {
       throw new OCommandExecutionException("Cannot set property on unmodifiable target: " + target);
+    }
+  }
+
+  public void applyRemove(Object currentValue, OCommandContext ctx) {
+    if (currentValue == null) {
+      return;
+    }
+    if (identifier != null) {
+      if (currentValue instanceof OResultInternal) {
+        ((OResultInternal) currentValue).removeProperty(identifier.getStringValue());
+      } else if (currentValue instanceof OElement) {
+        ((OElement) currentValue).removeProperty(identifier.getStringValue());
+      } else if (currentValue instanceof Map) {
+        ((Map) currentValue).remove(identifier.getStringValue());
+      }
     }
   }
 }
