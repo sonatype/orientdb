@@ -470,6 +470,10 @@ TOKEN :
     (<MINUS>)? <INTEGER_LITERAL> <RANGE> (<MINUS>)?<INTEGER_LITERAL>
   >
   |
+  < ELLIPSIS_INTEGER_RANGE:
+    (<MINUS>)? <INTEGER_LITERAL> <ELLIPSIS> (<MINUS>)?<INTEGER_LITERAL>
+  >
+  |
   < TRUE: ("T" | "t") ("R" | "r") ("U" | "u") ("E" | "e") >
   |
   < FALSE: ("F" | "f") ("A" | "a") ("L" | "l") ("S" | "s") ("E" | "e") >
@@ -536,6 +540,8 @@ TOKEN :
 | < LSHIFTASSIGN: "<<=" >
 | < RSIGNEDSHIFTASSIGN: ">>=" >
 | < RUNSIGNEDSHIFTASSIGN: ">>>=" >
+| < RSHIFT: ">>" >
+| < RUNSIGNEDSHIFT: ">>>" >
 | < ELLIPSIS: "..." >
 | < RANGE: ".." >
 | < NOT: ( "N" | "n") ( "O" | "o") ( "T" | "t")  >
@@ -1184,7 +1190,18 @@ OMatchStatement MatchStatement():
             lastMatchExpr = MatchExpression() { jjtThis.matchExpressions.add(lastMatchExpr); }
         )*
         <RETURN>
-        lastReturn = Expression() {lastReturnAlias = null;}
+        (
+          LOOKAHEAD(2)
+          (
+              <DISTINCT> { jjtThis.returnDistinct = true; }
+              lastReturn = Expression() {lastReturnAlias = null;}
+          )
+          |
+          LOOKAHEAD(Expression())
+          (
+              lastReturn = Expression() {lastReturnAlias = null;}
+          )
+        )
         [ <AS> lastReturnAlias = Identifier() ]
         {
             jjtThis.returnAliases.add(lastReturnAlias);
@@ -1917,18 +1934,39 @@ OArrayRangeSelector ArrayRangeSelector():
 {
     (
 
-    /* TODO for 3.0
-        token = <INTEGER_RANGE>
-        {
-            String img = token.image;
-            String[] splitted = img.split("..");
-            jjtThis.from = Integer.parseInt(splitted[0], 10);
-            jjtThis.to = Integer.parseInt(splitted[1], 10);
-        }
-        |
-        */
         (
-            jjtThis.fromSelector = ArrayNumberSelector() [ <MINUS> | <RANGE>  { jjtThis.newRange = true; } ] jjtThis.toSelector = ArrayNumberSelector()
+            token = <INTEGER_RANGE>
+            {
+                String img = token.image;
+                String[] splitted = img.split("\\.\\.");
+                jjtThis.from = Integer.parseInt(splitted[0], 10);
+                jjtThis.to = Integer.parseInt(splitted[1], 10);
+                jjtThis.newRange = true;
+            }
+        )
+        |
+        (
+            token = <ELLIPSIS_INTEGER_RANGE>
+            {
+                String img2 = token.image;
+                String[] splitted2 = img2.split("\\.\\.\\.");
+                jjtThis.from = Integer.parseInt(splitted2[0], 10);
+                jjtThis.to = Integer.parseInt(splitted2[1], 10);
+                jjtThis.newRange = true;
+                jjtThis.included = true;
+            }
+        )
+        |
+        (
+            jjtThis.fromSelector = ArrayNumberSelector()
+            (
+              (<MINUS>)
+              |
+              (<RANGE> {jjtThis.newRange = true;})
+              |
+              (<ELLIPSIS> {jjtThis.newRange = true; jjtThis.included = true;})
+            )
+            jjtThis.toSelector = ArrayNumberSelector()
         )
     )
     { return jjtThis; }
@@ -2094,43 +2132,38 @@ OMathExpression MathExpression():
 }
 {
     (
-	    sub = MultExpression() { jjtThis.getChildExpressions().add(sub); }
+	    sub = FirstLevelExpression() { jjtThis.getChildExpressions().add(sub); }
 	    (
-	        LOOKAHEAD( 2 ) ( <PLUS> { jjtThis.operators.add( OMathExpression.Operator.PLUS); } | <MINUS> { jjtThis.operators.add(OMathExpression.Operator.MINUS); })
-	        sub = MultExpression() { jjtThis.getChildExpressions().add(sub); }
-	    )*
-	)
-	{
-	    if(jjtThis.getChildExpressions().size() != 1){
-	        return jjtThis;
-	    }else{
-	        return jjtThis.getChildExpressions().get(0);
-	    }
-	}
-}
-
-
-OMathExpression MultExpression():
-{
-    OMathExpression sub;
-    jjtThis.setChildExpressions(new java.util.ArrayList());
-}
-{
-    (
-        sub = FirstLevelExpression()  { jjtThis.getChildExpressions().add(sub); }
-        (
-            LOOKAHEAD( 2 )
-            (
+	        LOOKAHEAD( 2 )
+	        (
                 <STAR> { jjtThis.operators.add( OMathExpression.Operator.STAR); }
                 |
                 <SLASH> { jjtThis.operators.add( OMathExpression.Operator.SLASH); }
                 |
                 <REM> { jjtThis.operators.add( OMathExpression.Operator.REM); }
-            )
-            sub = FirstLevelExpression()  { jjtThis.getChildExpressions().add(sub); }
-        )*
-    )
-    {
+                |
+	            <PLUS> { jjtThis.operators.add( OMathExpression.Operator.PLUS); }
+	            |
+	            <MINUS> { jjtThis.operators.add(OMathExpression.Operator.MINUS); }
+	            |
+	            <LSHIFT> { jjtThis.operators.add(OMathExpression.Operator.LSHIFT); }
+	            |
+	            <RSHIFT> { jjtThis.operators.add(OMathExpression.Operator.RSHIFT); }
+	            |
+	            <RUNSIGNEDSHIFT> { jjtThis.operators.add(OMathExpression.Operator.RUNSIGNEDSHIFT); }
+	            |
+	            <BIT_AND> { jjtThis.operators.add(OMathExpression.Operator.BIT_AND); }
+	            |
+	            <BIT_OR> { jjtThis.operators.add(OMathExpression.Operator.BIT_OR); }
+	            |
+	            <XOR> { jjtThis.operators.add(OMathExpression.Operator.XOR); }
+	            |
+	            <SC_OR> { jjtThis.operators.add(OMathExpression.Operator.SC_OR); }
+	        )
+	        sub = FirstLevelExpression() { jjtThis.getChildExpressions().add(sub); }
+	    )*
+	)
+	{
 	    if(jjtThis.getChildExpressions().size() != 1){
 	        return jjtThis;
 	    }else{
