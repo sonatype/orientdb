@@ -44,7 +44,9 @@ import java.util.*;
  * If property is not defined in edge or is null, distance between vertexes are 0 .
  *
  * @author Saeed Tabrizi (saeed a_t  nowcando.com)
+ * @deprecated see {@link com.orientechnologies.orient.core.sql.functions.graph.OSQLFunctionAstar} instead
  */
+@Deprecated
 public class OSQLFunctionAstar extends OSQLFunctionHeuristicPathFinderAbstract {
   public static final String NAME = "astar";
 

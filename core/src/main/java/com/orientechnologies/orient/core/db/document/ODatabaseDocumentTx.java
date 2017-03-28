@@ -59,7 +59,10 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Created by tglman on 20/07/16.
+ *
+ * @Deprecated use {@link OrientDB} instead.
  */
+@Deprecated
 public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
 
   private static ConcurrentMap<String, OrientDBInternal> embedded = new ConcurrentHashMap<>();
@@ -91,7 +94,7 @@ public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
 
     @Override
     public int getPriority() {
-      return 10000;
+      return 1000;
     }
   };
 
@@ -137,6 +140,12 @@ public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
     return factory;
   }
 
+  /**
+   * @param url
+   *
+   * @Deprecated use {{@link OrientDB}} instead.
+   */
+  @Deprecated
   public ODatabaseDocumentTx(String url) {
     this(url, true);
   }
@@ -1069,7 +1078,7 @@ public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
     final Thread o = owner.get();
 
     if (o != null || !owner.compareAndSet(null, current)) {
-      throw new IllegalStateException("Current instance is owned by other thread" + (o != null ? " : '" + o.getName() + "'" : ""));
+      throw new IllegalStateException("Current instance is owned by other thread '" + (o != null ? o.getName() : "?") + "'");
     }
   }
 

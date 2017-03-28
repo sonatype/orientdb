@@ -36,7 +36,9 @@ import java.util.Map;
  * If property is not defined in edge or is null, distance between vertexes are 0.
  *
  * @author Luca Garulli (l.garulli--(at)--orientdb.com)
+ * @deprecated see {@link com.orientechnologies.orient.core.sql.functions.graph.OSQLFunctionDijkstra} instead
  */
+@Deprecated
 public class OSQLFunctionDijkstra extends OSQLFunctionPathFinder {
   public static final String NAME = "dijkstra";
 

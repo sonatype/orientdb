@@ -19,9 +19,13 @@
  */
 package com.orientechnologies.orient.server.network.protocol.http.command.post;
 
+import com.orientechnologies.orient.core.command.OBasicCommandContext;
+import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocument;
 import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.sql.OSQLEngine;
 import com.orientechnologies.orient.core.sql.executor.OResultSet;
+import com.orientechnologies.orient.core.sql.parser.*;
 import com.orientechnologies.orient.server.network.protocol.http.OHttpRequest;
 import com.orientechnologies.orient.server.network.protocol.http.OHttpResponse;
 import com.orientechnologies.orient.server.network.protocol.http.command.OServerCommandAuthenticatedDbAbstract;
@@ -39,7 +43,7 @@ public class OServerCommandPostCommand extends OServerCommandAuthenticatedDbAbst
     // TRY TO GET THE COMMAND FROM THE URL, THEN FROM THE CONTENT
     final String language = urlParts.length > 2 ? urlParts[2].trim() : "sql";
     String text = urlParts.length > 3 ? urlParts[3].trim() : iRequest.content;
-    final int limit = urlParts.length > 4 ? Integer.parseInt(urlParts[4].trim()) : -1;
+    int limit = urlParts.length > 4 ? Integer.parseInt(urlParts[4].trim()) : -1;
     String fetchPlan = urlParts.length > 5 ? urlParts[5] : null;
     final String accept = iRequest.getHeader("accept");
 
@@ -76,7 +80,13 @@ public class OServerCommandPostCommand extends OServerCommandAuthenticatedDbAbst
 
     try {
       db = getProfiledDatabaseInstance(iRequest);
-      OResultSet result = executeStatement(language,text, params, db);
+      OStatement stm = parseStatement(language, text, db);
+      OResultSet result = executeStatement(language, text, params, db);
+      limit = getLimitFromStatement(stm, limit);
+      String localFetchPlan = getFetchPlanFromStatement(stm);
+      if (localFetchPlan != null) {
+        fetchPlan = localFetchPlan;
+      }
       int i = 0;
       List response = new ArrayList();
       while (result.hasNext()) {
@@ -89,6 +99,10 @@ public class OServerCommandPostCommand extends OServerCommandAuthenticatedDbAbst
       result.close();
 
       String format = null;
+      if (fetchPlan != null) {
+        format = "fetchPlan:" + fetchPlan;
+      }
+
       Map<String, Object> additionalContent = new HashMap<>();
 
       if (iRequest.getHeader("TE") != null)
@@ -104,6 +118,47 @@ public class OServerCommandPostCommand extends OServerCommandAuthenticatedDbAbst
     }
 
     return false;
+  }
+
+  private String getFetchPlanFromStatement(OStatement statement) {
+    if (statement instanceof OSelectStatement) {
+      OFetchPlan fp = ((OSelectStatement) statement).getFetchPlan();
+      if (fp != null) {
+        return fp.toString().substring("FETCHPLAN ".length());
+      }
+    } else if (statement instanceof OMatchStatement) {
+      return ((OMatchStatement) statement).getFetchPlan();
+    }
+    return null;
+  }
+
+  private OStatement parseStatement(String language, String text, ODatabaseDocument db) {
+    try {
+      if (language != null && language.equalsIgnoreCase("sql")) {
+        return OSQLEngine.parse(text, (ODatabaseDocumentInternal) db);
+      }
+    } catch (Exception e) {
+    }
+    return null;
+  }
+
+  private int getLimitFromStatement(OStatement statement, int previousLimit) {
+    try {
+      OLimit limit = null;
+      if (statement instanceof OSelectStatement) {
+        limit = ((OSelectStatement) statement).getLimit();
+      } else if (statement instanceof OMatchStatement) {
+        limit = ((OMatchStatement) statement).getLimit();
+      } else if (statement instanceof OTraverseStatement) {
+        limit = ((OTraverseStatement) statement).getLimit();
+      }
+      if (limit != null) {
+        return limit.getValue(new OBasicCommandContext());
+      }
+
+    } catch (Exception e) {
+    }
+    return previousLimit;
   }
 
   protected OResultSet executeStatement(String language, String text, Object params, ODatabaseDocument db) {

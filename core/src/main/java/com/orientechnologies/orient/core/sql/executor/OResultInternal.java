@@ -2,7 +2,10 @@ package com.orientechnologies.orient.core.sql.executor;
 
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.id.OContextualRecordId;
+import com.orientechnologies.orient.core.id.ORID;
+import com.orientechnologies.orient.core.id.ORecordId;
 import com.orientechnologies.orient.core.record.OElement;
+import com.orientechnologies.orient.core.record.ORecordInternal;
 import com.orientechnologies.orient.core.record.impl.OBlob;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 
@@ -13,7 +16,7 @@ import java.util.stream.Collectors;
  * Created by luigidellaquila on 06/07/16.
  */
 public class OResultInternal implements OResult {
-  protected Map<String, Object> content = new HashMap<>();
+  protected Map<String, Object> content = new LinkedHashMap<>();
   protected Map<String, Object> metadata;
   protected OIdentifiable       element;
 
@@ -21,7 +24,11 @@ public class OResultInternal implements OResult {
     if (value instanceof Optional) {
       value = ((Optional) value).orElse(null);
     }
-    content.put(name, value);
+    if (value instanceof OResult && ((OResult) value).isElement()) {
+      content.put(name, ((OResult) value).getElement().get());
+    } else {
+      content.put(name, value);
+    }
   }
 
   public void removeProperty(String name) {
@@ -69,15 +76,40 @@ public class OResultInternal implements OResult {
     }
     ODocument doc = new ODocument();
     for (String s : getPropertyNames()) {
-      if (s != null && (s.equalsIgnoreCase("@rid") || s.equalsIgnoreCase("@version"))) {
+      if (s == null) {
         continue;
-      } else if (s != null && s.equalsIgnoreCase("@class")) {
+      } else if (s.equalsIgnoreCase("@rid")) {
+        Object newRid = getProperty(s);
+        if (newRid instanceof OIdentifiable) {
+          newRid = ((OIdentifiable) newRid).getIdentity();
+        } else {
+          continue;
+        }
+        ORecordId oldId = (ORecordId) doc.getIdentity();
+        oldId.setClusterId(((ORID) newRid).getClusterId());
+        oldId.setClusterPosition(((ORID) newRid).getClusterPosition());
+      } else if (s.equalsIgnoreCase("@version")) {
+        Object v = getProperty(s);
+        if (v instanceof Number) {
+          ORecordInternal.setVersion(doc, ((Number) v).intValue());
+        } else {
+          continue;
+        }
+      } else if (s.equalsIgnoreCase("@class")) {
         doc.setClassName(getProperty(s));
       } else {
         doc.setProperty(s, convertToElement(getProperty(s)));
       }
     }
     return doc;
+  }
+
+  @Override
+  public Optional<ORID> getIdentity() {
+    if (element != null) {
+      return Optional.of(element.getIdentity());
+    }
+    return Optional.empty();
   }
 
   @Override

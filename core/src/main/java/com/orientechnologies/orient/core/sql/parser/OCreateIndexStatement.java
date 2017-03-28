@@ -5,6 +5,7 @@ package com.orientechnologies.orient.core.sql.parser;
 import com.orientechnologies.orient.core.collate.OCollate;
 import com.orientechnologies.orient.core.command.OCommandContext;
 import com.orientechnologies.orient.core.db.ODatabase;
+import com.orientechnologies.orient.core.exception.OCommandExecutionException;
 import com.orientechnologies.orient.core.exception.ODatabaseException;
 import com.orientechnologies.orient.core.index.*;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
@@ -64,9 +65,8 @@ public class OCreateIndexStatement extends ODDLStatement {
       OType[] keyTypes = calculateKeyTypes(ctx);
 
       if (keyTypes != null && keyTypes.length > 0) {
-        idx = database.getMetadata().getIndexManager()
-            .createIndex(name.getValue(), type.getStringValue(),
-                new OSimpleKeyIndexDefinition(keyTypes, collatesList, factory.getLastVersion()), null, null, metadataDoc, engine);
+        idx = database.getMetadata().getIndexManager().createIndex(name.getValue(), type.getStringValue(),
+            new OSimpleKeyIndexDefinition(keyTypes, collatesList, factory.getLastVersion()), null, null, metadataDoc, engine);
       } else if (keyTypes != null && keyTypes.length == 0 && "LUCENE_CROSS_CLASS".equalsIgnoreCase(engine)) {
         //handle special case of cross class  Lucene index: awful but works
         OIndexDefinition keyDef = new OSimpleKeyIndexDefinition(new OType[] { OType.STRING }, collatesList,
@@ -135,7 +135,11 @@ public class OCreateIndexStatement extends ODDLStatement {
     if (className == null) {
       return null;
     }
-    return ctx.getDatabase().getMetadata().getSchema().getClass(className.getStringValue());
+    OClass result = ctx.getDatabase().getMetadata().getSchema().getClass(className.getStringValue());
+    if (result == null) {
+      throw new OCommandExecutionException("Cannot find class " + className);
+    }
+    return result;
   }
 
   /**
@@ -161,14 +165,19 @@ public class OCreateIndexStatement extends ODDLStatement {
 
   private List<OCollate> calculateCollates(OCommandContext ctx) {
     List<OCollate> result = new ArrayList<>();
+    boolean found = false;
     for (Property prop : this.propertyList) {
       String collate = prop.collate == null ? null : prop.collate.getStringValue();
       if (collate != null) {
         final OCollate col = OSQLEngine.getCollate(collate);
         result.add(col);
+        found = true;
       } else {
         result.add(null);
       }
+    }
+    if(!found){
+      return null;
     }
     return result;
   }
@@ -336,7 +345,11 @@ public class OCreateIndexStatement extends ODDLStatement {
      */
     public String getCompleteKey() {
       StringBuilder result = new StringBuilder();
-      result.append(name.getStringValue());
+      if (name != null)
+        result.append(name.getStringValue());
+      else if (recordAttribute != null)
+        result.append(recordAttribute.getName());
+
       if (byKey) {
         result.append(" by key");
       }

@@ -37,9 +37,9 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class OConsoleApplication {
-  protected static final String[]            COMMENT_PREFIXS = new String[] { "#", "--", "//" };
   public static final    String              ONLINE_HELP_URL = "https://raw.githubusercontent.com/orientechnologies/orientdb-docs/master/";
   public static final    String              ONLINE_HELP_EXT = ".md";
+  protected static final String[]            COMMENT_PREFIXS = new String[] { "#", "--", "//" };
   protected final        StringBuilder       commandBuffer   = new StringBuilder(2048);
   protected              InputStream         in              = System.in;                                                                  // System.in;
   protected              PrintStream         out             = System.out;
@@ -52,10 +52,6 @@ public class OConsoleApplication {
   protected boolean                 interactiveMode;
   protected String[]                args;
   protected TreeMap<Method, Object> methods;
-
-  protected enum RESULT {
-    OK, ERROR, EXIT
-  }
 
   public OConsoleApplication(String[] iArgs) {
     this.args = iArgs;
@@ -247,15 +243,15 @@ public class OConsoleApplication {
         }
 
         if (commandLine != null) {
-          if (iBatchMode || isEchoEnabled()) {
+          if (isEchoEnabled()) {
             out.println();
             out.print(getPrompt());
             out.print(commandLine);
             out.println();
           }
 
-          if(commandLine.endsWith(";")){
-            commandLine = commandLine.substring(0, commandLine.length()-1);
+          if (commandLine.endsWith(";")) {
+            commandLine = commandLine.substring(0, commandLine.length() - 1);
           }
           final RESULT status = execute(commandLine);
           commandLine = null;
@@ -266,20 +262,18 @@ public class OConsoleApplication {
         }
       }
 
-      if (commandBuffer.length() == 0) {
-        if (commandBuffer.length() > 0) {
-          if (iBatchMode) {
-            out.println();
-            out.print(getPrompt());
-            out.print(commandBuffer);
-            out.println();
-          }
-
-          final RESULT status = execute(commandBuffer.toString());
-          if (status == RESULT.EXIT
-              || (status == RESULT.ERROR && !Boolean.parseBoolean(properties.get("ignoreErrors"))) && iBatchMode)
-            return false;
+      if (commandBuffer.length() > 0) {
+        if (iBatchMode && isEchoEnabled()) {
+          out.println();
+          out.print(getPrompt());
+          out.print(commandBuffer);
+          out.println();
         }
+
+        final RESULT status = execute(commandBuffer.toString());
+        if (status == RESULT.EXIT
+            || (status == RESULT.ERROR && !Boolean.parseBoolean(properties.get("ignoreErrors"))) && iBatchMode)
+          return false;
       }
     } finally {
       commandStream.close();
@@ -737,5 +731,9 @@ public class OConsoleApplication {
     } catch (Exception e) {
     }
     return result.toString();
+  }
+
+  protected enum RESULT {
+    OK, ERROR, EXIT
   }
 }
