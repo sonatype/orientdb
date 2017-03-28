@@ -41,10 +41,8 @@ import com.orientechnologies.orient.core.metadata.security.OSecurityNull;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.storage.OStorage;
 import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
-import com.orientechnologies.orient.core.storage.impl.local.paginated.OLocalPaginatedStorage;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
-import java.io.IOException;
 import java.util.*;
 
 /**
@@ -347,7 +345,7 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
     final OStorage storage = database.getStorage().getUnderlying();
     if (storage instanceof OAbstractPaginatedStorage) {
       OAbstractPaginatedStorage paginatedStorage = (OAbstractPaginatedStorage) storage;
-      return paginatedStorage.isIndexRebuildScheduled();
+      return paginatedStorage.wereDataRestoredAfterOpen() && paginatedStorage.wereNonTxOperationsPerformedInPreviousOpen();
     }
 
     return false;
@@ -533,16 +531,6 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
       newDb.getMetadata().getIndexManager().save();
 
       rebuildCompleted = true;
-      final OStorage storage = newDb.getStorage().getUnderlying();
-
-      if (storage instanceof OLocalPaginatedStorage) {
-        final OLocalPaginatedStorage paginatedStorage = (OLocalPaginatedStorage) storage;
-        try {
-          paginatedStorage.cancelIndexRebuild();
-        } catch (IOException e) {
-          OLogManager.instance().error(this, "Storage index rebuild flag can not be canceled after index rebuild", e);
-        }
-      }
 
       OLogManager.instance().info(this, "%d indexes were restored successfully, %d errors", ok, errors);
     }
