@@ -15,7 +15,6 @@ import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.memory.MemoryIndex;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -99,12 +98,7 @@ public class OLuceneSearchOnFieldsFunction extends OSQLFunctionAbstract implemen
       OCommandContext ctx,
       OExpression... args) {
 
-    List<String> fieldNames = (List<String>) args[0].execute((OIdentifiable) null, ctx);
-
-    OFromItem item = target.getItem();
-    String className = item.getIdentifier().getStringValue();
-
-    OLuceneFullTextIndex index = searchForIndex(className, ctx, fieldNames);
+    OLuceneFullTextIndex index = searchForIndex(target, ctx, args);
 
     OExpression expression = args[1];
     String query = (String) expression.execute((OIdentifiable) null, ctx);
@@ -122,16 +116,25 @@ public class OLuceneSearchOnFieldsFunction extends OSQLFunctionAbstract implemen
 
       return luceneResultSet;
     }
-    return Collections.emptySet();
+    throw new RuntimeException();
 
+  }
+
+  private OLuceneFullTextIndex searchForIndex(OFromClause target, OCommandContext ctx, OExpression... args) {
+    List<String> fieldNames = (List<String>) args[0].execute((OIdentifiable) null, ctx);
+    OFromItem item = target.getItem();
+    String className = item.getIdentifier().getStringValue();
+
+    return searchForIndex(className, ctx, fieldNames);
   }
 
   private OLuceneFullTextIndex searchForIndex(String className, OCommandContext ctx, List<String> fieldNames) {
     OMetadata dbMetadata = ctx.getDatabase().activateOnCurrentThread().getMetadata();
 
     List<OLuceneFullTextIndex> indices = dbMetadata
-        .getIndexManager()
-        .getClassIndexes(className)
+        .getSchema()
+        .getClass(className)
+        .getIndexes()
         .stream()
         .filter(idx -> idx instanceof OLuceneFullTextIndex)
         .map(idx -> (OLuceneFullTextIndex) idx)
@@ -154,19 +157,25 @@ public class OLuceneSearchOnFieldsFunction extends OSQLFunctionAbstract implemen
   @Override
   public long estimate(OFromClause target, OBinaryCompareOperator operator, Object rightValue, OCommandContext ctx,
       OExpression... args) {
+
+    OLuceneFullTextIndex index = searchForIndex(target, ctx, args);
+
+    if (index != null)
+      return index.getSize();
     return 0;
   }
 
   @Override
   public boolean canExecuteWithoutIndex(OFromClause target, OBinaryCompareOperator operator, Object rightValue, OCommandContext ctx,
       OExpression... args) {
-    return true;
+    return allowsIndexedExecution(target, operator, rightValue, ctx, args);
   }
 
   @Override
   public boolean allowsIndexedExecution(OFromClause target, OBinaryCompareOperator operator, Object rightValue, OCommandContext ctx,
       OExpression... args) {
-    return true;
+    OLuceneFullTextIndex index = searchForIndex(target, ctx, args);
+    return index != null;
   }
 
   @Override
