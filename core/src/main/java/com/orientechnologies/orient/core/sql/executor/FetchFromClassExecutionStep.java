@@ -27,8 +27,8 @@ public class FetchFromClassExecutionStep extends AbstractExecutionStep {
    * @param ctx       the query context
    * @param ridOrder  true to sort by RID asc, false to sort by RID desc, null for no sort.
    */
-  public FetchFromClassExecutionStep(String className, OCommandContext ctx, Boolean ridOrder) {
-    super(ctx);
+  public FetchFromClassExecutionStep(String className, OCommandContext ctx, Boolean ridOrder, boolean profilingEnabled) {
+    super(ctx, profilingEnabled);
 
     this.className = className;
     if (Boolean.TRUE.equals(ridOrder)) {
@@ -50,7 +50,7 @@ public class FetchFromClassExecutionStep extends AbstractExecutionStep {
     for (int i = 0; i < clusterIds.length; i++) {
       int clusterId = clusterIds[i];
       if (clusterId > 0) {
-        FetchFromClusterExecutionStep step = new FetchFromClusterExecutionStep(clusterId, ctx);
+        FetchFromClusterExecutionStep step = new FetchFromClusterExecutionStep(clusterId, ctx, profilingEnabled);
         if (orderByRidAsc) {
           step.setOrder(FetchFromClusterExecutionStep.ORDER_ASC);
         } else if (orderByRidDesc) {
@@ -59,7 +59,7 @@ public class FetchFromClassExecutionStep extends AbstractExecutionStep {
         subSteps[i] = step;
       } else {
         //current tx
-        FetchTemporaryFromTxStep step = new FetchTemporaryFromTxStep(ctx, className);
+        FetchTemporaryFromTxStep step = new FetchTemporaryFromTxStep(ctx, className, profilingEnabled);
         if (orderByRidAsc) {
           step.setOrder(FetchFromClusterExecutionStep.ORDER_ASC);
         } else if (orderByRidDesc) {
@@ -189,7 +189,11 @@ public class FetchFromClassExecutionStep extends AbstractExecutionStep {
     StringBuilder builder = new StringBuilder();
     String ind = OExecutionStepInternal.getIndent(depth, indent);
     builder.append(ind);
-    builder.append("+ FETCH FROM CLASS " + className + "\n");
+    builder.append("+ FETCH FROM CLASS " + className);
+    if (profilingEnabled) {
+      builder.append(" (" + getCostFormatted() + ")");
+    }
+    builder.append("\n");
     for (int i = 0; i < subSteps.length; i++) {
       OExecutionStepInternal step = subSteps[i];
       builder.append(step.prettyPrint(depth + 1, indent));

@@ -15,8 +15,8 @@ public class CastToVertexStep extends AbstractExecutionStep {
 
   private long cost;
 
-  public CastToVertexStep(OCommandContext ctx) {
-    super(ctx);
+  public CastToVertexStep(OCommandContext ctx, boolean profilingEnabled) {
+    super(ctx, profilingEnabled);
   }
 
   @Override
@@ -37,7 +37,7 @@ public class CastToVertexStep extends AbstractExecutionStep {
       @Override
       public OResult next() {
         OResult result = upstream.next();
-        long begin = System.nanoTime();
+        long begin = profilingEnabled ? System.nanoTime() : 0;
         try {
           if (result.getElement().orElse(null) instanceof OVertex) {
             return result;
@@ -55,7 +55,7 @@ public class CastToVertexStep extends AbstractExecutionStep {
           }
           return result;
         } finally {
-          cost += (System.nanoTime() - begin);
+          if(profilingEnabled){cost += (System.nanoTime() - begin);}
         }
       }
 
@@ -79,6 +79,15 @@ public class CastToVertexStep extends AbstractExecutionStep {
   @Override
   public void asyncPull(OCommandContext ctx, int nRecords, OExecutionCallback callback) throws OTimeoutException {
 
+  }
+
+  @Override
+  public String prettyPrint(int depth, int indent) {
+    String result = OExecutionStepInternal.getIndent(depth, indent) + "+ CAST TO VERTEX";
+    if (profilingEnabled) {
+      result += " (" + getCostFormatted() + ")";
+    }
+    return result;
   }
 
   @Override

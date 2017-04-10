@@ -20,8 +20,8 @@ import java.util.Optional;
 public class CheckSafeDeleteStep extends AbstractExecutionStep {
   private long cost = 0;
 
-  public CheckSafeDeleteStep(OCommandContext ctx) {
-    super(ctx);
+  public CheckSafeDeleteStep(OCommandContext ctx, boolean profilingEnabled) {
+    super(ctx, profilingEnabled);
   }
 
   @Override
@@ -36,7 +36,7 @@ public class CheckSafeDeleteStep extends AbstractExecutionStep {
       @Override
       public OResult next() {
         OResult result = upstream.next();
-        long begin = System.nanoTime();
+        long begin = profilingEnabled ? System.nanoTime() : 0;
         try {
           if (result.isElement()) {
             OIdentifiable elem = result.getElement().get();
@@ -56,7 +56,9 @@ public class CheckSafeDeleteStep extends AbstractExecutionStep {
           }
           return result;
         } finally {
-          cost += (System.nanoTime() - begin);
+          if (profilingEnabled) {
+            cost += (System.nanoTime() - begin);
+          }
         }
       }
 
@@ -93,6 +95,9 @@ public class CheckSafeDeleteStep extends AbstractExecutionStep {
     StringBuilder result = new StringBuilder();
     result.append(spaces);
     result.append("+ CHECK SAFE DELETE");
+    if (profilingEnabled) {
+      result.append(" (" + getCostFormatted() + ")");
+    }
     return result.toString();
   }
 

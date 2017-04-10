@@ -24,8 +24,8 @@ public class FetchFromClustersExecutionStep extends AbstractExecutionStep {
    * @param ctx        the query context
    * @param ridOrder   true to sort by RID asc, false to sort by RID desc, null for no sort.
    */
-  public FetchFromClustersExecutionStep(int[] clusterIds, OCommandContext ctx, Boolean ridOrder) {
-    super(ctx);
+  public FetchFromClustersExecutionStep(int[] clusterIds, OCommandContext ctx, Boolean ridOrder, boolean profilingEnabled) {
+    super(ctx, profilingEnabled);
 
     if (Boolean.TRUE.equals(ridOrder)) {
       orderByRidAsc = true;
@@ -36,7 +36,7 @@ public class FetchFromClustersExecutionStep extends AbstractExecutionStep {
     subSteps = new FetchFromClusterExecutionStep[clusterIds.length];
     sortClusers(clusterIds);
     for (int i = 0; i < clusterIds.length; i++) {
-      FetchFromClusterExecutionStep step = new FetchFromClusterExecutionStep(clusterIds[i], ctx);
+      FetchFromClusterExecutionStep step = new FetchFromClusterExecutionStep(clusterIds[i], ctx, profilingEnabled);
       if (orderByRidAsc) {
         step.setOrder(FetchFromClusterExecutionStep.ORDER_ASC);
       } else if (orderByRidDesc) {
@@ -163,7 +163,11 @@ public class FetchFromClustersExecutionStep extends AbstractExecutionStep {
     StringBuilder builder = new StringBuilder();
     String ind = OExecutionStepInternal.getIndent(depth, indent);
     builder.append(ind);
-    builder.append("+ FETCH FROM CLUSTERS \n");
+    builder.append("+ FETCH FROM CLUSTERS");
+    if (profilingEnabled) {
+      builder.append(" (" + getCostFormatted() + ")");
+    }
+    builder.append("\n");
     for (int i = 0; i < subSteps.length; i++) {
       OExecutionStepInternal step = subSteps[i];
       builder.append(step.prettyPrint(depth + 1, indent));

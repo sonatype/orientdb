@@ -19,8 +19,8 @@ public class CheckClassTypeStep extends AbstractExecutionStep {
 
   boolean found = false;
 
-  public CheckClassTypeStep(String targetClass, String parentClass, OCommandContext ctx) {
-    super(ctx);
+  public CheckClassTypeStep(String targetClass, String parentClass, OCommandContext ctx, boolean profilingEnabled) {
+    super(ctx, profilingEnabled);
     this.targetClass = targetClass;
     this.parentClass = parentClass;
   }
@@ -28,7 +28,7 @@ public class CheckClassTypeStep extends AbstractExecutionStep {
   @Override
   public OResultSet syncPull(OCommandContext ctx, int nRecords) throws OTimeoutException {
     getPrev().ifPresent(x -> x.syncPull(ctx, nRecords));
-    long begin = System.nanoTime();
+    long begin = profilingEnabled ? System.nanoTime() : 0;
     try {
       if (found) {
         return new OInternalResultSet();
@@ -59,7 +59,9 @@ public class CheckClassTypeStep extends AbstractExecutionStep {
       }
       return new OInternalResultSet();
     } finally {
-      cost += (System.nanoTime() - begin);
+      if (profilingEnabled) {
+        cost += (System.nanoTime() - begin);
+      }
     }
   }
 
@@ -78,7 +80,11 @@ public class CheckClassTypeStep extends AbstractExecutionStep {
     String spaces = OExecutionStepInternal.getIndent(depth, indent);
     StringBuilder result = new StringBuilder();
     result.append(spaces);
-    result.append("+ CHECK CLASS HIERARCHY\n");
+    result.append("+ CHECK CLASS HIERARCHY");
+    if (profilingEnabled) {
+      result.append(" (" + getCostFormatted() + ")");
+    }
+    result.append("\n");
     result.append("  " + this.parentClass);
     return result.toString();
   }

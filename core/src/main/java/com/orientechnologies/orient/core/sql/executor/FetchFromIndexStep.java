@@ -4,6 +4,7 @@ import com.orientechnologies.common.collection.OMultiCollectionIterator;
 import com.orientechnologies.common.collection.OMultiValue;
 import com.orientechnologies.common.concur.OTimeoutException;
 import com.orientechnologies.orient.core.command.OCommandContext;
+import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
 import com.orientechnologies.orient.core.index.OCompositeKey;
@@ -19,13 +20,14 @@ import java.util.*;
  * Created by luigidellaquila on 23/07/16.
  */
 public class FetchFromIndexStep extends AbstractExecutionStep {
-  protected final OIndex           index;
-  private final   OBinaryCondition additional;
-  private final   boolean          orderAsc;
+  protected final OIndex             index;
+  protected final OBooleanExpression condition;
+  private final   OBinaryCondition   additionalRangeCondition;
 
-  OBooleanExpression condition;
+  private final boolean orderAsc;
 
-  private long cost = 0;
+  private long cost  = 0;
+  private long count = 0;
 
   private boolean inited = false;
   private OIndexCursor cursor;
@@ -34,16 +36,16 @@ public class FetchFromIndexStep extends AbstractExecutionStep {
   private Map.Entry<Object, OIdentifiable> nextEntry = null;
 
   public FetchFromIndexStep(OIndex<?> index, OBooleanExpression condition, OBinaryCondition additionalRangeCondition,
-      OCommandContext ctx) {
-    this(index, condition, additionalRangeCondition, true, ctx);
+      OCommandContext ctx, boolean profilingEnabled) {
+    this(index, condition, additionalRangeCondition, true, ctx, profilingEnabled);
   }
 
   public FetchFromIndexStep(OIndex<?> index, OBooleanExpression condition, OBinaryCondition additionalRangeCondition,
-      boolean orderAsc, OCommandContext ctx) {
-    super(ctx);
+      boolean orderAsc, OCommandContext ctx, boolean profilingEnabled) {
+    super(ctx, profilingEnabled);
     this.index = index;
     this.condition = condition;
-    this.additional = additionalRangeCondition;
+    this.additionalRangeCondition = additionalRangeCondition;
     this.orderAsc = orderAsc;
   }
 
@@ -64,7 +66,7 @@ public class FetchFromIndexStep extends AbstractExecutionStep {
         if (!hasNext()) {
           throw new IllegalStateException();
         }
-        long begin = System.nanoTime();
+        long begin = profilingEnabled ? System.nanoTime() : 0;
         try {
           Map.Entry<Object, OIdentifiable> currentEntry = nextEntry;
           fetchNextEntry();
@@ -76,7 +78,9 @@ public class FetchFromIndexStep extends AbstractExecutionStep {
           ctx.setVariable("$current", result);
           return result;
         } finally {
-          cost += (System.nanoTime() - begin);
+          if (profilingEnabled) {
+            cost += (System.nanoTime() - begin);
+          }
         }
       }
 
@@ -124,6 +128,39 @@ public class FetchFromIndexStep extends AbstractExecutionStep {
         }
       };
     }
+    if (nextEntry == null) {
+      updateIndexStats();
+    } else {
+      count++;
+    }
+  }
+
+  private void updateIndexStats() {
+    //stats
+    OQueryStats stats = OQueryStats.get((ODatabaseDocumentInternal) ctx.getDatabase());
+    String indexName = index.getName();
+    boolean range = false;
+    int size = 0;
+
+    if (condition == null) {
+      size = 0;
+    } else if (condition instanceof OBinaryCondition) {
+      size = 1;
+    } else if (condition instanceof OBetweenCondition) {
+      size = 1;
+      range = true;
+    } else if (condition instanceof OAndBlock) {
+      OAndBlock andBlock = ((OAndBlock) condition);
+      size = andBlock.getSubBlocks().size();
+      OBooleanExpression lastOp = andBlock.getSubBlocks().get(andBlock.getSubBlocks().size() - 1);
+      if (lastOp instanceof OBinaryCondition) {
+        OBinaryCompareOperator op = ((OBinaryCondition) lastOp).getOperator();
+        range = op.isRangeOperator();
+      }
+    } else if (condition instanceof OInCondition) {
+      size = 1;
+    }
+    stats.pushIndexStats(indexName, size, range, additionalRangeCondition != null, count);
   }
 
   private synchronized void init() {
@@ -135,7 +172,7 @@ public class FetchFromIndexStep extends AbstractExecutionStep {
   }
 
   private void init(OBooleanExpression condition) {
-    long begin = System.nanoTime();
+    long begin = profilingEnabled ? System.nanoTime() : 0;
     try {
       if (index.getDefinition() == null) {
         return;
@@ -156,7 +193,9 @@ public class FetchFromIndexStep extends AbstractExecutionStep {
         throw new OCommandExecutionException("search for index for " + condition + " is not supported yet");
       }
     } finally {
-      cost += (System.nanoTime() - begin);
+      if (profilingEnabled) {
+        cost += (System.nanoTime() - begin);
+      }
     }
   }
 
@@ -219,10 +258,10 @@ public class FetchFromIndexStep extends AbstractExecutionStep {
    * it's not key = [...] but a real condition on field names, already ordered (field names will be ignored)
    */
   private void processAndBlock() {
-    OCollection fromKey = indexKeyFrom((OAndBlock) condition, additional);
-    OCollection toKey = indexKeyTo((OAndBlock) condition, additional);
-    boolean fromKeyIncluded = indexKeyFromIncluded((OAndBlock) condition, additional);
-    boolean toKeyIncluded = indexKeyToIncluded((OAndBlock) condition, additional);
+    OCollection fromKey = indexKeyFrom((OAndBlock) condition, additionalRangeCondition);
+    OCollection toKey = indexKeyTo((OAndBlock) condition, additionalRangeCondition);
+    boolean fromKeyIncluded = indexKeyFromIncluded((OAndBlock) condition, additionalRangeCondition);
+    boolean toKeyIncluded = indexKeyToIncluded((OAndBlock) condition, additionalRangeCondition);
     init(fromKey, fromKeyIncluded, toKey, toKeyIncluded);
   }
 
@@ -258,7 +297,7 @@ public class FetchFromIndexStep extends AbstractExecutionStep {
       cursor = index
           .iterateEntriesBetween(toBetweenIndexKey(indexDef, secondValue), fromKeyIncluded, toBetweenIndexKey(indexDef, thirdValue),
               toKeyIncluded, isOrderAsc());
-    } else if (additional == null && allEqualities((OAndBlock) condition)) {
+    } else if (additionalRangeCondition == null && allEqualities((OAndBlock) condition)) {
       cursor = index.iterateEntries(toIndexKey(indexDef, secondValue), isOrderAsc());
     } else {
       throw new UnsupportedOperationException("Cannot evaluate " + this.condition + " on index " + index);
@@ -349,7 +388,11 @@ public class FetchFromIndexStep extends AbstractExecutionStep {
 
   private Object toBetweenIndexKey(OIndexDefinition definition, Object rightValue) {
     if (definition.getFields().size() == 1 && rightValue instanceof Collection) {
-      rightValue = ((Collection) rightValue).iterator().next();
+      if (((Collection) rightValue).size() > 0) {
+        rightValue = ((Collection) rightValue).iterator().next();
+      } else {
+        rightValue = null;
+      }
     }
     rightValue = definition.createValue(rightValue);
 
@@ -495,11 +538,17 @@ public class FetchFromIndexStep extends AbstractExecutionStep {
 
   @Override
   public String prettyPrint(int depth, int indent) {
-    return OExecutionStepInternal.getIndent(depth, indent) + "+ FETCH FROM INDEX " + index.getName() + (condition == null ?
-        "" :
-        ("\n" + OExecutionStepInternal.getIndent(depth, indent) + "  " + condition + (additional == null ?
-            "" :
-            " and " + additional)));
+    String result = OExecutionStepInternal.getIndent(depth, indent) + "+ FETCH FROM INDEX " + index.getName();
+    if (profilingEnabled) {
+      result += " (" + getCostFormatted() + ")";
+    }
+    if (condition != null) {
+      result += ("\n" + OExecutionStepInternal.getIndent(depth, indent) + "  " + condition + (additionalRangeCondition == null ?
+          "" :
+          " and " + additionalRangeCondition));
+    }
+
+    return result;
   }
 
   @Override
