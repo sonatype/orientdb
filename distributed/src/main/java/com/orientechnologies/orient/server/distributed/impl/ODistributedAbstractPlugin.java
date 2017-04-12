@@ -96,7 +96,6 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   protected static final String NODE_NAME_ENV             = "ORIENTDB_NODE_NAME";
 
   protected OServer serverInstance;
-  protected boolean enabled = true;
   protected String nodeUuid;
   protected String nodeName = null;
   protected int    nodeId   = -1;
@@ -183,7 +182,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   }
 
   @Override
-  public synchronized String getCoordinatorServer() {
+  public String getCoordinatorServer() {
     return lockManagerRequester.getCoordinatorServer();
   }
 
@@ -717,7 +716,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
 
   @Override
   public void reassignClustersOwnership(final String iNode, final String databaseName,
-      final OModifiableDistributedConfiguration cfg) {
+      final OModifiableDistributedConfiguration cfg, final boolean canCreateNewClusters) {
 
     // REASSIGN CLUSTERS WITHOUT AN OWNER, AVOIDING TO REBALANCE EXISTENT
     final ODatabaseDocumentTx database = serverInstance.openDatabase(databaseName, "internal", "internal", null, true);
@@ -725,7 +724,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
       executeInDistributedDatabaseLock(databaseName, 15000, cfg, new OCallable<Boolean, OModifiableDistributedConfiguration>() {
         @Override
         public Boolean call(final OModifiableDistributedConfiguration cfg) {
-          rebalanceClusterOwnership(iNode, database, cfg);
+          rebalanceClusterOwnership(iNode, database, cfg, canCreateNewClusters);
           return null;
         }
       });
@@ -1430,7 +1429,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
       }
 
       try {
-        rebalanceClusterOwnership(nodeName, db, cfg);
+        rebalanceClusterOwnership(nodeName, db, cfg, false);
         distrDatabase.setOnline();
       } finally {
         db.activateOnCurrentThread();
@@ -1620,8 +1619,8 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
 
         if (ODistributedServerLog.isDebugEnabled())
           ODistributedServerLog
-              .debug(this, nodeName, null, DIRECTION.NONE, "Lock acquired. Current distributed configuration for database '%s': %s", databaseName,
-                  lastCfg.getDocument().toJSON());
+              .debug(this, nodeName, null, DIRECTION.NONE, "Lock acquired. Current distributed configuration for database '%s': %s",
+                  databaseName, lastCfg.getDocument().toJSON());
 
         try {
 
@@ -1630,8 +1629,8 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
         } finally {
           if (ODistributedServerLog.isDebugEnabled())
             ODistributedServerLog
-                .debug(this, nodeName, null, DIRECTION.NONE, "Lock acquired. New distributed configuration for database '%s': %s", databaseName,
-                    lastCfg.getDocument().toJSON());
+                .debug(this, nodeName, null, DIRECTION.NONE, "Lock acquired. New distributed configuration for database '%s': %s",
+                    databaseName, lastCfg.getDocument().toJSON());
 
           // CONFIGURATION CHANGED, UPDATE IT ON THE CLUSTER AND DISK
           updateCachedDatabaseConfiguration(databaseName, lastCfg, true);
@@ -1671,7 +1670,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   }
 
   protected void rebalanceClusterOwnership(final String iNode, final ODatabaseInternal iDatabase,
-      final OModifiableDistributedConfiguration cfg) {
+      final OModifiableDistributedConfiguration cfg, final boolean canCreateNewClusters) {
     final ODistributedConfiguration.ROLES role = cfg.getServerRole(iNode);
     if (role != ODistributedConfiguration.ROLES.MASTER)
       // NO MASTER, DON'T CREATE LOCAL CLUSTERS
@@ -1696,7 +1695,8 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
       cluster2CreateMap.put(clazz, cluster2Create);
     }
 
-    createClusters(iDatabase, cluster2CreateMap, cfg);
+    if (canCreateNewClusters)
+      createClusters(iDatabase, cluster2CreateMap, cfg);
 
     ODistributedServerLog
         .info(this, nodeName, null, DIRECTION.NONE, "Reassignment of clusters for database '%s' completed (classes=%d)",
@@ -2037,6 +2037,9 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   }
 
   public static String getListeningBinaryAddress(final ODocument cfg) {
+    if( cfg == null )
+      return null;
+
     String url = cfg.field("publicAddress");
 
     final Collection<Map<String, Object>> listeners = (Collection<Map<String, Object>>) cfg.field("listeners");

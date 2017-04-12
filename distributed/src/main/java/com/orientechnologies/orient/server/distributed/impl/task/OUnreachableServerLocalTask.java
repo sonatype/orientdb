@@ -68,6 +68,11 @@ public class OUnreachableServerLocalTask extends OAbstractRemoteTask {
   }
 
   @Override
+  public boolean hasResponse() {
+    return false;
+  }
+
+  @Override
   public String getName() {
     return "unreachable-server";
   }
@@ -80,6 +85,11 @@ public class OUnreachableServerLocalTask extends OAbstractRemoteTask {
   @Override
   public OCommandDistributedReplicateRequest.QUORUM_TYPE getQuorumType() {
     return OCommandDistributedReplicateRequest.QUORUM_TYPE.NONE;
+  }
+
+  @Override
+  public boolean isUsingDatabase() {
+    return false;
   }
 
   @Override

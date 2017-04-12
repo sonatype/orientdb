@@ -348,7 +348,8 @@ public class ODistributedWorker extends Thread {
       }
 
     } catch (RuntimeException e) {
-      sendResponseBack(iRequest, e);
+      if (task.hasResponse())
+        sendResponseBack(iRequest, e);
       throw e;
 
     } finally {
@@ -363,7 +364,8 @@ public class ODistributedWorker extends Thread {
       }
     }
 
-    sendResponseBack(iRequest, responsePayload);
+    if (task.hasResponse())
+      sendResponseBack(iRequest, responsePayload);
   }
 
   protected String getLocalNodeName() {
@@ -387,6 +389,8 @@ public class ODistributedWorker extends Thread {
     final ODistributedResponse response = new ODistributedResponse(iRequest.getId(), localNodeName, senderNodeName,
         responsePayload);
 
+    // TODO: check if using remote channel for local node still makes sense
+    //    if (!senderNodeName.equalsIgnoreCase(manager.getLocalNodeName()))
     try {
       // GET THE SENDER'S RESPONSE QUEUE
       final ORemoteServerController remoteSenderServer = manager.getRemoteServer(senderNodeName);
