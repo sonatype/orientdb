@@ -1538,7 +1538,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
                 "Class '%s', creation of new local cluster '%s' (id=%d)", clazz, newClusterName,
                 iDatabase.getClusterIdByName(newClusterName));
 
-            OScenarioThreadLocal.executeAsDistributed(new Callable<Object>() {
+            OScenarioThreadLocal.executeAsDefault(new Callable<Object>() {
               @Override
               public Object call() throws Exception {
                 try {
@@ -1582,32 +1582,8 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   public <T> T executeInDistributedDatabaseLock(final String databaseName, final long timeoutLocking,
       OModifiableDistributedConfiguration lastCfg, final OCallable<T, OModifiableDistributedConfiguration> iCallback) {
 
-    if (OScenarioThreadLocal.INSTANCE.isInDatabaseLock()) {
-      // ALREADY IN LOCK
-      try {
-        if (ODistributedServerLog.isDebugEnabled())
-          ODistributedServerLog
-              .debug(this, nodeName, null, DIRECTION.NONE, "Current distributed configuration for database '%s': %s", databaseName,
-                  lastCfg.getDocument().toJSON());
-
-        return (T) iCallback.call(lastCfg);
-
-      } finally {
-
-        if (ODistributedServerLog.isDebugEnabled())
-          ODistributedServerLog
-              .debug(this, nodeName, null, DIRECTION.NONE, "New distributed configuration for database '%s': %s", databaseName,
-                  lastCfg.getDocument().toJSON());
-
-        // CONFIGURATION CHANGED, UPDATE IT ON THE CLUSTER AND DISK
-        updateCachedDatabaseConfiguration(databaseName, lastCfg, true);
-      }
-    }
-
     lockManagerRequester.acquireExclusiveLock(databaseName, nodeName, timeoutLocking);
     try {
-
-      OScenarioThreadLocal.INSTANCE.setInDatabaseLock(true);
 
       if (lastCfg == null)
         // ACQUIRE CFG INSIDE THE LOCK
@@ -1631,7 +1607,6 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
         // CONFIGURATION CHANGED, UPDATE IT ON THE CLUSTER AND DISK
         updateCachedDatabaseConfiguration(databaseName, lastCfg, true);
 
-        OScenarioThreadLocal.INSTANCE.setInDatabaseLock(false);
       }
 
     } catch (RuntimeException e) {

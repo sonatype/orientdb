@@ -52,6 +52,7 @@ import com.orientechnologies.orient.core.type.ODocumentWrapperNoClass;
 
 import java.util.*;
 import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Shared schema class. It's shared by all the database instances that point to the same storage.
@@ -76,11 +77,12 @@ public class OSchemaShared extends ODocumentWrapperNoClass implements OCloseable
 
   private final OClusterSelectionFactory clusterSelectionFactory = new OClusterSelectionFactory();
 
-  private final    OModifiableInteger              modificationCounter  = new OModifiableInteger();
-  private final    List<OGlobalProperty>           properties           = new ArrayList<OGlobalProperty>();
-  private final    Map<String, OGlobalProperty>    propertiesByNameType = new HashMap<String, OGlobalProperty>();
-  private          Set<Integer>                    blobClusters         = new HashSet<Integer>();
-  private volatile int                             version              = 0;
+  private final    OModifiableInteger           modificationCounter  = new OModifiableInteger();
+  private final    List<OGlobalProperty>        properties           = new ArrayList<OGlobalProperty>();
+  private final    Map<String, OGlobalProperty> propertiesByNameType = new HashMap<String, OGlobalProperty>();
+  private          Set<Integer>                 blobClusters         = new HashSet<Integer>();
+  private volatile int                          version              = 0;
+  private volatile boolean                      acquiredDistributed  = false;
   private volatile OImmutableSchema snapshot;
 
   private static Set<String> internalClasses = new HashSet<String>();
@@ -535,7 +537,15 @@ public class OSchemaShared extends ODocumentWrapperNoClass implements OCloseable
     rwSpinLock.releaseReadLock();
   }
 
+  private boolean isDistributed() {
+    return getDatabase().getStorage() instanceof OAutoshardedStorage && !OScenarioThreadLocal.INSTANCE.isRunModeDistributed();
+  }
+
   public void acquireSchemaWriteLock() {
+    if (isDistributed()) {
+      ((OAutoshardedStorage) getDatabase().getStorage()).acquireDistributedExclusiveLock(0);
+      acquiredDistributed=true;
+    }
     rwSpinLock.acquireWriteLock();
     modificationCounter.increment();
   }
@@ -546,6 +556,7 @@ public class OSchemaShared extends ODocumentWrapperNoClass implements OCloseable
 
   public void releaseSchemaWriteLock(final boolean iSave) {
     int count;
+    boolean releaseDistributed = acquiredDistributed;
     try {
       if (modificationCounter.intValue() == 1) {
         // if it is embedded storage modification of schema is done by internal methods otherwise it is done by
@@ -558,16 +569,17 @@ public class OSchemaShared extends ODocumentWrapperNoClass implements OCloseable
             reload();
         else
           snapshot = new OImmutableSchema(this);
-
+        this.acquiredDistributed = false;
         version++;
       }
     } finally {
       modificationCounter.decrement();
       count = modificationCounter.intValue();
       rwSpinLock.releaseWriteLock();
-
+      if (isDistributed() && releaseDistributed) {
+        ((OAutoshardedStorage) getDatabase().getStorage()).releaseDistributedExclusiveLock();
+      }
     }
-
     assert count >= 0;
 
     if (count == 0 && getDatabase().getStorage().getUnderlying() instanceof OStorageProxy) {
@@ -790,6 +802,7 @@ public class OSchemaShared extends ODocumentWrapperNoClass implements OCloseable
       rwSpinLock.releaseWriteLock();
     }
   }
+
   public void create(final ODatabaseDocumentInternal database) {
     rwSpinLock.acquireWriteLock();
     try {
@@ -976,7 +989,6 @@ public class OSchemaShared extends ODocumentWrapperNoClass implements OCloseable
 
       for (Iterator<ODatabaseListener> it = db.getListeners().iterator(); it.hasNext(); )
         it.next().onCreateClass(getDatabase(), result);
-
 
     } finally {
       releaseSchemaWriteLock();
