@@ -58,7 +58,14 @@ public class ODistributedOutput {
 
         final String serverName = m.field("name");
 
-        serverRow.field("Name", serverName + (manager.getLocalNodeName().equals(serverName) ? "*" : ""));
+        String serverLabel = serverName;
+        if (manager.getLocalNodeName().equals(serverName))
+          serverLabel += "(*)";
+
+        if (manager.getCoordinatorServer().equals(serverName))
+          serverLabel += "(@)";
+
+        serverRow.field("Name", serverLabel);
         serverRow.field("Status", m.field("status"));
         serverRow.field("Databases", (String) null);
         serverRow.field("Conns", m.field("connections"));
@@ -311,7 +318,7 @@ public class ODistributedOutput {
     final List<ODocument> members = distribCfg.field("members");
 
     final StringBuilder buffer = new StringBuilder();
-    buffer.append("\nREPLICATION MESSAGE COORDINATOR STATS");
+    buffer.append("\nREPLICATION MESSAGE CURRENT NODE STATS");
     final OTableFormatter table = new OTableFormatter(new OTableFormatter.OTableOutput() {
       @Override
       public void onMessage(final String text, final Object... args) {
@@ -663,12 +670,12 @@ public class ODistributedOutput {
       SimpleDateFormat dateFormat = new SimpleDateFormat(ODateHelper.DEF_DATETIME_FORMAT);
 
       for (ORID rid : orderedRIDs) {
-        final ODocument row = new ODocument();
-        rows.add(row);
-
         final ODistributedDatabaseImpl.ODistributedLock lock = lockManager.get(rid);
         if (lock == null)
           continue;
+
+        final ODocument row = new ODocument();
+        rows.add(row);
 
         row.field("rid", rid);
         row.field("server", manager.getNodeNameById(lock.reqId.getNodeId()));

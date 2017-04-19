@@ -291,9 +291,9 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
             } while (System.currentTimeMillis() - start < taskTimeout);
 
             if (!locked) {
-              final String msg = String
-                  .format("Cannot execute distributed request (%s) because all worker threads (%d) are busy (pending=%d)", request,
-                      workerThreads.size(), syncLatch.getCount());
+              final String msg = String.format(
+                  "Cannot execute distributed request (%s) because all worker threads (%d) are busy (pending=%d timeout=%d)",
+                  request, workerThreads.size(), syncLatch.getCount(), taskTimeout);
               ODistributedWorker.sendResponseBack(this, manager, request, new ODistributedOperationException(msg));
               return;
             }
@@ -1005,7 +1005,7 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
   }
 
   protected void checkLocalNodeInConfiguration(final ODistributedConfiguration cfg) {
-    manager.executeInDistributedDatabaseLock(databaseName, 0, cfg != null ? cfg.modify() : null,
+    manager.executeInDistributedDatabaseLock(databaseName, 20000, cfg != null ? cfg.modify() : null,
         new OCallable<Void, OModifiableDistributedConfiguration>() {
           @Override
           public Void call(final OModifiableDistributedConfiguration lastCfg) {
@@ -1168,7 +1168,7 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
       i = 0;
       for (ODistributedRequest m : t.localQueue) {
         if (m != null)
-          buffer.append("\n  - " + i + " = " + m.toString());
+          buffer.append("\n  - " + (i++) + " = " + m.toString());
       }
     }
     return buffer.toString();

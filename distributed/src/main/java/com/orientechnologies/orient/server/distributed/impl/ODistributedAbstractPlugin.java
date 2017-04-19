@@ -74,10 +74,7 @@ import com.orientechnologies.orient.server.plugin.OServerPluginAbstract;
 
 import java.io.*;
 import java.util.*;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -96,7 +93,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   protected static final String NODE_NAME_ENV             = "ORIENTDB_NODE_NAME";
 
   protected OServer serverInstance;
-  protected String nodeUuid;
+  protected String  nodeUuid;
   protected String nodeName = null;
   protected int    nodeId   = -1;
   protected File defaultDatabaseConfigFile;
@@ -117,8 +114,8 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   protected              Map<String, Member>  activeNodes            = new ConcurrentHashMap<String, Member>();
   protected              Map<String, String>  activeNodesNamesByUuid = new ConcurrentHashMap<String, String>();
   protected              Map<String, String>  activeNodesUuidByName  = new ConcurrentHashMap<String, String>();
-  protected final        List<String>         registeredNodeById     = new ArrayList<String>();
-  protected final        Map<String, Integer> registeredNodeByName   = new HashMap<String, Integer>();
+  protected final        List<String>         registeredNodeById     = new CopyOnWriteArrayList<String>();
+  protected final        Map<String, Integer> registeredNodeByName   = new ConcurrentHashMap<String, Integer>();
   protected              Map<String, Long>    autoRemovalOfServers   = new ConcurrentHashMap<String, Long>();
   protected volatile ODistributedMessageServiceImpl messageService;
   protected Date                 startedOn              = new Date();
@@ -129,7 +126,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   protected        CountDownLatch                      serverStarted           = new CountDownLatch(1);
   private          ODistributedConflictResolverFactory conflictResolverFactory = new ODistributedConflictResolverFactory();
   private final    ODistributedLockManagerRequester    lockManagerRequester    = new ODistributedLockManagerRequester(this);
-  private final    ODistributedLockManagerExecutor     lockManagerExecutor     = new ODistributedLockManagerExecutor(this);
+  private ODistributedLockManagerExecutor lockManagerExecutor;
 
   protected ODistributedAbstractPlugin() {
   }
@@ -169,6 +166,8 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
         setDefaultDatabaseConfigFile(param.value);
       }
     }
+
+    lockManagerExecutor = new ODistributedLockManagerExecutor(this);
 
     if (serverInstance.getUser("replicator") == null)
       // DROP THE REPLICATOR USER. THIS USER WAS NEEDED BEFORE 2.2, BUT IT'S NOT REQUIRED ANYMORE
@@ -241,6 +240,12 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
     activeNodes.clear();
     activeNodesNamesByUuid.clear();
     activeNodesUuidByName.clear();
+
+    if( lockManagerExecutor != null )
+      lockManagerExecutor.shutdown();
+
+    if( lockManagerRequester != null )
+      lockManagerRequester.shutdown();
 
     setNodeStatus(NODE_STATUS.OFFLINE);
 
@@ -693,12 +698,10 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
 
   @Override
   public int getNodeIdByName(final String name) {
-    synchronized (registeredNodeByName) {
-      final Integer val = registeredNodeByName.get(name);
-      if (val == null)
-        return -1;
-      return val.intValue();
-    }
+    final Integer val = registeredNodeByName.get(name);
+    if (val == null)
+      return -1;
+    return val.intValue();
   }
 
   @Override
@@ -721,7 +724,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
     // REASSIGN CLUSTERS WITHOUT AN OWNER, AVOIDING TO REBALANCE EXISTENT
     final ODatabaseDocumentTx database = serverInstance.openDatabase(databaseName, "internal", "internal", null, true);
     try {
-      executeInDistributedDatabaseLock(databaseName, 15000, cfg, new OCallable<Boolean, OModifiableDistributedConfiguration>() {
+      executeInDistributedDatabaseLock(databaseName, 20000, cfg, new OCallable<Boolean, OModifiableDistributedConfiguration>() {
         @Override
         public Boolean call(final OModifiableDistributedConfiguration cfg) {
           rebalanceClusterOwnership(iNode, database, cfg, canCreateNewClusters);
@@ -837,7 +840,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   }
 
   @Override
-  public synchronized boolean installDatabase(final boolean iStartup, final String databaseName, final boolean forceDeployment,
+  public boolean installDatabase(final boolean iStartup, final String databaseName, final boolean forceDeployment,
       final boolean tryWithDeltaFirst) {
     if (getDatabaseStatus(getLocalNodeName(), databaseName) == DB_STATUS.OFFLINE)
       // OFFLINE: AVOID TO INSTALL IT
@@ -849,7 +852,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
 
     final ODistributedDatabaseImpl distrDatabase = messageService.registerDatabase(databaseName, null);
 
-    return executeInDistributedDatabaseLock(databaseName, 0, null, new OCallable<Boolean, OModifiableDistributedConfiguration>() {
+    return executeInDistributedDatabaseLock(databaseName, 20000, null, new OCallable<Boolean, OModifiableDistributedConfiguration>() {
       @Override
       public Boolean call(OModifiableDistributedConfiguration cfg) {
         // GET ALL THE OTHER SERVERS
@@ -1484,7 +1487,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   /**
    * Guarantees that each class has own master cluster.
    */
-  public synchronized boolean installClustersOfClass(final ODatabaseInternal iDatabase, final OClass iClass,
+  public boolean installClustersOfClass(final ODatabaseInternal iDatabase, final OClass iClass,
       OModifiableDistributedConfiguration cfg) {
 
     final String databaseName = iDatabase.getName();
@@ -1523,7 +1526,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
     if (cluster2Create.isEmpty())
       return;
 
-    executeInDistributedDatabaseLock(iDatabase.getName(), 0, cfg, new OCallable<Object, OModifiableDistributedConfiguration>() {
+    executeInDistributedDatabaseLock(iDatabase.getName(), 20000, cfg, new OCallable<Object, OModifiableDistributedConfiguration>() {
       @Override
       public Object call(final OModifiableDistributedConfiguration cfg) {
 
@@ -1645,22 +1648,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
       throw new RuntimeException(e);
 
     } finally {
-      for (int retry = 0; retry < 10; ++retry)
-        try {
-          lockManagerRequester.releaseExclusiveLock(databaseName, nodeName);
-          // RELEASED
-          break;
-        } catch (Throwable t) {
-          // ERROR: RETRY IN A BIT
-          ODistributedServerLog.error(this, nodeName, databaseName, DIRECTION.OUT,
-              "Cannot release distributed lock against database '%s' coordinator server '%s' (error: %s)", databaseName,
-              lockManagerRequester.getCoordinatorServer(), t);
-          try {
-            Thread.sleep(100);
-          } catch (InterruptedException e) {
-            break;
-          }
-        }
+      lockManagerRequester.releaseExclusiveLock(databaseName, nodeName);
     }
   }
 
@@ -1870,7 +1858,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
 
       try {
         final ODistributedAbstractPlugin me = this;
-        executeInDistributedDatabaseLock(databaseName, 0, cfg, new OCallable<Void, OModifiableDistributedConfiguration>() {
+        executeInDistributedDatabaseLock(databaseName, 20000, cfg, new OCallable<Void, OModifiableDistributedConfiguration>() {
           @Override
           public Void call(final OModifiableDistributedConfiguration cfg) {
             try {
@@ -1970,8 +1958,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   }
 
   public long getNextMessageIdCounter() {
-    final long v = localMessageIdCounter.getAndIncrement();
-    return v;
+    return localMessageIdCounter.getAndIncrement();
   }
 
   public void closeRemoteServer(final String node) {
@@ -2010,8 +1997,9 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
     if (!lastServerDump.equals(compactStatus)) {
       lastServerDump = compactStatus;
 
-      ODistributedServerLog.info(this, getLocalNodeName(), null, DIRECTION.NONE, "Distributed servers status:\n%s",
-          ODistributedOutput.formatServerStatus(this, cfg));
+      ODistributedServerLog
+          .info(this, getLocalNodeName(), null, DIRECTION.NONE, "Distributed servers status (*=current @=coordinator[%s]):\n%s",
+              getCoordinatorServer(), ODistributedOutput.formatServerStatus(this, cfg));
     }
   }
 
@@ -2037,7 +2025,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   }
 
   public static String getListeningBinaryAddress(final ODocument cfg) {
-    if( cfg == null )
+    if (cfg == null)
       return null;
 
     String url = cfg.field("publicAddress");
