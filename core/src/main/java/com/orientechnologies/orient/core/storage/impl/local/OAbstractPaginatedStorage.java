@@ -3080,7 +3080,6 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
       final int version, final byte recordType, final ORecordCallback<Integer> callback, final OCluster cluster) {
 
     try {
-
       final OPhysicalPosition ppos = cluster.getPhysicalPosition(new OPhysicalPosition(rid.getClusterPosition()));
       if (!checkForRecordValidity(ppos)) {
         final int recordVersion = -1;
@@ -3711,7 +3710,7 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
     }
 
     if (writeAheadLog.begin() == null) {
-      OLogManager.instance().error(this, "Restore is not possible because write ahead log is empty.");
+      OLogManager.instance().warn(this, "Restore is not possible because write ahead log is empty.");
       return null;
     }
 
