@@ -96,8 +96,8 @@ public class ODistributedTxContextImpl implements ODistributedTxContext {
 
   public synchronized int rollback(final ODatabaseDocumentInternal database) {
     ODistributedServerLog.debug(this, db.getManager().getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
-        "Distributed transaction %s: rolling back transaction (%d ops) on database '%s'", reqId, undoTasks.size(),
-        database != null ? database.getName() : "?");
+        "Distributed transaction %s: rolling back transaction (%d ops) on database '%s' tx=%s", reqId, undoTasks.size(),
+        database != null ? database.getName() : "?", database.getTransaction().isActive());
 
     for (ORemoteTask task : undoTasks) {
       try {
@@ -117,6 +117,21 @@ public class ODistributedTxContextImpl implements ODistributedTxContext {
   public synchronized void destroy() {
     unlock();
     undoTasks.clear();
+  }
+
+  /**
+   * Releases and re-acquires locks after a while.
+   */
+  @Override
+  public synchronized void relock(final long waitTime) throws InterruptedException {
+//    final List<ORID> locked = new ArrayList<ORID>(acquiredLocks);
+
+//    unlock();
+
+    Thread.sleep(waitTime);
+
+//    for (ORID rid : locked)
+//      lock(rid);
   }
 
   @Override
