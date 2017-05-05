@@ -28,8 +28,9 @@ public class OMatchExecutionPlanner {
   boolean returnPatterns     = false;
   boolean returnPathElements = false;
   boolean returnDistinct     = false;
-  protected OSkip  skip;
-  protected OLimit limit;
+  protected     OSkip    skip;
+  private final OOrderBy orderBy;
+  protected     OLimit   limit;
 
   //post-parsing
   private Pattern                   pattern;
@@ -51,6 +52,7 @@ public class OMatchExecutionPlanner {
     this.returnPatterns = stm.returnsPatterns();
     this.returnPathElements = stm.returnsPathElements();
     this.returnDistinct = stm.isReturnDistinct();
+    this.orderBy = stm.getOrderBy() == null ? null : stm.getOrderBy().copy();
   }
 
   public OInternalExecutionPlan createExecutionPlan(OCommandContext context, boolean enableProfiling) {
@@ -63,6 +65,7 @@ public class OMatchExecutionPlanner {
     Set<String> aliasesToPrefetch = estimatedRootEntries.entrySet().stream().filter(x -> x.getValue() < this.threshold).
         map(x -> x.getKey()).collect(Collectors.toSet());
     if (estimatedRootEntries.values().contains(0l)) {
+      result.chain(new EmptyStep(context, enableProfiling));
       return result;
     }
 
@@ -89,6 +92,10 @@ public class OMatchExecutionPlanner {
 
     if (this.returnDistinct) {
       result.chain(new DistinctExecutionStep(context, enableProfiling));
+    }
+
+    if (this.orderBy != null) {
+      result.chain(new OrderByStep(orderBy, context, enableProfiling));
     }
 
     if (this.skip != null && skip.getValue(context) >= 0) {
@@ -158,8 +165,7 @@ public class OMatchExecutionPlanner {
   /**
    * sort edges in the order they will be matched
    */
-  private List<EdgeTraversal> getTopologicalSortedSchedule(Map<String, Long> estimatedRootEntries,
-      Pattern pattern) {
+  private List<EdgeTraversal> getTopologicalSortedSchedule(Map<String, Long> estimatedRootEntries, Pattern pattern) {
     List<EdgeTraversal> resultingSchedule = new ArrayList<>();
     Map<String, Set<String>> remainingDependencies = getDependencies(pattern);
     Set<PatternNode> visitedNodes = new HashSet<>();
@@ -195,7 +201,7 @@ public class OMatchExecutionPlanner {
         if (visitedNodes.contains(currentNode)) {
           // If a previous traversal already visited this alias, remove it from further consideration.
           startsToRemove.add(currentAlias);
-        } else if (remainingDependencies.get(currentAlias).isEmpty()) {
+        } else if (remainingDependencies.get(currentAlias)==null || remainingDependencies.get(currentAlias).isEmpty()) {
           // If it hasn't been visited, and has all dependencies satisfied, visit it.
           startsToRemove.add(currentAlias);
           startingNode = currentNode;

@@ -1269,6 +1269,7 @@ OMatchStatement MatchStatement():
                 jjtThis.returnItems.add(lastReturn);
             }
         )*
+        [ jjtThis.orderBy = OrderBy() ]
         [ jjtThis.limit = Limit() ]
     ){ return jjtThis; }
 }
@@ -1893,6 +1894,8 @@ Token token;
 	    	token = <SKIP2> {jjtThis.paramName = token.image;}
 	    	|
             token = <LIMIT> {jjtThis.paramName = token.image;}
+            |
+            token = <FROM> {jjtThis.paramName = token.image;}
 	    )
 	)
 	{

@@ -1596,7 +1596,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
       nameIdMap.put(nameFileIdEntry.name, nameFileIdEntry.fileId);
     }
 
-    if (localFileCounter > 0)
+    if (localFileCounter > 0 && nextInternalId < localFileCounter)
       nextInternalId = (int) localFileCounter;
 
     for (Map.Entry<String, Integer> nameIdEntry : nameIdMap.entrySet()) {
@@ -1717,7 +1717,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
           try {
             if (pageCount == 1) {
               final ByteBuffer buffer = bufferPool.acquireDirect(false);
-              fileClassic.read(firstPageStartPosition, buffer);
+              fileClassic.read(firstPageStartPosition, buffer, false);
               buffer.position(0);
 
               final OCachePointer dataPointer = new OCachePointer(buffer, bufferPool, fileId, startPageIndex);
@@ -1734,7 +1734,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
               assert buffers[i].position() == 0;
             }
 
-            fileClassic.read(firstPageStartPosition, buffers);
+            fileClassic.read(firstPageStartPosition, buffers, false);
 
             final OCachePointer[] dataPointers = new OCachePointer[buffers.length];
             for (int n = 0; n < buffers.length; n++) {

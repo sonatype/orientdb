@@ -16,6 +16,8 @@ import com.orientechnologies.orient.core.metadata.security.ORole;
 import com.orientechnologies.orient.core.metadata.security.ORule;
 import com.orientechnologies.orient.core.record.ORecord;
 import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.sql.OCommandExecutorSQLResultsetDelegate;
+import com.orientechnologies.orient.core.sql.OCommandExecutorSQLSelect;
 import com.orientechnologies.orient.core.sql.OCommandSQLParsingException;
 import com.orientechnologies.orient.core.sql.OIterableRecordSource;
 import com.orientechnologies.orient.core.sql.executor.*;
@@ -89,7 +91,8 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
   protected           List<OExpression>      returnItems      = new ArrayList<OExpression>();
   protected           List<OIdentifier>      returnAliases    = new ArrayList<OIdentifier>();
   protected           boolean                returnDistinct   = false;
-  protected OLimit limit;
+  protected OOrderBy orderBy;
+  protected OLimit   limit;
 
   // post-parsing generated data
   protected Pattern pattern;
@@ -291,6 +294,9 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
    * @return
    */
   public Object execute(OSQLAsynchQuery<ODocument> request, OCommandContext context, OProgressListener progressListener) {
+    if (orderBy != null) {
+      throw new OCommandExecutionException("ORDER BY is not supported in MATCH on the legacy API");
+    }
     Map<Object, Object> iArgs = context.getInputParameters();
     try {
 
@@ -1061,10 +1067,18 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
       }
     }
     OSQLTarget target = new OSQLTarget(text, ctx);
-
     Iterable targetResult = (Iterable) target.getTargetRecords();
     if (targetResult == null) {
       return null;
+    }
+
+    if(targetResult instanceof OCommandExecutorSQLSelect){
+      ((OCommandExecutorSQLSelect) targetResult).getContext().setRecordingMetrics(ctx.isRecordingMetrics());
+    }else if(targetResult instanceof OCommandExecutorSQLResultsetDelegate){
+      OCommandExecutor delegate = ((OCommandExecutorSQLResultsetDelegate) targetResult).getDelegate();
+      if(delegate instanceof OCommandExecutorSQLSelect){
+        delegate.getContext().setRecordingMetrics(ctx.isRecordingMetrics());
+      }
     }
     return targetResult.iterator();
   }
@@ -1304,7 +1318,7 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
       first = false;
     }
     builder.append(" RETURN ");
-    if(returnDistinct){
+    if (returnDistinct) {
       builder.append("DISTINCT ");
     }
     first = true;
@@ -1321,7 +1335,12 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
       i++;
       first = false;
     }
+    if (orderBy != null) {
+      builder.append(" ");
+      orderBy.toString(params, builder);
+    }
     if (limit != null) {
+      builder.append(" ");
       limit.toString(params, builder);
     }
   }
@@ -1342,6 +1361,7 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
         matchExpressions == null ? null : matchExpressions.stream().map(x -> x.copy()).collect(Collectors.toList());
     result.returnItems = returnItems == null ? null : returnItems.stream().map(x -> x.copy()).collect(Collectors.toList());
     result.returnAliases = returnAliases == null ? null : returnAliases.stream().map(x -> x.copy()).collect(Collectors.toList());
+    result.orderBy = orderBy == null ? null : orderBy.copy();
     result.limit = limit == null ? null : limit.copy();
     result.returnDistinct = this.returnDistinct;
     result.buildPatterns();
@@ -1363,6 +1383,8 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
       return false;
     if (returnAliases != null ? !returnAliases.equals(that.returnAliases) : that.returnAliases != null)
       return false;
+    if (orderBy != null ? !orderBy.equals(that.orderBy) : that.orderBy != null)
+      return false;
     if (limit != null ? !limit.equals(that.limit) : that.limit != null)
       return false;
 
@@ -1377,6 +1399,7 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
     int result = matchExpressions != null ? matchExpressions.hashCode() : 0;
     result = 31 * result + (returnItems != null ? returnItems.hashCode() : 0);
     result = 31 * result + (returnAliases != null ? returnAliases.hashCode() : 0);
+    result = 31 * result + (orderBy != null ? orderBy.hashCode() : 0);
     result = 31 * result + (limit != null ? limit.hashCode() : 0);
     return result;
   }
@@ -1419,6 +1442,14 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
 
   public void setReturnDistinct(boolean returnDistinct) {
     this.returnDistinct = returnDistinct;
+  }
+
+  public OOrderBy getOrderBy() {
+    return orderBy;
+  }
+
+  public void setOrderBy(OOrderBy orderBy) {
+    this.orderBy = orderBy;
   }
 }
 /* JavaCC - OriginalChecksum=6ff0afbe9d31f08b72159fcf24070c9f (do not edit this line) */
