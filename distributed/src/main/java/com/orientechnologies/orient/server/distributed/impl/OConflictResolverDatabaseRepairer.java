@@ -75,11 +75,31 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
     final String chain = OGlobalConfiguration.DISTRIBUTED_CONFLICT_RESOLVER_REPAIRER_CHAIN.getValueAsString();
     final String[] items = chain.split(",");
     for (String item : items) {
-      final ODistributedConflictResolver cr = manager.getConflictResolverFactory().getImplementation(item);
+      final String name;
+      final ODocument config;
+
+      if (item.endsWith("}")) {
+        // EXTRACT CFG
+        final int pos = item.indexOf('{');
+        if (pos < 0)
+          throw new OConfigurationException("Invalid configuration for conflict resolver: " + item);
+
+        name = item.substring(0, pos);
+        config = new ODocument().fromJSON(item.substring(pos, item.length()));
+      } else {
+        name = item;
+        config = null;
+      }
+
+      final ODistributedConflictResolver cr = manager.getConflictResolverFactory().getImplementation(name);
       if (cr == null)
         throw new OConfigurationException(
-            "Cannot find '" + item + "' conflict resolver implementation. Available are: " + manager.getConflictResolverFactory()
+            "Cannot find '" + name + "' conflict resolver implementation. Available are: " + manager.getConflictResolverFactory()
                 .getRegisteredImplementationNames());
+
+      if (config != null)
+        cr.configure(config);
+
       conflictResolvers.add(cr);
     }
 
@@ -222,9 +242,6 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
 
     final ODistributedConfiguration dCfg = dManager.getDatabaseConfiguration(databaseName);
 
-    final int maxAutoRetry = OGlobalConfiguration.DISTRIBUTED_CONCURRENT_TX_MAX_AUTORETRY.getValueAsInteger();
-    final int autoRetryDelay = OGlobalConfiguration.DISTRIBUTED_CONCURRENT_TX_AUTORETRY_DELAY.getValueAsInteger();
-
     final ODistributedRequestId requestId = new ODistributedRequestId(dManager.getLocalNodeId(),
         dManager.getNextMessageIdCounter());
 
@@ -252,9 +269,7 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
       rids.add(new ORecordId(clusterId, -1));
 
       // ACQUIRE LOCKS ON LOCAL SERVER FIRST
-      ODistributedTransactionManager
-          .acquireMultipleRecordLocks(this, dManager, localDistributedDatabase, rids, maxAutoRetry, autoRetryDelay, null, ctx,
-              2000);
+      ODistributedTransactionManager.acquireMultipleRecordLocks(this, dManager, localDistributedDatabase, rids, null, ctx, 2000);
 
       try {
 
@@ -401,9 +416,6 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
   private boolean repairRecords(final ODatabaseDocumentInternal db, final List<ORecordId> rids) {
     final ODistributedConfiguration dCfg = dManager.getDatabaseConfiguration(databaseName);
 
-    final int maxAutoRetry = OGlobalConfiguration.DISTRIBUTED_CONCURRENT_TX_MAX_AUTORETRY.getValueAsInteger();
-    final int autoRetryDelay = OGlobalConfiguration.DISTRIBUTED_CONCURRENT_TX_AUTORETRY_DELAY.getValueAsInteger();
-
     final ODistributedRequestId requestId = new ODistributedRequestId(dManager.getLocalNodeId(),
         dManager.getNextMessageIdCounter());
 
@@ -413,9 +425,7 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
 
     try {
       // ACQUIRE LOCKS WITH A LARGER TIMEOUT
-      ODistributedTransactionManager
-          .acquireMultipleRecordLocks(this, dManager, localDistributedDatabase, rids, maxAutoRetry, autoRetryDelay, null, ctx,
-              2000);
+      ODistributedTransactionManager.acquireMultipleRecordLocks(this, dManager, localDistributedDatabase, rids, null, ctx, 2000);
       try {
 
         final Set<String> clusterNames = new HashSet();
@@ -513,14 +523,12 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
                 ODistributedServerLog.debug(this, dManager.getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
                     "Auto repair found %d groups of contents, analyzing the winner...", groupedResult.size());
 
-                ODocument config = null;
-
                 // EXECUTE THE CONFLICT RESOLVE PIPELINE: CONTINUE UNTIL THE WINNER IS NOT NULL (=RESOLVED)
                 Object winner = null;
                 Map<Object, List<String>> candidates = groupedResult;
                 for (ODistributedConflictResolver conflictResolver : conflictResolvers) {
                   final ODistributedConflictResolver.OConflictResult conflictResult = conflictResolver
-                      .onConflict(databaseName, db.getClusterNameById(rid.getClusterId()), rid, dManager, candidates, config);
+                      .onConflict(databaseName, db.getClusterNameById(rid.getClusterId()), rid, dManager, candidates);
 
                   winner = conflictResult.winner;
                   if (winner != NOT_FOUND)
@@ -533,7 +541,8 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
                 if (winner == NOT_FOUND) {
                   // NO WINNER, SKIP IT
                   ODistributedServerLog.warn(this, dManager.getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
-                      "Auto repair cannot find a winner for record %s and the following groups of contents: %s", rid, groupedResult);
+                      "Auto repair cannot find a winner for record %s and the following groups of contents: %s", rid,
+                      groupedResult);
                   continue;
                 }
 

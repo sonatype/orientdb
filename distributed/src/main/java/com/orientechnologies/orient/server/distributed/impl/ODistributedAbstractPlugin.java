@@ -97,7 +97,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   protected String nodeName = null;
   protected int    nodeId   = -1;
   protected File defaultDatabaseConfigFile;
-  protected final    ConcurrentHashMap<String, ODistributedStorage> storages = new ConcurrentHashMap<String, ODistributedStorage>();
+  protected final    ConcurrentMap<String, ODistributedStorage> storages = new ConcurrentHashMap<String, ODistributedStorage>();
   protected volatile NODE_STATUS                                    status   = NODE_STATUS.OFFLINE;
   protected long lastClusterChangeOn;
   protected       List<ODistributedLifecycleListener>            listeners                         = new ArrayList<ODistributedLifecycleListener>();
@@ -110,13 +110,13 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   protected AtomicLong                          localMessageIdCounter     = new AtomicLong();
   protected OClusterOwnershipAssignmentStrategy clusterAssignmentStrategy = new ODefaultClusterOwnershipAssignmentStrategy(this);
 
-  protected static final int                               DEPLOY_DB_MAX_RETRIES  = 10;
-  protected              ConcurrentHashMap<String, Member> activeNodes            = new ConcurrentHashMap<String, Member>();
-  protected              Map<String, String>               activeNodesNamesByUuid = new ConcurrentHashMap<String, String>();
-  protected              Map<String, String>               activeNodesUuidByName  = new ConcurrentHashMap<String, String>();
-  protected final        List<String>                      registeredNodeById     = new CopyOnWriteArrayList<String>();
-  protected final        Map<String, Integer>              registeredNodeByName   = new ConcurrentHashMap<String, Integer>();
-  protected              Map<String, Long>                 autoRemovalOfServers   = new ConcurrentHashMap<String, Long>();
+  protected static final int                  DEPLOY_DB_MAX_RETRIES  = 10;
+  protected              ConcurrentMap<String, Member>  activeNodes            = new ConcurrentHashMap<String, Member>();
+  protected              ConcurrentMap<String, String>  activeNodesNamesByUuid = new ConcurrentHashMap<String, String>();
+  protected              ConcurrentMap<String, String>  activeNodesUuidByName  = new ConcurrentHashMap<String, String>();
+  protected final        List<String>         registeredNodeById     = new CopyOnWriteArrayList<String>();
+  protected final        ConcurrentMap<String, Integer> registeredNodeByName   = new ConcurrentHashMap<String, Integer>();
+  protected              ConcurrentMap<String, Long>    autoRemovalOfServers   = new ConcurrentHashMap<String, Long>();
   protected volatile ODistributedMessageServiceImpl messageService;
   protected Date                 startedOn              = new Date();
   protected ORemoteTaskFactory   taskFactory            = new ODefaultRemoteTaskFactory();
