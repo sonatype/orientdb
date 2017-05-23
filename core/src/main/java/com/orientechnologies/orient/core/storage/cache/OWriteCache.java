@@ -72,7 +72,6 @@ public interface OWriteCache {
 
   void makeFuzzyCheckpoint();
 
-
   boolean exists(String fileName);
 
   boolean exists(long fileId);
@@ -94,7 +93,7 @@ public interface OWriteCache {
 
   void truncateFile(long fileId) throws IOException;
 
-  void renameFile(long fileId, String newFileName) throws IOException;
+  void renameFile(long fileId, String oldFileName, String newFileName) throws IOException;
 
   long[] close() throws IOException;
 
