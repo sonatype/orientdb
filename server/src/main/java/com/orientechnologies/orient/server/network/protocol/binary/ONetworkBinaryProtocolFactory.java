@@ -52,6 +52,7 @@ public class ONetworkBinaryProtocolFactory {
    * Legacy Protocol < 37
    *
    * @param requestType
+   *
    * @return
    */
   private static OBinaryRequest<? extends OBinaryResponse> createRequest(int requestType) {
@@ -205,10 +206,14 @@ public class ONetworkBinaryProtocolFactory {
    * Protocol 37
    *
    * @param requestType
+   *
    * @return
    */
   public static OBinaryRequest<? extends OBinaryResponse> createRequest37(int requestType) {
     switch (requestType) {
+
+    case OChannelBinaryProtocol.SUBSCRIBE_PUSH:
+      return new OSubscribeRequest();
 
     case OChannelBinaryProtocol.REQUEST_TX_FETCH:
       return new OFetchTransactionRequest();
@@ -226,7 +231,7 @@ public class ONetworkBinaryProtocolFactory {
       return new ORollbackTransactionRequest();
 
     case OChannelBinaryProtocol.REQUEST_DB_OPEN:
-      return new OOpenRequest37();
+      return new OOpen37Request();
 
     case OChannelBinaryProtocol.REQUEST_CONNECT:
       return new OConnect37Request();

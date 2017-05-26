@@ -36,6 +36,7 @@ import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.record.ORecord;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.serialization.serializer.record.ORecordSerializer;
+import com.orientechnologies.orient.core.serialization.serializer.record.binary.ORecordSerializerNetworkV37;
 import com.orientechnologies.orient.core.serialization.serializer.record.string.ORecordSerializerStringAbstract;
 import com.orientechnologies.orient.core.sql.query.OBasicLegacyResultSet;
 import com.orientechnologies.orient.core.sql.query.OLiveResultListener;
@@ -208,7 +209,9 @@ public final class OCommandResponse implements OBinaryResponse {
     }
   }
 
-  @Override public void read(OChannelDataInput network, OStorageRemoteSession session) throws IOException {
+  @Override
+  public void read(OChannelDataInput network, OStorageRemoteSession session) throws IOException {
+    ORecordSerializer serializer = ORecordSerializerNetworkV37.INSTANCE;
     try {
       // Collection of prefetched temporary record (nested projection record), to refer for avoid garbage collection.
       List<ORecord> temporaryResults = new ArrayList<ORecord>();
@@ -219,7 +222,7 @@ public final class OCommandResponse implements OBinaryResponse {
 
         // ASYNCH: READ ONE RECORD AT TIME
         while ((status = network.readByte()) > 0) {
-          final ORecord record = (ORecord) OChannelBinaryProtocol.readIdentifiable(network);
+          final ORecord record = (ORecord) OMessageHelper.readIdentifiable(network, serializer);
           if (record == null)
             continue;
 
@@ -246,32 +249,36 @@ public final class OCommandResponse implements OBinaryResponse {
           final Integer token = doc.field("token");
           final Boolean unsubscribe = doc.field("unsubscribe");
           if (token != null) {
-            OStorageRemote storage = (OStorageRemote) database.getStorage();
-            if (Boolean.TRUE.equals(unsubscribe)) {
-              if (storage.asynchEventListener != null)
-                storage.asynchEventListener.unregisterLiveListener(token);
-            } else {
-              final OLiveResultListener listener = (OLiveResultListener) this.listener;
-              final ODatabaseDocument dbCopy = database.copy();
-              ORemoteConnectionPool pool = storage.connectionManager.getPool(((OChannelBinaryAsynchClient) network).getServerURL());
-              storage.asynchEventListener.registerLiveListener(pool, token, new OLiveResultListener() {
-
-                @Override public void onUnsubscribe(int iLiveToken) {
-                  listener.onUnsubscribe(iLiveToken);
-                  dbCopy.close();
-                }
-
-                @Override public void onLiveResult(int iLiveToken, ORecordOperation iOp) throws OException {
-                  dbCopy.activateOnCurrentThread();
-                  listener.onLiveResult(iLiveToken, iOp);
-                }
-
-                @Override public void onError(int iLiveToken) {
-                  listener.onError(iLiveToken);
-                  dbCopy.close();
-                }
-              });
-            }
+//
+//            OStorageRemote storage = (OStorageRemote) database.getStorage();
+//            if (Boolean.TRUE.equals(unsubscribe)) {
+//              if (storage.asynchEventListener != null)
+//                storage.asynchEventListener.unregisterLiveListener(token);
+//            } else {
+//              final OLiveResultListener listener = (OLiveResultListener) this.listener;
+//              final ODatabaseDocument dbCopy = database.copy();
+//              ORemoteConnectionPool pool = storage.connectionManager.getPool(((OChannelBinaryAsynchClient) network).getServerURL());
+//              storage.asynchEventListener.registerLiveListener(pool, token, new OLiveResultListener() {
+//
+//                @Override
+//                public void onUnsubscribe(int iLiveToken) {
+//                  listener.onUnsubscribe(iLiveToken);
+//                  dbCopy.close();
+//                }
+//
+//                @Override
+//                public void onLiveResult(int iLiveToken, ORecordOperation iOp) throws OException {
+//                  dbCopy.activateOnCurrentThread();
+//                  listener.onLiveResult(iLiveToken, iOp);
+//                }
+//
+//                @Override
+//                public void onError(int iLiveToken) {
+//                  listener.onError(iLiveToken);
+//                  dbCopy.close();
+//                }
+//              });
+//            }
           } else {
             throw new OStorageException("Cannot execute live query, returned null token");
           }
@@ -292,7 +299,7 @@ public final class OCommandResponse implements OBinaryResponse {
 
   protected Object readSynchResult(final OChannelDataInput network, final ODatabaseDocument database,
       List<ORecord> temporaryResults) throws IOException {
-
+    ORecordSerializer serializer = ORecordSerializerNetworkV37.INSTANCE;
     final Object result;
 
     final byte type = network.readByte();
@@ -302,7 +309,7 @@ public final class OCommandResponse implements OBinaryResponse {
       break;
 
     case 'r':
-      result = OChannelBinaryProtocol.readIdentifiable(network);
+      result = OMessageHelper.readIdentifiable(network, serializer);
       if (result instanceof ORecord)
         database.getLocalCache().updateRecord((ORecord) result);
       break;
@@ -314,7 +321,7 @@ public final class OCommandResponse implements OBinaryResponse {
 
       coll = type == 's' ? new HashSet<OIdentifiable>(tot) : new OBasicLegacyResultSet<OIdentifiable>(tot);
       for (int i = 0; i < tot; ++i) {
-        final OIdentifiable resultItem = OChannelBinaryProtocol.readIdentifiable(network);
+        final OIdentifiable resultItem = OMessageHelper.readIdentifiable(network, serializer);
         if (resultItem instanceof ORecord)
           database.getLocalCache().updateRecord((ORecord) resultItem);
         coll.add(resultItem);
@@ -326,7 +333,7 @@ public final class OCommandResponse implements OBinaryResponse {
       coll = new OBasicLegacyResultSet<OIdentifiable>();
       byte status;
       while ((status = network.readByte()) > 0) {
-        final OIdentifiable record = OChannelBinaryProtocol.readIdentifiable(network);
+        final OIdentifiable record = OMessageHelper.readIdentifiable(network, serializer);
         if (record == null)
           continue;
         if (status == 1) {
@@ -338,7 +345,7 @@ public final class OCommandResponse implements OBinaryResponse {
       result = coll;
       break;
     case 'w':
-      final OIdentifiable record = OChannelBinaryProtocol.readIdentifiable(network);
+      final OIdentifiable record = OMessageHelper.readIdentifiable(network, serializer);
       // ((ODocument) record).setLazyLoad(false);
       result = ((ODocument) record).field("result");
       break;
@@ -351,7 +358,7 @@ public final class OCommandResponse implements OBinaryResponse {
     // LOAD THE FETCHED RECORDS IN CACHE
     byte status;
     while ((status = network.readByte()) > 0) {
-      final ORecord record = (ORecord) OChannelBinaryProtocol.readIdentifiable(network);
+      final ORecord record = (ORecord) OMessageHelper.readIdentifiable(network, serializer);
       if (record != null && status == 2) {
         // PUT IN THE CLIENT LOCAL CACHE
         database.getLocalCache().updateRecord(record);

@@ -19,8 +19,14 @@ import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.record.ORecord;
 import com.orientechnologies.orient.core.record.ORecordInternal;
 import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.record.impl.OEdgeDelegate;
+import com.orientechnologies.orient.core.record.impl.ORecordBytes;
+import com.orientechnologies.orient.core.record.impl.OVertexDelegate;
 import com.orientechnologies.orient.core.serialization.serializer.record.ORecordSerializer;
 import com.orientechnologies.orient.core.serialization.serializer.record.binary.ORecordSerializerNetworkV37;
+import com.orientechnologies.orient.core.serialization.serializer.result.binary.OResultSerializerNetwork;
+import com.orientechnologies.orient.core.sql.executor.OResult;
+import com.orientechnologies.orient.core.sql.executor.OResultInternal;
 import com.orientechnologies.orient.core.storage.OCluster;
 import com.orientechnologies.orient.core.storage.OPhysicalPosition;
 import com.orientechnologies.orient.core.tx.OTransactionIndexChanges;
@@ -257,11 +263,11 @@ public class OMessageHelper {
           network.writeInt(change.entries.size());
           for (OTransactionIndexChangesPerKey.OTransactionIndexEntry perKeyChange : change.entries) {
             OTransactionIndexChanges.OPERATION op = perKeyChange.operation;
-            if(op == OTransactionIndexChanges.OPERATION.REMOVE && perKeyChange.value == null)
+            if (op == OTransactionIndexChanges.OPERATION.REMOVE && perKeyChange.value == null)
               op = OTransactionIndexChanges.OPERATION.CLEAR;
 
             network.writeInt(op.ordinal());
-            if(op != OTransactionIndexChanges.OPERATION.CLEAR)
+            if (op != OTransactionIndexChanges.OPERATION.CLEAR)
               network.writeRID(perKeyChange.value.getIdentity());
           }
         }
@@ -315,5 +321,131 @@ public class OMessageHelper {
       changes.add(new IndexChange(indexName, entry));
     }
     return changes;
+  }
+
+  public static OIdentifiable readIdentifiable(final OChannelDataInput network, ORecordSerializer serializer) throws IOException {
+    final int classId = network.readShort();
+    if (classId == OChannelBinaryProtocol.RECORD_NULL)
+      return null;
+
+    if (classId == OChannelBinaryProtocol.RECORD_RID) {
+      return network.readRID();
+    } else {
+      final ORecord record = readRecordFromBytes(network, serializer);
+      return record;
+    }
+  }
+
+  static ORecord readRecordFromBytes(OChannelDataInput network, ORecordSerializer serializer) throws IOException {
+    byte rec = network.readByte();
+    final ORecordId rid = network.readRID();
+    final int version = network.readVersion();
+    final byte[] content = network.readBytes();
+
+    final ORecord record = Orient.instance().getRecordFactoryManager().newInstance(rec);
+    serializer.fromStream(content, record, null);
+    ORecordInternal.setIdentity(record, rid);
+    ORecordInternal.setVersion(record, version);
+    ORecordInternal.unsetDirty(record);
+    return record;
+  }
+
+  static void writeProjection(OResult item, OChannelDataOutput channel) throws IOException {
+    channel.writeByte(OQueryResponse.RECORD_TYPE_PROJECTION);
+    OResultSerializerNetwork ser = new OResultSerializerNetwork();
+    ser.toStream(item, channel);
+  }
+
+  static void writeBlob(OResult row, OChannelDataOutput channel, ORecordSerializer recordSerializer) throws IOException {
+    channel.writeByte(OQueryResponse.RECORD_TYPE_BLOB);
+    channel.writeBytes(row.getBlob().get().toStream());
+  }
+
+  static void writeVertex(OResult row, OChannelDataOutput channel, ORecordSerializer recordSerializer) throws IOException {
+    channel.writeByte(OQueryResponse.RECORD_TYPE_VERTEX);
+    writeDocument(channel, (ODocument) row.getElement().get().getRecord(), recordSerializer);
+  }
+
+  static void writeElement(OResult row, OChannelDataOutput channel, ORecordSerializer recordSerializer) throws IOException {
+    channel.writeByte(OQueryResponse.RECORD_TYPE_ELEMENT);
+    writeDocument(channel, (ODocument) row.getElement().get().getRecord(), recordSerializer);
+  }
+
+  static void writeEdge(OResult row, OChannelDataOutput channel, ORecordSerializer recordSerializer) throws IOException {
+    channel.writeByte(OQueryResponse.RECORD_TYPE_EDGE);
+    writeDocument(channel, (ODocument) row.getElement().get().getRecord(), recordSerializer);
+  }
+
+  private static void writeDocument(OChannelDataOutput channel, ODocument doc, ORecordSerializer serializer) throws IOException {
+    writeIdentifiable(channel, doc, serializer);
+  }
+
+  public static void writeResult(OResult row, OChannelDataOutput channel, ORecordSerializer recordSerializer) throws IOException {
+    if (row.isBlob()) {
+      writeBlob(row, channel, recordSerializer);
+    } else if (row.isVertex()) {
+      writeVertex(row, channel, recordSerializer);
+    } else if (row.isEdge()) {
+      writeEdge(row, channel, recordSerializer);
+    } else if (row.isElement()) {
+      writeElement(row, channel, recordSerializer);
+    } else {
+      writeProjection(row, channel);
+    }
+  }
+
+  private static OResult readBlob(OChannelDataInput channel) throws IOException {
+    ORecordBytes bytes = new ORecordBytes();
+    bytes.fromStream(channel.readBytes());
+    OResultInternal result = new OResultInternal();
+    result.setElement(bytes);
+    return result;
+  }
+
+  public static OResult readResult(OChannelDataInput channel) throws IOException {
+    byte type = channel.readByte();
+    switch (type) {
+    case OQueryResponse.RECORD_TYPE_BLOB:
+      return readBlob(channel);
+    case OQueryResponse.RECORD_TYPE_VERTEX:
+      return readVertex(channel);
+    case OQueryResponse.RECORD_TYPE_EDGE:
+      return readEdge(channel);
+    case OQueryResponse.RECORD_TYPE_ELEMENT:
+      return readElement(channel);
+    case OQueryResponse.RECORD_TYPE_PROJECTION:
+      return readProjection(channel);
+
+    }
+    return new OResultInternal();
+  }
+
+  private static OResult readElement(OChannelDataInput channel) throws IOException {
+    OResultInternal result = new OResultInternal();
+    result.setElement(readDocument(channel));
+    return result;
+  }
+
+  private static OResult readVertex(OChannelDataInput channel) throws IOException {
+    OResultInternal result = new OResultInternal();
+    result.setElement(new OVertexDelegate((ODocument) readDocument(channel)));
+    return result;
+  }
+
+  private static OResult readEdge(OChannelDataInput channel) throws IOException {
+    OResultInternal result = new OResultInternal();
+    result.setElement(new OEdgeDelegate((ODocument) readDocument(channel)));
+    return result;
+  }
+
+  private static ORecord readDocument(OChannelDataInput channel) throws IOException {
+    ORecordSerializer serializer = ORecordSerializerNetworkV37.INSTANCE;
+    final ORecord record = (ORecord) readIdentifiable(channel, serializer);
+    return record;
+  }
+
+  private static OResult readProjection(OChannelDataInput channel) throws IOException {
+    OResultSerializerNetwork ser = new OResultSerializerNetwork();
+    return ser.fromStream(channel);
   }
 }

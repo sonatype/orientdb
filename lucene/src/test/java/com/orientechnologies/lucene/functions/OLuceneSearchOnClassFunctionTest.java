@@ -74,8 +74,8 @@ public class OLuceneSearchOnClassFunctionTest extends BaseLuceneTest {
 
   }
 
-  @Test(expected = OCommandExecutionException.class)
-  public void shouldFindNothingWithWrongClass() throws Exception {
+  @Test (expected = OCommandExecutionException.class)
+  public void shouldThrowExceptionWithWrongClass() throws Exception {
 
     OResultSet resultSet = db
         .query(

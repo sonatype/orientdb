@@ -243,7 +243,8 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
       final byte[] record = connection.getDatabase().getStorage().callInLock(new Callable<byte[]>() {
         @Override
         public byte[] call() throws Exception {
-          return connection.getDatabase().getStorage().getConfiguration().toStream(connection.getData().protocolVersion, Charset.forName("UTF-8"));
+          return connection.getDatabase().getStorage().getConfiguration()
+              .toStream(connection.getData().protocolVersion, Charset.forName("UTF-8"));
         }
       }, false);
 
@@ -303,7 +304,8 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
       final byte[] record = connection.getDatabase().getStorage().callInLock(new Callable<byte[]>() {
         @Override
         public byte[] call() throws Exception {
-          return connection.getDatabase().getStorage().getConfiguration().toStream(connection.getData().protocolVersion, Charset.forName("UTF-8"));
+          return connection.getDatabase().getStorage().getConfiguration()
+              .toStream(connection.getData().protocolVersion, Charset.forName("UTF-8"));
         }
       }, false);
 
@@ -938,7 +940,7 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
   }
 
   @Override
-  public OBinaryResponse executeDatabaseOpen37(OOpenRequest37 request) {
+  public OBinaryResponse executeDatabaseOpen37(OOpen37Request request) {
     connection.getData().clientId = request.getClientId();
     connection.setTokenBased(request.isUseToken());
     connection.getData().supportsPushMessages = request.isSupportsPush();
@@ -990,7 +992,7 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
       distriConf = getRecordBytes(connection, distributedCfg);
     }
 
-    return new OOpenResponse(connection.getId(), tokenToSend, clusters, distriConf, OConstants.getVersion());
+    return new OOpen37Response(connection.getId(), tokenToSend);
   }
 
   @Override
@@ -1215,5 +1217,23 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
       throw new ODatabaseException("No Transaction Active");
     database.rollback(true);
     return new ORollbackTransactionResponse();
+  }
+
+  @Override
+  public OBinaryResponse executeSubscribe(OSubscribeRequest request) {
+    return new OSubscribeResponse(request.getPushRequest().execute(this));
+  }
+
+  @Override
+  public OBinaryResponse executeSubscribePushRequest(OSubscribeDistributedConfigurationRequest request) {
+    OClientConnectionManager manager = server.getClientConnectionManager();
+
+    manager.subscribeDistributeConfig((ONetworkProtocolBinary) connection.getProtocol());
+    return new OSubscribeDistributedConfigurationResponse();
+  }
+
+  @Override
+  public OBinaryResponse executeSubscribeLiveQuery(OSubscribeLiveQueryRequest request) {
+    return null;
   }
 }

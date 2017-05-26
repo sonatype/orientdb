@@ -18,6 +18,7 @@
 
 package com.orientechnologies.orient.graph.blueprints;
 
+import com.orientechnologies.orient.core.index.OCompositeKey;
 import com.orientechnologies.orient.core.index.OIndexException;
 import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.record.impl.ODocument;
@@ -336,6 +337,87 @@ public class GraphTest {
       g.createIndex("IndexCreateDropCreate", Vertex.class);
     } finally {
       g.shutdown();
+    }
+  }
+
+  @Test
+  public void testCompositeKey() {
+
+    OrientGraphNoTx graph = new OrientGraphNoTx("memory:testComposite");
+
+    try {
+      graph.createVertexType("Account");
+
+      graph.command(new OCommandSQL("create property account.description STRING")).execute();
+      graph.command(new OCommandSQL("create property account.namespace STRING")).execute();
+      graph.command(new OCommandSQL("create property account.name STRING")).execute();
+      graph.command(new OCommandSQL("create index account.composite on account (name, namespace) unique")).execute();
+
+      graph.addVertex("class:account", new Object[] { "name", "foo", "namespace", "bar", "description", "foobar" });
+      graph.addVertex("class:account", new Object[] { "name", "foo", "namespace", "baz", "description", "foobaz" });
+
+      Iterable<Vertex> vertices = graph.command(new OCommandSQL("select from index:account.composite where key = [ 'foo', 'baz' ]"))
+          .execute();
+
+      List<Vertex> list = new ArrayList<>();
+
+      vertices.forEach(list::add);
+
+      Assert.assertEquals(1, list.size());
+
+      vertices = graph.getVertices("account.composite", new Object[] { "foo", "baz" });
+
+      list = new ArrayList<>();
+
+      vertices.forEach(list::add);
+
+      Assert.assertEquals(1, list.size());
+
+      vertices = graph.getVertices("account.composite", new OCompositeKey("foo", "baz"));
+
+      list = new ArrayList<>();
+
+      vertices.forEach(list::add);
+
+      Assert.assertEquals(1, list.size());
+
+      graph.getVertices("account.composite", new OCompositeKey("foo", "baz"));
+
+    } finally {
+      graph.drop();
+    }
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void testCompositeExceptionKey() {
+
+    OrientGraphNoTx graph = new OrientGraphNoTx("memory:testComposite");
+
+    try {
+      graph.createVertexType("Account");
+
+      graph.command(new OCommandSQL("create property account.description STRING")).execute();
+      graph.command(new OCommandSQL("create property account.namespace STRING")).execute();
+      graph.command(new OCommandSQL("create property account.name STRING")).execute();
+      graph.command(new OCommandSQL("create index account.composite on account (name, namespace) unique")).execute();
+
+      graph.addVertex("class:account", new Object[] { "name", "foo", "namespace", "bar", "description", "foobar" });
+      graph.addVertex("class:account", new Object[] { "name", "foo", "namespace", "baz", "description", "foobaz" });
+
+      Iterable<Vertex> vertices = graph.command(new OCommandSQL("select from index:account.composite where key = [ 'foo', 'baz' ]"))
+          .execute();
+
+
+
+      List<Vertex> list = new ArrayList<>();
+      vertices.forEach(list::add);
+
+      Assert.assertEquals(1, list.size());
+
+      graph.getVertices("account.composite", new Object[] { "foo", "baz", "bar" });
+
+    } finally {
+      graph.drop();
     }
   }
 }

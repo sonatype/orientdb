@@ -6,6 +6,10 @@ import com.orientechnologies.orient.core.db.OrientDB;
 import com.orientechnologies.orient.core.db.OrientDBConfig;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocument;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
+import com.orientechnologies.orient.core.index.OIndex;
+import com.orientechnologies.orient.core.metadata.schema.OClass;
+import com.orientechnologies.orient.core.metadata.schema.OType;
+import com.orientechnologies.orient.core.record.OElement;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.executor.OResultSet;
 import com.orientechnologies.orient.server.OServer;
@@ -13,6 +17,9 @@ import com.orientechnologies.orient.server.network.ORemoteImportTest;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+
+import java.util.Collection;
+import java.util.List;
 
 import static org.junit.Assert.*;
 
@@ -38,6 +45,10 @@ public class RemoteTransactionSupportTest {
     database = orientDB.open(ORemoteImportTest.class.getSimpleName(), "admin", "admin");
     database.createClass("SomeTx");
     database.createClass("SomeTx2");
+
+    OClass klass = database.createClass("IndexedTx");
+    klass.createProperty("name", OType.STRING).createIndex(OClass.INDEX_TYPE.NOTUNIQUE);
+
   }
 
   @Test
@@ -145,6 +156,46 @@ public class RemoteTransactionSupportTest {
     assertTrue(result1.hasNext());
     assertEquals(result1.next().getProperty("name"), "July");
     assertFalse(result.hasNext());
+  }
+
+  @Test
+  public void testQueryDeleteTxSQLTransaction() {
+
+    OElement someTx = database.newElement("SomeTx");
+    someTx.setProperty("name", "foo");
+
+    someTx.save();
+
+    database.begin();
+
+    database.command("delete from SomeTx");
+
+    database.commit();
+
+    OResultSet result = database.command("select from SomeTx");
+    assertFalse(result.hasNext());
+
+  }
+
+  @Test
+  public void testUpdateCreatedInTxIndexGetTransaction() {
+    OIndex<?> index = database.getClass("IndexedTx").getProperty("name").getAllIndexes().iterator().next();
+    database.begin();
+    ODocument doc1 = new ODocument("IndexedTx");
+    doc1.setProperty("name", "Jane");
+    database.save(doc1);
+
+    OResultSet result = database.command("update IndexedTx set name='July' where name = 'Jane' ");
+    assertTrue(result.hasNext());
+    assertEquals((long) result.next().getProperty("count"), 1L);
+    Collection<OIdentifiable> entry = (Collection<OIdentifiable>) index.get("July");
+    assertEquals(entry.size(), 1);
+
+    database.commit();
+
+    entry = (Collection<OIdentifiable>) index.get("July");
+    assertEquals(entry.size(), 1);
+
   }
 
   @After

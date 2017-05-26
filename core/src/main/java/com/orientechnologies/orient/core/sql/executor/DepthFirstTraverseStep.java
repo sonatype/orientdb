@@ -127,8 +127,11 @@ public class DepthFirstTraverseStep extends AbstractTraverseStep {
     String spaces = OExecutionStepInternal.getIndent(depth, indent);
     StringBuilder result = new StringBuilder();
     result.append(spaces);
-    result.append("+ DEPTH-FRIST TRAVERSE \n");
+    result.append("+ DEPTH-FIRST TRAVERSE \n");
+    result.append(spaces);
+    result.append("  " + projections.toString());
     if (whileClause != null) {
+      result.append("\n");
       result.append(spaces);
       result.append("WHILE " + whileClause.toString());
     }
