@@ -26,6 +26,7 @@ import com.orientechnologies.orient.core.exception.ODatabaseException;
 import com.orientechnologies.orient.core.intent.OIntent;
 
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -312,7 +313,8 @@ public class OrientGraphFactory extends OrientConfigurableGraph {
    * @return true if database is exists
    */
   public boolean exists() {
-    final ODatabaseDocumentTx db = getDatabase(false, false);
+    //Do not use get database because if with the pool it actually create the database
+    final ODatabaseDocumentTx db = new ODatabaseDocumentTx(url);
     try {
       return db.exists();
     } finally {
@@ -402,9 +404,9 @@ public class OrientGraphFactory extends OrientConfigurableGraph {
       pool.setProperty(iName, iValue);
 
     if (iValue != null)
-      return properties.put(iName.toLowerCase(), iValue);
+      return properties.put(iName.toLowerCase(Locale.ENGLISH), iValue);
     else
-      return properties.remove(iName.toLowerCase());
+      return properties.remove(iName.toLowerCase(Locale.ENGLISH));
   }
 
   /**
@@ -415,7 +417,7 @@ public class OrientGraphFactory extends OrientConfigurableGraph {
    * @return The previous value if any, otherwise null
    */
   public Object getProperty(final String iName) {
-    return properties.get(iName.toLowerCase());
+    return properties.get(iName.toLowerCase(Locale.ENGLISH));
   }
 
   @Override

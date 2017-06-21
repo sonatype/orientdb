@@ -118,9 +118,9 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   protected final        ConcurrentMap<String, Integer> registeredNodeByName   = new ConcurrentHashMap<String, Integer>();
   protected              ConcurrentMap<String, Long>    autoRemovalOfServers   = new ConcurrentHashMap<String, Long>();
   protected volatile ODistributedMessageServiceImpl messageService;
-  protected Date                 startedOn              = new Date();
-  protected ORemoteTaskFactory   taskFactory            = new ODefaultRemoteTaskFactory();
-  protected ODistributedStrategy responseManagerFactory = new ODefaultDistributedStrategy();
+  protected Date                      startedOn              = new Date();
+  protected ODistributedStrategy      responseManagerFactory = new ODefaultDistributedStrategy();
+  protected ORemoteTaskFactoryManager taskFactoryManager     = new ORemoteTaskFactoryManagerImpl(this);
 
   private volatile String                              lastServerDump          = "";
   protected        CountDownLatch                      serverStarted           = new CountDownLatch(1);
@@ -548,7 +548,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
       final OCallable<Void, ODistributedRequestId> iAfterSentCallback,
       final OCallable<Void, ODistributedResponseManager> endCallback) {
 
-    final ODistributedRequest req = new ODistributedRequest(taskFactory, nodeId, reqId, iDatabaseName, iTask);
+    final ODistributedRequest req = new ODistributedRequest(this, nodeId, reqId, iDatabaseName, iTask);
 
     final ODatabaseDocument currentDatabase = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
     if (currentDatabase != null && currentDatabase.getUser() != null)
@@ -605,7 +605,8 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
             if (database != null) {
               final ODistributedDatabaseImpl ddb = getMessageService().getDatabase(database.getName());
 
-              if (ddb != null && !(result instanceof Throwable) && task instanceof OAbstractReplicatedTask) {
+              if (ddb != null && !(result instanceof Throwable) && task instanceof OAbstractReplicatedTask && !task
+                  .isIdempotent()) {
                 // UPDATE LSN WITH LAST OPERATION
                 ddb.setLSN(sourceNodeName, ((OAbstractReplicatedTask) task).getLastLSN(), true);
               }
@@ -968,12 +969,13 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
             } catch (ODatabaseIsOldException e) {
               // CURRENT DATABASE IS NEWER, SET ALL OTHER DATABASES AS NOT_AVAILABLE TO FORCE THEM TO ASK FOR THE CURRENT DATABASE
               setDatabaseStatus(nodeName, databaseName, ODistributedServerManager.DB_STATUS.ONLINE);
+              distrDatabase.setOnline();
 
               final Set<String> otherServers = getAvailableNodeNames(databaseName);
               otherServers.remove(nodeName);
 
               ODistributedServerLog.info(this, nodeName, otherServers.toString(), DIRECTION.OUT,
-                  "Current copy of database '%s' is newer then the copy present in the cluster. Use the local copy and force other nodes to download this",
+                  "Current copy of database '%s' is newer than the copy present in the cluster. Use the local copy and force other nodes to download this",
                   databaseName);
 
               for (String s : otherServers) {
@@ -1482,8 +1484,8 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   }
 
   @Override
-  public ORemoteTaskFactory getTaskFactory() {
-    return taskFactory;
+  public ORemoteTaskFactoryManager getTaskFactoryManager() {
+    return taskFactoryManager;
   }
 
   /**
@@ -1951,8 +1953,8 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   public void stopNode(final String iNode) throws IOException {
     ODistributedServerLog.warn(this, nodeName, null, DIRECTION.NONE, "Sending request of stopping node '%s'...", iNode);
 
-    final ODistributedRequest request = new ODistributedRequest(taskFactory, nodeId, getNextMessageIdCounter(), null,
-        new OStopServerTask());
+    final ODistributedRequest request = new ODistributedRequest(this, nodeId, getNextMessageIdCounter(), null,
+        getTaskFactoryManager().getFactoryByServerName(iNode).createTask(OStopServerTask.FACTORYID));
 
     getRemoteServer(iNode).sendRequest(request);
   }
@@ -1960,8 +1962,8 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   public void restartNode(final String iNode) throws IOException {
     ODistributedServerLog.warn(this, nodeName, null, DIRECTION.NONE, "Sending request of restarting node '%s'...", iNode);
 
-    final ODistributedRequest request = new ODistributedRequest(taskFactory, nodeId, getNextMessageIdCounter(), null,
-        new ORestartServerTask());
+    final ODistributedRequest request = new ODistributedRequest(this, nodeId, getNextMessageIdCounter(), null,
+        getTaskFactoryManager().getFactoryByServerName(iNode).createTask(ORestartServerTask.FACTORYID));
 
     getRemoteServer(iNode).sendRequest(request);
   }

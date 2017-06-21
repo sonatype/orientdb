@@ -33,6 +33,7 @@ import com.orientechnologies.orient.server.distributed.task.ORemoteTask;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
+import java.util.List;
 
 /**
  * Task to acquire and release a distributed exclusive lock across the entire cluster. In case the server is declared unreachable,
@@ -46,7 +47,7 @@ public class ODistributedLockTask extends OAbstractReplicatedTask {
   private String  resource;
   private long    timeout;
   private boolean acquire;
-  private String lockManagerServer;
+  private String  lockManagerServer;
 
   public ODistributedLockTask() {
   }
@@ -71,7 +72,7 @@ public class ODistributedLockTask extends OAbstractReplicatedTask {
   }
 
   @Override
-  public ORemoteTask getUndoTask(final ODistributedRequestId reqId) {
+  public ORemoteTask getUndoTask(ODistributedServerManager dManager, final ODistributedRequestId reqId, List<String> servers) {
     if (acquire)
       // RELEASE
       return new ODistributedLockTask(lockManagerServer, resource, timeout, false);
@@ -116,11 +117,6 @@ public class ODistributedLockTask extends OAbstractReplicatedTask {
 
   @Override
   public boolean isNodeOnlineRequired() {
-    return false;
-  }
-
-  @Override
-  public boolean isIdempotent() {
     return false;
   }
 

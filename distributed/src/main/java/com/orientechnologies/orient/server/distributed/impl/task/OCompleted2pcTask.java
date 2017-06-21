@@ -55,9 +55,10 @@ public class OCompleted2pcTask extends OAbstractReplicatedTask {
   public OCompleted2pcTask() {
   }
 
-  public OCompleted2pcTask(final ODistributedRequestId iRequestId, final boolean iSuccess, final int[] partitionKey) {
+  public OCompleted2pcTask init(final ODistributedRequestId iRequestId, final boolean iSuccess, final int[] partitionKey) {
     this.requestId = iRequestId;
     this.success = iSuccess;
+    return this;
   }
 
   /**
@@ -196,5 +197,10 @@ public class OCompleted2pcTask extends OAbstractReplicatedTask {
 
   public ODistributedRequestId getRequestId() {
     return requestId;
+  }
+
+  @Override
+  public boolean isIdempotent() {
+    return false;
   }
 }

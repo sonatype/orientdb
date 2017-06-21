@@ -45,7 +45,7 @@ public abstract class OAbstract2pcTask extends OAbstractReplicatedTask {
   protected static final long   serialVersionUID  = 1L;
   public static final    String NON_LOCAL_CLUSTER = "_non_local_cluster";
 
-  protected List<OAbstractRecordReplicatedTask> tasks = new ArrayList<OAbstractRecordReplicatedTask>();
+  protected final List<OAbstractRecordReplicatedTask> tasks = new ArrayList<OAbstractRecordReplicatedTask>();
 
   protected transient List<OAbstractRemoteTask> localUndoTasks = new ArrayList<OAbstractRemoteTask>();
   protected transient OTxTaskResult result;
@@ -55,6 +55,14 @@ public abstract class OAbstract2pcTask extends OAbstractReplicatedTask {
 
   public void add(final OAbstractRecordReplicatedTask iTask) {
     tasks.add(iTask);
+  }
+
+  @Override
+  public boolean isIdempotent() {
+    for (OAbstractRecordReplicatedTask t : tasks)
+      if (t != null && !t.isIdempotent())
+        return false;
+    return true;
   }
 
   /**
@@ -91,7 +99,9 @@ public abstract class OAbstract2pcTask extends OAbstractReplicatedTask {
       return null;
     }
 
-    final OCompleted2pcTask fixTask = new OCompleted2pcTask(iRequest.getId(), false, getPartitionKey());
+    final OCompleted2pcTask fixTask = (OCompleted2pcTask) dManager.getTaskFactoryManager().getFactoryByServerName(executorNodeName)
+        .createTask(OCompleted2pcTask.FACTORYID);
+    fixTask.init(iRequest.getId(), false, getPartitionKey());
 
     for (int i = 0; i < tasks.size(); ++i) {
       final OAbstractRecordReplicatedTask t = tasks.get(i);
@@ -112,8 +122,11 @@ public abstract class OAbstract2pcTask extends OAbstractReplicatedTask {
   }
 
   @Override
-  public ORemoteTask getUndoTask(final ODistributedRequestId reqId) {
-    final OCompleted2pcTask fixTask = new OCompleted2pcTask(reqId, false, getPartitionKey());
+  public ORemoteTask getUndoTask(ODistributedServerManager dManager, final ODistributedRequestId reqId,
+      final List<String> servers) {
+    final OCompleted2pcTask fixTask = (OCompleted2pcTask) dManager.getTaskFactoryManager().getFactoryByServerNames(servers)
+        .createTask(OCompleted2pcTask.FACTORYID);
+    fixTask.init(reqId, false, getPartitionKey());
 
     for (ORemoteTask undoTask : localUndoTasks)
       fixTask.addFixTask(undoTask);

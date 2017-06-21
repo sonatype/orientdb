@@ -33,6 +33,7 @@ import com.orientechnologies.orient.core.serialization.serializer.record.binary.
 import com.orientechnologies.orient.core.storage.OChecksumMode;
 
 import java.io.PrintStream;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.logging.ConsoleHandler;
@@ -157,8 +158,8 @@ public enum OGlobalConfiguration {
       + "on page flushes, no verification is done on page loads, stored checksums are verified only during user-initiated health "
       + "checks; 'storeAndVerify' (default) – checksums are calculated and stored on page flushes, verification is performed on "
       + "each page load, errors are reported in the log; 'storeAndThrow' – same as `storeAndVerify` with addition of exceptions "
-      + "thrown on errors, this mode is useful for debugging and testing, but should be avoided in a production "
-      + "environment.", OChecksumMode.class, OChecksumMode.Store, false),
+      + "thrown on errors, this mode is useful for debugging and testing, but should be avoided in a production environment.",
+      OChecksumMode.class, OChecksumMode.StoreAndVerify, false),
 
   STORAGE_CONFIGURATION_SYNC_ON_UPDATE("storage.configuration.syncOnUpdate",
       "Indicates a force sync should be performed for each update on the storage configuration", Boolean.class, true),
@@ -586,6 +587,9 @@ public enum OGlobalConfiguration {
 
   QUERY_LIVE_SUPPORT("query.live.support", "Enable/Disable the support of live query. (Use false to disable)", Boolean.class, true),
 
+  LUCENE_QUERY_PAGE_SIZE("lucene.query.pageSize",
+      "Size of the page when fetching data from a lucene index", Long.class, 10000,true),
+
   STATEMENT_CACHE_SIZE("statement.cacheSize", "Number of parsed SQL statements kept in cache", Integer.class, 100),
 
   // GRAPH
@@ -999,7 +1003,7 @@ public enum OGlobalConfiguration {
 
       if (!lastSection.equals(section)) {
         out.print("- ");
-        out.println(section.toUpperCase());
+        out.println(section.toUpperCase(Locale.ENGLISH));
         lastSection = section;
       }
       out.print("  + ");

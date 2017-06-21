@@ -118,6 +118,7 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
   private boolean tokenConnection = true;
   private long    requests        = 0;
   private OServerNetworkListener listener;
+  private int distributedProtocolVersion = ORemoteServerController.CURRENT_PROTOCOL_VERSION;
 
   public ONetworkProtocolBinary() {
     this("OrientDB <- BinaryClient/?");
@@ -168,7 +169,8 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
 
   private boolean isHandshaking(int requestType) {
     return requestType == OChannelBinaryProtocol.REQUEST_CONNECT || requestType == OChannelBinaryProtocol.REQUEST_DB_OPEN
-        || requestType == OChannelBinaryProtocol.REQUEST_SHUTDOWN || requestType == OChannelBinaryProtocol.REQUEST_DB_REOPEN;
+        || requestType == OChannelBinaryProtocol.REQUEST_SHUTDOWN || requestType == OChannelBinaryProtocol.REQUEST_DB_REOPEN
+        || requestType == OChannelBinaryProtocol.DISTRIBUTED_CONNECT;
   }
 
   private boolean isDistributed(int requestType) {
@@ -240,6 +242,10 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
           reopenDatabase(connection);
           break;
 
+        case OChannelBinaryProtocol.DISTRIBUTED_CONNECT:
+          distributedConnect(connection);
+          break;
+
         }
       } finally {
         requests++;
@@ -260,6 +266,43 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
           .stopChrono("server.network.requests", "Total received requests", timer, "server.network.requests");
 
       OSerializationThreadLocal.INSTANCE.get().clear();
+    }
+  }
+
+  private void distributedConnect(OClientConnection connection) throws IOException {
+    setDataCommandInfo(connection, "Distributed Connect");
+
+    readConnectionData(connection);
+
+    final String user = channel.readString();
+    final String passwd = channel.readString();
+    int remoteDistributedProtocolVersion = channel.readShort();
+
+    distributedProtocolVersion = Math.min(remoteDistributedProtocolVersion, distributedProtocolVersion);
+
+    connection.setServerUser(server.serverLogin(user, passwd, "server.connect"));
+
+    if (connection.getServerUser() == null)
+      throw new OSecurityAccessException("Wrong user/password to [connect] to the remote OrientDB Server instance");
+
+    beginResponse();
+    try {
+      sendOk(connection, clientTxId);
+      channel.writeInt(connection.getId());
+      if (connection.getData().protocolVersion > OChannelBinaryProtocol.PROTOCOL_VERSION_26) {
+        connection.getData().serverUsername = connection.getServerUser().name;
+        connection.getData().serverUser = true;
+        byte[] token;
+        if (Boolean.TRUE.equals(connection.getTokenBased())) {
+          token = server.getTokenHandler().getSignedBinaryToken(null, null, connection.getData());
+        } else
+          token = OCommonConst.EMPTY_BYTE_ARRAY;
+        channel.writeBytes(token);
+        channel.writeShort((short) ORemoteServerController.CURRENT_PROTOCOL_VERSION);
+      }
+
+    } finally {
+      endResponse(connection);
     }
   }
 
@@ -310,7 +353,7 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
           try {
             sendError(connection, clientTxId, e);
             channel.flush();
-            if (!(e instanceof OTokenSecurityException))
+            if (!(e instanceof OTokenSecurityException || e instanceof ODistributedRedirectException))
               OLogManager.instance().error(this, "Error executing request", e);
             OServerPluginHelper.invokeHandlerCallbackOnClientError(server, connection, e);
             afterOperationRequest(connection);
@@ -366,7 +409,8 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
     try {
       if (requestType != OChannelBinaryProtocol.REQUEST_DB_REOPEN) {
         if (clientTxId >= 0 && connection == null && (requestType == OChannelBinaryProtocol.REQUEST_DB_OPEN
-            || requestType == OChannelBinaryProtocol.REQUEST_CONNECT)) {
+            || requestType == OChannelBinaryProtocol.REQUEST_CONNECT
+            || requestType == OChannelBinaryProtocol.DISTRIBUTED_CONNECT)) {
           // THIS EXCEPTION SHULD HAPPEN IN ANY CASE OF OPEN/CONNECT WITH SESSIONID >= 0, BUT FOR COMPATIBILITY IT'S ONLY IF THERE
           // IS NO CONNECTION
           shutdown();
@@ -382,7 +426,7 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
         server.getClientConnectionManager().disconnect(clientTxId);
         connection = server.getClientConnectionManager().reConnect(this, connection.getTokenBytes(), connection.getToken());
         connection.acquire();
-        waitDistribuedIsOnline(connection);
+        waitDistributedIsOnline(connection);
         connection.init(server);
 
         if (connection.getData().serverUser) {
@@ -433,7 +477,7 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
         }
         connection.acquire();
         connection.validateSession(bytes, server.getTokenHandler(), this);
-        waitDistribuedIsOnline(connection);
+        waitDistributedIsOnline(connection);
         connection.init(server);
         if (connection.getData().serverUser) {
           connection.setServerUser(server.getUser(connection.getData().serverUsername));
@@ -457,7 +501,7 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
     return connection;
   }
 
-  private void waitDistribuedIsOnline(OClientConnection connection) {
+  private void waitDistributedIsOnline(OClientConnection connection) {
     if (requests == 0) {
       final ODistributedServerManager manager = server.getDistributedManager();
       if (manager != null && connection.getDatabase() != null)
@@ -959,7 +1003,7 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
     checkServerAccess("server.replication", connection);
 
     final ODistributedServerManager manager = server.getDistributedManager();
-    final ODistributedRequest req = new ODistributedRequest(manager.getTaskFactory());
+    final ODistributedRequest req = new ODistributedRequest(manager);
 
     req.fromStream(channel.getDataInput());
 
@@ -1015,9 +1059,9 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
       channel.writeByte(OChannelBinaryProtocol.RESPONSE_STATUS_ERROR);
       channel.writeInt(iClientTxId);
       if (tokenConnection && requestType != OChannelBinaryProtocol.REQUEST_CONNECT && (
-          requestType != OChannelBinaryProtocol.REQUEST_DB_OPEN && requestType != OChannelBinaryProtocol.REQUEST_SHUTDOWN || (
-              connection != null && connection.getData() != null
-                  && connection.getData().protocolVersion <= OChannelBinaryProtocol.PROTOCOL_VERSION_32))
+          requestType != OChannelBinaryProtocol.REQUEST_DB_OPEN && requestType != OChannelBinaryProtocol.DISTRIBUTED_CONNECT
+              && requestType != OChannelBinaryProtocol.REQUEST_SHUTDOWN || (connection != null && connection.getData() != null
+              && connection.getData().protocolVersion <= OChannelBinaryProtocol.PROTOCOL_VERSION_32))
           || requestType == OChannelBinaryProtocol.REQUEST_DB_REOPEN) {
         // TODO: Check if the token is expiring and if it is send a new token
 
@@ -1812,7 +1856,8 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
         final byte[] storageStream = connection.getDatabase().getStorage().callInLock(new Callable<byte[]>() {
           @Override
           public byte[] call() throws Exception {
-            return connection.getDatabase().getStorage().getConfiguration().toStream(connection.getData().protocolVersion, Charset.forName("UTF-8"));
+            return connection.getDatabase().getStorage().getConfiguration()
+                .toStream(connection.getData().protocolVersion, Charset.forName("UTF-8"));
           }
         }, false);
 
@@ -1914,7 +1959,8 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
         final byte[] storageStream = connection.getDatabase().getStorage().callInLock(new Callable<byte[]>() {
           @Override
           public byte[] call() throws Exception {
-            return connection.getDatabase().getStorage().getConfiguration().toStream(connection.getData().protocolVersion,  Charset.forName("UTF-8"));
+            return connection.getDatabase().getStorage().getConfiguration()
+                .toStream(connection.getData().protocolVersion, Charset.forName("UTF-8"));
           }
         }, false);
 
@@ -2042,7 +2088,8 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
     channel.writeInt(iClientTxId);
     okSent = true;
     if (connection != null && Boolean.TRUE.equals(connection.getTokenBased()) && connection.getToken() != null
-        && requestType != OChannelBinaryProtocol.REQUEST_CONNECT && requestType != OChannelBinaryProtocol.REQUEST_DB_OPEN) {
+        && requestType != OChannelBinaryProtocol.REQUEST_CONNECT && requestType != OChannelBinaryProtocol.DISTRIBUTED_CONNECT
+        && requestType != OChannelBinaryProtocol.REQUEST_DB_OPEN) {
       // TODO: Check if the token is expiring and if it is send a new token
       byte[] renewedToken = server.getTokenHandler().renewIfNeeded(connection.getToken());
       channel.writeBytes(renewedToken);

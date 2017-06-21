@@ -117,6 +117,7 @@ public class OChannelBinaryProtocol {
   // TASK
   public static final byte DISTRIBUTED_REQUEST  = 120;
   public static final byte DISTRIBUTED_RESPONSE = 121;
+  public static final byte DISTRIBUTED_CONNECT  = 122;
 
   // INCOMING
   public static final byte RESPONSE_STATUS_OK    = 0;
@@ -172,7 +173,7 @@ public class OChannelBinaryProtocol {
   }
 
   public static void checkRequestTypeRange(final OChannelBinary channel, final int reqType) {
-    if (reqType < REQUEST_SHUTDOWN || reqType > DISTRIBUTED_RESPONSE) {
+    if (reqType < REQUEST_SHUTDOWN || reqType > DISTRIBUTED_CONNECT) {
       // DIRTY DATA: FORCE CLOSING THE CHANNEL
       channel.close();
 
