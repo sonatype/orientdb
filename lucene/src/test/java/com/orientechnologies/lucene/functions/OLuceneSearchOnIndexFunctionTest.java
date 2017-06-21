@@ -70,7 +70,7 @@ public class OLuceneSearchOnIndexFunctionTest extends BaseLuceneTest {
 
 
   @Test
-  @Ignore
+//  @Ignore
   public void shouldSearchOnSingleIndexWithLeadingWildcard() throws Exception {
 
     //TODO: metadata still not used
@@ -78,7 +78,7 @@ public class OLuceneSearchOnIndexFunctionTest extends BaseLuceneTest {
         .query("SELECT from Song where SEARCH_INDEX('Song.title', '*EVE*', {'allowLeadingWildcard': true}) = true");
 
 //    resultSet.getExecutionPlan().ifPresent(x -> System.out.println(x.prettyPrint(0, 2)));
-    assertThat(resultSet).hasSize(2);
+    assertThat(resultSet).hasSize(14);
 
     resultSet.close();
   }
@@ -100,6 +100,18 @@ public class OLuceneSearchOnIndexFunctionTest extends BaseLuceneTest {
     OResultSet resultSet = db
         .query(
             "SELECT from Song where SEARCH_INDEX('Song.title', 'tambourine') = true AND SEARCH_INDEX('Song.author', 'Bob') = true ");
+
+    assertThat(resultSet).hasSize(1);
+    resultSet.close();
+
+  }
+
+  @Test
+  public void shouldSearhOnTwoIndexesWithLeadingWildcardInAND() throws Exception {
+
+    OResultSet resultSet = db
+        .query(
+            "SELECT from Song where SEARCH_INDEX('Song.title', 'tambourine') = true AND SEARCH_INDEX('Song.author', 'Bob', {'allowLeadingWildcard': true}) = true ");
 
     assertThat(resultSet).hasSize(1);
     resultSet.close();

@@ -215,6 +215,9 @@ public class ONetworkBinaryProtocolFactory {
     case OChannelBinaryProtocol.SUBSCRIBE_PUSH:
       return new OSubscribeRequest();
 
+    case OChannelBinaryProtocol.UNSUBSCRIBE_PUSH:
+      return new OUnsubscribeRequest();
+
     case OChannelBinaryProtocol.REQUEST_TX_FETCH:
       return new OFetchTransactionRequest();
 
@@ -229,6 +232,9 @@ public class ONetworkBinaryProtocolFactory {
 
     case OChannelBinaryProtocol.REQUEST_TX_ROLLBACK:
       return new ORollbackTransactionRequest();
+
+    case OChannelBinaryProtocol.REQUEST_BATCH_OPERATIONS:
+      return new OBatchOperationsRequest();
 
     case OChannelBinaryProtocol.REQUEST_DB_OPEN:
       return new OOpen37Request();

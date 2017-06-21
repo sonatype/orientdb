@@ -72,10 +72,7 @@ import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedSt
 import com.orientechnologies.orient.core.storage.impl.local.OFreezableStorageComponent;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.OOfflineClusterException;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.ORecordSerializationContext;
-import com.orientechnologies.orient.core.tx.OTransaction;
-import com.orientechnologies.orient.core.tx.OTransactionNoTx;
-import com.orientechnologies.orient.core.tx.OTransactionOptimistic;
-import com.orientechnologies.orient.core.tx.OTransactionRealAbstract;
+import com.orientechnologies.orient.core.tx.*;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -164,18 +161,7 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
     return (DB) this;
   }
 
-  protected void loadMetadata() {
-    metadata = new OMetadataDefault(this);
-    sharedContext = getStorage().getResource(OSharedContext.class.getName(), new Callable<OSharedContext>() {
-      @Override
-      public OSharedContext call() throws Exception {
-        OSharedContext shared = new OSharedContext(getStorage());
-        return shared;
-      }
-    });
-    metadata.init(sharedContext);
-    sharedContext.load(this);
-  }
+  protected abstract void loadMetadata();
 
   public void callOnCloseListeners() {
     // WAKE UP DB LIFECYCLE LISTENER
@@ -881,7 +867,7 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
   @Override
   public boolean existsCluster(final String iClusterName) {
     checkIfActive();
-    return getStorage().getClusterNames().contains(iClusterName.toLowerCase());
+    return getStorage().getClusterNames().contains(iClusterName.toLowerCase(Locale.ENGLISH));
   }
 
   @Override
@@ -896,7 +882,7 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
       return -1;
 
     checkIfActive();
-    return getStorage().getClusterIdByName(iClusterName.toLowerCase());
+    return getStorage().getClusterIdByName(iClusterName.toLowerCase(Locale.ENGLISH));
   }
 
   @Override
@@ -993,14 +979,14 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
   @Override
   public Object setProperty(final String iName, final Object iValue) {
     if (iValue == null)
-      return properties.remove(iName.toLowerCase());
+      return properties.remove(iName.toLowerCase(Locale.ENGLISH));
     else
-      return properties.put(iName.toLowerCase(), iValue);
+      return properties.put(iName.toLowerCase(Locale.ENGLISH), iValue);
   }
 
   @Override
   public Object getProperty(final String iName) {
-    return properties.get(iName.toLowerCase());
+    return properties.get(iName.toLowerCase(Locale.ENGLISH));
   }
 
   @Override
@@ -1114,7 +1100,7 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
         throw new IllegalArgumentException("Timezone can't be null");
 
       // for backward compatibility, until 2.1.13 OrientDB accepted timezones in lowercase as well
-      TimeZone timeZoneValue = TimeZone.getTimeZone(stringValue.toUpperCase());
+      TimeZone timeZoneValue = TimeZone.getTimeZone(stringValue.toUpperCase(Locale.ENGLISH));
       if (timeZoneValue.equals(TimeZone.getTimeZone("GMT"))) {
         timeZoneValue = TimeZone.getTimeZone(stringValue);
       }
@@ -2543,12 +2529,14 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
           final ORecord rec = op.getRecord();
           if (rec != null && rec instanceof ODocument) {
             OClass schemaClass = ((ODocument) rec).getSchemaClass();
-            if (iPolymorphic) {
-              if (schemaClass.isSubClassOf(iClassName))
-                addedInTx++;
-            } else {
-              if (iClassName.equals(schemaClass.getName()) || iClassName.equals(schemaClass.getShortName()))
-                addedInTx++;
+            if (schemaClass != null) {
+              if (iPolymorphic) {
+                if (schemaClass.isSubClassOf(iClassName))
+                  addedInTx++;
+              } else {
+                if (iClassName.equals(schemaClass.getName()) || iClassName.equals(schemaClass.getShortName()))
+                  addedInTx++;
+              }
             }
           }
         }
@@ -2606,7 +2594,7 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
         }
 
       // ROLLBACK TX AT DB LEVEL
-      currentTx.rollback(false, 0);
+      ((OTransactionAbstract) currentTx).internalRollback();
       getLocalCache().clear();
 
       // WAKE UP ROLLBACK LISTENERS
@@ -2894,14 +2882,12 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
   }
 
   private void checkRecordClass(final OClass recordClass, final String iClusterName, final ORecordId rid) {
-    if (getStorageVersions().classesAreDetectedByClusterId()) {
-      final OClass clusterIdClass = metadata.getImmutableSchemaSnapshot().getClassByClusterId(rid.getClusterId());
-      if (recordClass == null && clusterIdClass != null || clusterIdClass == null && recordClass != null || (recordClass != null
-          && !recordClass.equals(clusterIdClass)))
-        throw new IllegalArgumentException(
-            "Record saved into cluster '" + iClusterName + "' should be saved with class '" + clusterIdClass
-                + "' but has been created with class '" + recordClass + "'");
-    }
+    final OClass clusterIdClass = metadata.getImmutableSchemaSnapshot().getClassByClusterId(rid.getClusterId());
+    if (recordClass == null && clusterIdClass != null || clusterIdClass == null && recordClass != null || (recordClass != null
+        && !recordClass.equals(clusterIdClass)))
+      throw new IllegalArgumentException(
+          "Record saved into cluster '" + iClusterName + "' should be saved with class '" + clusterIdClass
+              + "' but has been created with class '" + recordClass + "'");
   }
 
   private byte[] updateStream(final ORecord record) {
@@ -3049,21 +3035,22 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
       configuration.setValue(OGlobalConfiguration.CLIENT_CONNECTION_STRATEGY, connectionStrategy);
 
     final String compressionMethod = iProperties != null ?
-        (String) iProperties.get(OGlobalConfiguration.STORAGE_COMPRESSION_METHOD.getKey().toLowerCase()) :
+        (String) iProperties.get(OGlobalConfiguration.STORAGE_COMPRESSION_METHOD.getKey().toLowerCase(Locale.ENGLISH)) :
         null;
     if (compressionMethod != null)
       // SAVE COMPRESSION METHOD IN CONFIGURATION
       configuration.setValue(OGlobalConfiguration.STORAGE_COMPRESSION_METHOD, compressionMethod);
 
     final String encryptionMethod = iProperties != null ?
-        (String) iProperties.get(OGlobalConfiguration.STORAGE_ENCRYPTION_METHOD.getKey().toLowerCase()) :
+        (String) iProperties.get(OGlobalConfiguration.STORAGE_ENCRYPTION_METHOD.getKey().toLowerCase(Locale.ENGLISH)) :
         null;
     if (encryptionMethod != null)
       // SAVE ENCRYPTION METHOD IN CONFIGURATION
       configuration.setValue(OGlobalConfiguration.STORAGE_ENCRYPTION_METHOD, encryptionMethod);
 
-    final String encryptionKey =
-        iProperties != null ? (String) iProperties.get(OGlobalConfiguration.STORAGE_ENCRYPTION_KEY.getKey().toLowerCase()) : null;
+    final String encryptionKey = iProperties != null ?
+        (String) iProperties.get(OGlobalConfiguration.STORAGE_ENCRYPTION_KEY.getKey().toLowerCase(Locale.ENGLISH)) :
+        null;
     if (encryptionKey != null)
       // SAVE ENCRYPTION KEY IN CONFIGURATION
       configuration.setValue(OGlobalConfiguration.STORAGE_ENCRYPTION_KEY, encryptionKey);

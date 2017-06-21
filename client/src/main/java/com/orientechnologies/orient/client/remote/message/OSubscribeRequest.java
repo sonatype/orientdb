@@ -1,6 +1,5 @@
 package com.orientechnologies.orient.client.remote.message;
 
-import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.orient.client.binary.OBinaryRequestExecutor;
 import com.orientechnologies.orient.client.remote.OBinaryRequest;
 import com.orientechnologies.orient.client.remote.OBinaryResponse;
@@ -25,8 +24,8 @@ public class OSubscribeRequest implements OBinaryRequest<OSubscribeResponse> {
 
   }
 
-  public OSubscribeRequest(byte pushMessage, OBinaryRequest<? extends OBinaryResponse> request) {
-    this.pushMessage = pushMessage;
+  public OSubscribeRequest(OBinaryRequest<? extends OBinaryResponse> request) {
+    this.pushMessage = request.getCommand();
     this.pushRequest = request;
   }
 
@@ -47,7 +46,10 @@ public class OSubscribeRequest implements OBinaryRequest<OSubscribeResponse> {
     switch (message) {
     case OChannelBinaryProtocol.SUBSCRIBE_PUSH_DISTRIB_CONFIG:
       return new OSubscribeDistributedConfigurationRequest();
+    case OChannelBinaryProtocol.SUBSCRIBE_PUSH_LIVE_QUERY:
+      return new OSubscribeLiveQueryRequest();
     }
+
     throw new ODatabaseException("Unknown message response for code:" + message);
   }
 

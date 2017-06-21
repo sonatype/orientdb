@@ -23,10 +23,11 @@ import java.sql.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-public class OrientJdbcResultSetTest extends OrientJdbcBaseTest {
+public class OrientJdbcResultSetTest extends OrientJdbcDbPerMethodTemplateTest {
 
   @Test
   public void shouldNavigateResultSet() throws Exception {
+
 
     assertThat(conn.isClosed()).isFalse();
     Statement stmt = conn.createStatement();
@@ -77,6 +78,11 @@ public class OrientJdbcResultSetTest extends OrientJdbcBaseTest {
     ResultSet rs = stmt.getResultSet();
     assertThat(rs).isNotNull();
     assertThat(rs.getFetchSize()).isEqualTo(20);
+
+    while (rs.next()) {
+
+      System.out.println("rs.getObject(1) = " + rs.getObject(1));
+    }
 
   }
 

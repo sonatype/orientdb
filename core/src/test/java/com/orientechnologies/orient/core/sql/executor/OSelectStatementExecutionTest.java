@@ -7,9 +7,9 @@ import com.orientechnologies.orient.core.exception.OCommandExecutionException;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
 import com.orientechnologies.orient.core.metadata.schema.OSchema;
 import com.orientechnologies.orient.core.metadata.schema.OType;
+import com.orientechnologies.orient.core.record.OElement;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.OCommandSQL;
-import com.orientechnologies.orient.core.sql.query.OSQLSynchQuery;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -3093,59 +3093,83 @@ public class OSelectStatementExecutionTest {
   }
 
   @Test
-  public void stressTestNew() {
-    String className = "stressTestNew";
-    db.getMetadata().getSchema().createClass(className);
-    for (int i = 0; i < 1000000; i++) {
-      ODocument doc = db.newInstance(className);
-      doc.setProperty("name", "name" + i);
-      doc.setProperty("surname", "surname" + i);
-      doc.save();
-    }
+  public void testNestedProjections1() {
+    String className = "testNestedProjections1";
+    db.command("create class " + className).close();
+    OElement elem1 = db.newElement(className);
+    elem1.setProperty("name", "a");
+    elem1.save();
 
-    for (int run = 0; run < 5; run++) {
-      long begin = System.nanoTime();
-      OResultSet result = db.query("select name from " + className + " where name <> 'name1' ");
-      for (int i = 0; i < 999999; i++) {
-        //        Assert.assertTrue(result.hasNext());
-        OResult item = result.next();
-        //        Assert.assertNotNull(item);
-        Object name = item.getProperty("name");
-        Assert.assertFalse("name1".equals(name));
-      }
-      Assert.assertFalse(result.hasNext());
-      result.close();
-      long end = System.nanoTime();
-      System.out.println("new: " + ((end - begin) / 1000000));
-    }
+    OElement elem2 = db.newElement(className);
+    elem2.setProperty("name", "b");
+    elem2.setProperty("surname", "lkj");
+    elem2.save();
+
+    OElement elem3 = db.newElement(className);
+    elem3.setProperty("name", "c");
+    elem3.save();
+
+    OElement elem4 = db.newElement(className);
+    elem4.setProperty("name", "d");
+    elem4.setProperty("elem1", elem1);
+    elem4.setProperty("elem2", elem2);
+    elem4.setProperty("elem3", elem3);
+    elem4.save();
+
+    OResultSet result = db.query("select name, elem1:{*}, elem2:{!surname} from " + className + " where name = 'd'");
+    Assert.assertTrue(result.hasNext());
+    OResult item = result.next();
+    Assert.assertNotNull(item);
+    //TODO refine this!
+    Assert.assertTrue(item.getProperty("elem1") instanceof OResult);
+    Assert.assertEquals("a", ((OResult) item.getProperty("elem1")).getProperty("name"));
+    printExecutionPlan(result);
+
+    result.close();
   }
 
-  public void stressTestOld() {
-    String className = "stressTestOld";
-    db.getMetadata().getSchema().createClass(className);
-    for (int i = 0; i < 1000000; i++) {
-      ODocument doc = db.newInstance(className);
-      doc.setProperty("name", "name" + i);
-      doc.setProperty("surname", "surname" + i);
-      doc.save();
-    }
-    for (int run = 0; run < 5; run++) {
-      long begin = System.nanoTime();
-      List<ODocument> r = db.query(new OSQLSynchQuery<ODocument>("select name from " + className + " where name <> 'name1' "));
-      //      Iterator<ODocument> result = r.iterator();
-      for (int i = 0; i < 999999; i++) {
-        //        Assert.assertTrue(result.hasNext());
-        //        ODocument item = result.next();
-        ODocument item = r.get(i);
+  @Test
+  public void testSimpleCollectionFiltering() {
+    String className = "testSimpleCollectionFiltering";
+    db.command("create class " + className).close();
+    OElement elem1 = db.newElement(className);
+    List<String> coll = new ArrayList<>();
+    coll.add("foo");
+    coll.add("bar");
+    coll.add("baz");
+    elem1.setProperty("coll", coll);
+    elem1.save();
 
-        //        Assert.assertNotNull(item);
-        Object name = item.getProperty("name");
-        Assert.assertFalse("name1".equals(name));
-      }
-      //      Assert.assertFalse(result.hasNext());
-      long end = System.nanoTime();
-      System.out.println("old: " + ((end - begin) / 1000000));
-    }
+    OResultSet result = db.query("select coll[='foo'] as filtered from " + className);
+    Assert.assertTrue(result.hasNext());
+    OResult item = result.next();
+    List res = item.getProperty("filtered");
+    Assert.assertEquals(1, res.size());
+    Assert.assertEquals("foo", res.get(0));
+    result.close();
+
+    result = db.query("select coll[<'ccc'] as filtered from " + className);
+    Assert.assertTrue(result.hasNext());
+    item = result.next();
+    res = item.getProperty("filtered");
+    Assert.assertEquals(2, res.size());
+    result.close();
+
+    result = db.query("select coll[LIKE 'ba%'] as filtered from " + className);
+    Assert.assertTrue(result.hasNext());
+    item = result.next();
+    res = item.getProperty("filtered");
+    Assert.assertEquals(2, res.size());
+    result.close();
+
+    result = db.query("select coll[in ['bar']] as filtered from " + className);
+    Assert.assertTrue(result.hasNext());
+    item = result.next();
+    res = item.getProperty("filtered");
+    Assert.assertEquals(1, res.size());
+    Assert.assertEquals("bar", res.get(0));
+    result.close();
+
   }
 
 }

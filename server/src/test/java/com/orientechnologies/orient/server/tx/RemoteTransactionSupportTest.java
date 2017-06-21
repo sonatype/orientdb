@@ -9,7 +9,9 @@ import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.index.OIndex;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
 import com.orientechnologies.orient.core.metadata.schema.OType;
+import com.orientechnologies.orient.core.record.OEdge;
 import com.orientechnologies.orient.core.record.OElement;
+import com.orientechnologies.orient.core.record.OVertex;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.executor.OResultSet;
 import com.orientechnologies.orient.server.OServer;
@@ -18,8 +20,8 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
 
 import static org.junit.Assert.*;
 
@@ -67,6 +69,22 @@ public class RemoteTransactionSupportTest {
   }
 
   @Test
+  public void testResetUpdatedInTxTransaction() {
+    database.begin();
+
+    ODocument doc1 = new ODocument();
+    doc1.setProperty("name", "Jane");
+    database.save(doc1);
+    ODocument doc2 = new ODocument("SomeTx");
+    doc2.setProperty("name", "Jane");
+    database.save(doc2);
+    OResultSet result = database.command("update SomeTx set name='July' where name = 'Jane' ");
+    assertEquals((long) result.next().getProperty("count"), 1L);
+    assertEquals(doc2.getProperty("name"), "July");
+    result.close();
+  }
+
+  @Test
   public void testQueryUpdateCreatedInTxTransaction() {
     database.begin();
     ODocument doc1 = new ODocument("SomeTx");
@@ -83,6 +101,7 @@ public class RemoteTransactionSupportTest {
     ODocument doc2 = database.load(id.getIdentity());
     assertEquals(doc2.getProperty("name"), "July");
     assertFalse(result.hasNext());
+    result.close();
   }
 
   @Test
@@ -99,17 +118,18 @@ public class RemoteTransactionSupportTest {
     OResultSet result = database.command("update SomeTx set name='July' where name = 'Jane' ");
     assertTrue(result.hasNext());
     assertEquals((long) result.next().getProperty("count"), 2L);
-
+    result.close();
     database.rollback();
 
     OResultSet result1 = database.command("select count(*) from SomeTx where name='Jane'");
     assertTrue(result1.hasNext());
     assertEquals((long) result1.next().getProperty("count(*)"), 1L);
+    result1.close();
 
   }
 
   @Test
-  public void testRollbackTxChekcStatusTransaction() {
+  public void testRollbackTxCheckStatusTransaction() {
     ODocument doc = new ODocument("SomeTx");
     doc.setProperty("name", "Jane");
     database.save(doc);
@@ -124,7 +144,7 @@ public class RemoteTransactionSupportTest {
     assertEquals((long) result.next().getProperty("count(*)"), 2L);
 
     assertTrue(database.getTransaction().isActive());
-
+    result.close();
     database.rollback();
 
     OResultSet result1 = database.command("select count(*) from SomeTx where name='Jane'");
@@ -132,6 +152,7 @@ public class RemoteTransactionSupportTest {
     assertEquals((long) result1.next().getProperty("count(*)"), 1L);
 
     assertFalse(database.getTransaction().isActive());
+    result1.close();
 
   }
 
@@ -139,7 +160,8 @@ public class RemoteTransactionSupportTest {
   public void testDownloadTransactionAtStart() {
     database.begin();
 
-    database.command("insert into SomeTx set name ='Jane' ");
+    database.command("insert into SomeTx set name ='Jane' ").close();
+    ;
     assertEquals(database.getTransaction().getEntryCount(), 1);
   }
 
@@ -147,15 +169,17 @@ public class RemoteTransactionSupportTest {
   public void testQueryUpdateCreatedInTxSQLTransaction() {
     database.begin();
 
-    database.command("insert into SomeTx set name ='Jane' ");
+    database.command("insert into SomeTx set name ='Jane' ").close();
 
     OResultSet result = database.command("update SomeTx set name='July' where name = 'Jane' ");
     assertTrue(result.hasNext());
     assertEquals((long) result.next().getProperty("count"), 1L);
+    result.close();
     OResultSet result1 = database.query("select from SomeTx where name='July'");
     assertTrue(result1.hasNext());
     assertEquals(result1.next().getProperty("name"), "July");
     assertFalse(result.hasNext());
+    result1.close();
   }
 
   @Test
@@ -174,6 +198,7 @@ public class RemoteTransactionSupportTest {
 
     OResultSet result = database.command("select from SomeTx");
     assertFalse(result.hasNext());
+    result.close();
 
   }
 
@@ -190,12 +215,68 @@ public class RemoteTransactionSupportTest {
     assertEquals((long) result.next().getProperty("count"), 1L);
     Collection<OIdentifiable> entry = (Collection<OIdentifiable>) index.get("July");
     assertEquals(entry.size(), 1);
-
+    result.close();
     database.commit();
 
     entry = (Collection<OIdentifiable>) index.get("July");
     assertEquals(entry.size(), 1);
 
+  }
+
+  @Test
+  public void testGenerateIdCounterTransaction() {
+    database.begin();
+
+    ODocument doc = new ODocument("SomeTx");
+    doc.setProperty("name", "Jane");
+    database.save(doc);
+
+    database.command("insert into SomeTx set name ='Jane1' ").close();
+    database.command("insert into SomeTx set name ='Jane2' ").close();
+
+    ODocument doc1 = new ODocument("SomeTx");
+    doc1.setProperty("name", "Jane3");
+    database.save(doc1);
+
+    doc1 = new ODocument("SomeTx");
+    doc1.setProperty("name", "Jane4");
+    database.save(doc1);
+    database.command("insert into SomeTx set name ='Jane2' ").close();
+
+    OResultSet result = database.command("select count(*) from SomeTx");
+    System.out.println(result.getExecutionPlan().toString());
+    assertTrue(result.hasNext());
+    assertEquals((long) result.next().getProperty("count(*)"), 6L);
+    result.close();
+    assertTrue(database.getTransaction().isActive());
+
+    database.commit();
+
+    OResultSet result1 = database.command("select count(*) from SomeTx ");
+    assertTrue(result1.hasNext());
+    assertEquals((long) result1.next().getProperty("count(*)"), 6L);
+    result1.close();
+    assertFalse(database.getTransaction().isActive());
+
+  }
+
+  @Test
+  public void testGraphInTx() {
+    database.createVertexClass("MyV");
+    database.createEdgeClass("MyE");
+    database.begin();
+
+    OVertex v1 = database.newVertex("MyV");
+    OVertex v2 = database.newVertex("MyV");
+    OEdge edge = v1.addEdge(v2, "MyE");
+    edge.setProperty("some", "value");
+    database.save(v1);
+    OResultSet result1 = database.query("select out_MyE from MyV  where out_MyE is not null");
+    assertTrue(result1.hasNext());
+    ArrayList<Object> val = new ArrayList<>();
+    val.add(edge.getIdentity());
+    assertEquals(result1.next().getProperty("out_MyE"), val);
+    result1.close();
   }
 
   @After

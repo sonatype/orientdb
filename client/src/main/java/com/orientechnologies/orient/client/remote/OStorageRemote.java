@@ -28,9 +28,6 @@ import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.util.OCommonConst;
 import com.orientechnologies.orient.client.binary.OChannelBinaryAsynchClient;
 import com.orientechnologies.orient.client.remote.message.*;
-import com.orientechnologies.orient.client.remote.message.OCommitResponse.OCreatedRecordResponse;
-import com.orientechnologies.orient.client.remote.message.OCommitResponse.OUpdatedRecordResponse;
-import com.orientechnologies.orient.client.remote.message.live.OLiveQueryResult;
 import com.orientechnologies.orient.core.command.OCommandOutputListener;
 import com.orientechnologies.orient.core.command.OCommandRequestAsynch;
 import com.orientechnologies.orient.core.command.OCommandRequestText;
@@ -39,7 +36,10 @@ import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.config.OStorageClusterConfiguration;
 import com.orientechnologies.orient.core.config.OStorageConfiguration;
 import com.orientechnologies.orient.core.conflict.ORecordConflictStrategy;
-import com.orientechnologies.orient.core.db.*;
+import com.orientechnologies.orient.core.db.ODatabase;
+import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
+import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
+import com.orientechnologies.orient.core.db.OLiveQueryMonitor;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentRemote;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTxInternal;
 import com.orientechnologies.orient.core.db.document.OLiveQueryMonitorRemote;
@@ -384,7 +384,7 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
 
         String strategy = conf.getValueAsString(OGlobalConfiguration.CLIENT_CONNECTION_STRATEGY);
         if (strategy != null)
-          connectionStrategy = CONNECTION_STRATEGY.valueOf(strategy.toUpperCase());
+          connectionStrategy = CONNECTION_STRATEGY.valueOf(strategy.toUpperCase(Locale.ENGLISH));
 
         openRemoteDatabase();
 
@@ -439,43 +439,48 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
     if (status == STATUS.CLOSED)
       return;
 
+    final OStorageRemoteSession session = getCurrentSession();
+    if (session != null) {
+      final Collection<OStorageRemoteNodeSession> nodes = session.getAllServerSessions();
+      if (!nodes.isEmpty()) {
+        for (OStorageRemoteNodeSession nodeSession : nodes) {
+          OChannelBinaryAsynchClient network = null;
+          try {
+            network = getNetwork(nodeSession.getServerURL());
+            OCloseRequest request = new OCloseRequest();
+            network.beginRequest(request.getCommand(), session);
+            request.write(network, session);
+            endRequest(network);
+            connectionManager.release(network);
+          } catch (OIOException ex) {
+            // IGNORING IF THE SERVER IS DOWN OR NOT REACHABLE THE SESSION IS AUTOMATICALLY CLOSED.
+            OLogManager.instance().debug(this, "Impossible to comunicate to the server for close: %s", ex);
+            connectionManager.remove(network);
+          } catch (IOException ex) {
+            // IGNORING IF THE SERVER IS DOWN OR NOT REACHABLE THE SESSION IS AUTOMATICALLY CLOSED.
+            OLogManager.instance().debug(this, "Impossible to comunicate to the server for close: %s", ex);
+            connectionManager.remove(network);
+          }
+        }
+        session.close();
+        sessions.remove(session);
+        if (!checkForClose(iForce))
+          return;
+      } else {
+        if (!iForce)
+          return;
+      }
+    }
+    // FROM HERE FORWARD COMPLETELY CLOSE THE STORAGE
+    for (Entry<Long, OLiveQueryClientListener> listener : liveQueryListener.entrySet()) {
+      listener.getValue().onEnd();
+    }
+    liveQueryListener.clear();
+
     stateLock.acquireWriteLock();
     try {
       if (status == STATUS.CLOSED)
         return;
-
-      final OStorageRemoteSession session = getCurrentSession();
-      if (session != null) {
-        final Collection<OStorageRemoteNodeSession> nodes = session.getAllServerSessions();
-        if (!nodes.isEmpty()) {
-          for (OStorageRemoteNodeSession nodeSession : nodes) {
-            OChannelBinaryAsynchClient network = null;
-            try {
-              network = getNetwork(nodeSession.getServerURL());
-              OCloseRequest request = new OCloseRequest();
-              network.beginRequest(request.getCommand(), session);
-              request.write(network, session);
-              endRequest(network);
-              connectionManager.release(network);
-            } catch (OIOException ex) {
-              // IGNORING IF THE SERVER IS DOWN OR NOT REACHABLE THE SESSION IS AUTOMATICALLY CLOSED.
-              OLogManager.instance().debug(this, "Impossible to comunicate to the server for close: %s", ex);
-              connectionManager.remove(network);
-            } catch (IOException ex) {
-              // IGNORING IF THE SERVER IS DOWN OR NOT REACHABLE THE SESSION IS AUTOMATICALLY CLOSED.
-              OLogManager.instance().debug(this, "Impossible to comunicate to the server for close: %s", ex);
-              connectionManager.remove(network);
-            }
-          }
-          session.close();
-          sessions.remove(session);
-          if (!checkForClose(iForce))
-            return;
-        } else {
-          if (!iForce)
-            return;
-        }
-      }
 
       status = STATUS.CLOSING;
       // CLOSE ALL THE CONNECTIONS
@@ -821,28 +826,44 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
 
   }
 
-  public ORemoteQueryResult query(ODatabase db, String query, Object[] args) {
+  public ORemoteQueryResult query(ODatabaseDocumentRemote db, String query, Object[] args) {
+    OQueryRequest request = new OQueryRequest("sql", query, args, true, db.getSerializer(), 100);
+    OQueryResponse response = networkOperation(request, "Error on executing command: " + query);
+    ORemoteResultSet rs = new ORemoteResultSet(db, response.getQueryId(), response.getResult(), response.getExecutionPlan(),
+        response.getQueryStats(), response.isHasNextPage());
+
+    return new ORemoteQueryResult(rs, response.isTxChanges());
+  }
+
+  public ORemoteQueryResult query(ODatabaseDocumentRemote db, String query, Map args) {
     OQueryRequest request = new OQueryRequest("sql", query, args, true, ((ODatabaseDocumentInternal) db).getSerializer(), 100);
     OQueryResponse response = networkOperation(request, "Error on executing command: " + query);
-    return new ORemoteQueryResult(response.getResult(), response.isTxChanges());
+
+    ORemoteResultSet rs = new ORemoteResultSet(db, response.getQueryId(), response.getResult(), response.getExecutionPlan(),
+        response.getQueryStats(), response.isHasNextPage());
+
+    return new ORemoteQueryResult(rs, response.isTxChanges());
+
   }
 
-  public ORemoteQueryResult query(ODatabase db, String query, Map args) {
-    OQueryRequest request = new OQueryRequest("sql", query, args, true, ((ODatabaseDocumentInternal) db).getSerializer(), 100);
-    OQueryResponse response = networkOperation(request, "Error on executing command: " + query);
-    return new ORemoteQueryResult(response.getResult(), response.isTxChanges());
-  }
-
-  public ORemoteQueryResult command(ODatabase db, String language, String query, Object[] args) {
+  public ORemoteQueryResult command(ODatabaseDocumentRemote db, String language, String query, Object[] args) {
     OQueryRequest request = new OQueryRequest(language, query, args, false, ((ODatabaseDocumentInternal) db).getSerializer(), 100);
     OQueryResponse response = networkOperation(request, "Error on executing command: " + query);
-    return new ORemoteQueryResult(response.getResult(), response.isTxChanges());
+    ORemoteResultSet rs = new ORemoteResultSet(db, response.getQueryId(), response.getResult(), response.getExecutionPlan(),
+        response.getQueryStats(), response.isHasNextPage());
+
+    return new ORemoteQueryResult(rs, response.isTxChanges());
+
   }
 
-  public ORemoteQueryResult command(ODatabase db, String language, String query, Map args) {
+  public ORemoteQueryResult command(ODatabaseDocumentRemote db, String language, String query, Map args) {
     OQueryRequest request = new OQueryRequest(language, query, args, false, ((ODatabaseDocumentInternal) db).getSerializer(), 100);
     OQueryResponse response = networkOperation(request, "Error on executing command: " + query);
-    return new ORemoteQueryResult(response.getResult(), response.isTxChanges());
+    ORemoteResultSet rs = new ORemoteResultSet(db, response.getQueryId(), response.getResult(), response.getExecutionPlan(),
+        response.getQueryStats(), response.isHasNextPage());
+
+    return new ORemoteQueryResult(rs, response.isTxChanges());
+
   }
 
   public void closeQuery(ODatabaseDocumentRemote database, String queryId) {
@@ -854,14 +875,7 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
     OQueryNextPageRequest request = new OQueryNextPageRequest(rs.getQueryId(), 100);
     OQueryResponse response = networkOperation(request, "Error on fetching next page for statment: " + rs.getQueryId());
 
-    ORemoteResultSet remoteRs = ((ORemoteResultSet) response.getResult());
-    rs.setCurrentPage(remoteRs.getCurrentPage());
-    rs.setHasNextPage(remoteRs.hasNextPage());
-    Map<String, Long> newQueryStats = remoteRs.getQueryStats();
-    if (newQueryStats != null) {
-      rs.setQueryStats(newQueryStats);
-    }
-    remoteRs.getExecutionPlan().ifPresent(x -> rs.setExecutionPlan(x));
+    rs.fetched(response.getResult(), response.isHasNextPage(), response.getExecutionPlan(), response.getQueryStats());
   }
 
   public List<ORecordOperation> commit(final OTransaction iTx, final Runnable callback) {
@@ -873,11 +887,18 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
       request = new OCommit37Request(iTx.getId(), false, iTx.isUsingLog(), null, null);
     }
 
-    OCommitResponse response = networkOperation(request, "Error on commit");
-    for (OCreatedRecordResponse created : response.getCreated()) {
+    OCommit37Response response = networkOperation(request, "Error on commit");
+    for (OCommit37Response.OCreatedRecordResponse created : response.getCreated()) {
       iTx.updateIdentityAfterCommit(created.getCurrentRid(), created.getCreatedRid());
+      ORecordOperation rop = iTx.getRecordEntry(created.getCurrentRid());
+      if (rop != null) {
+        if (created.getVersion() > rop.getRecord().getVersion() + 1)
+          // IN CASE OF REMOTE CONFLICT STRATEGY FORCE UNLOAD DUE TO INVALID CONTENT
+          rop.getRecord().unload();
+        ORecordInternal.setVersion(rop.getRecord(), created.getVersion());
+      }
     }
-    for (OUpdatedRecordResponse updated : response.getUpdated()) {
+    for (OCommit37Response.OUpdatedRecordResponse updated : response.getUpdated()) {
       ORecordOperation rop = iTx.getRecordEntry(updated.getRid());
       if (rop != null) {
         if (updated.getVersion() > rop.getRecord().getVersion() + 1)
@@ -886,7 +907,7 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
         ORecordInternal.setVersion(rop.getRecord(), updated.getVersion());
       }
     }
-    updateCollectionsFromChanges(ODatabaseRecordThreadLocal.INSTANCE.get().getSbTreeCollectionManager(),
+    updateCollectionsFromChanges(((OTransactionOptimistic) iTx).getDatabase().getSbTreeCollectionManager(),
         response.getCollectionChanges());
     // SET ALL THE RECORDS AS UNDIRTY
     for (ORecordOperation txEntry : iTx.getAllRecordEntries())
@@ -914,7 +935,7 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
       if (Character.isDigit(iClusterName.charAt(0)))
         return Integer.parseInt(iClusterName);
 
-      final OCluster cluster = clusterMap.get(iClusterName.toLowerCase());
+      final OCluster cluster = clusterMap.get(iClusterName.toLowerCase(Locale.ENGLISH));
       if (cluster == null)
         return -1;
 
@@ -1667,7 +1688,7 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
         String clusterName = clusterConfig.getName();
         final int clusterId = clusterConfig.getId();
         if (clusterName != null) {
-          clusterName = clusterName.toLowerCase();
+          clusterName = clusterName.toLowerCase(Locale.ENGLISH);
           cluster.configure(null, clusterId, clusterName);
           if (clusterId >= clusters.length)
             clusters = Arrays.copyOf(clusters, clusterId + 1);
@@ -1759,29 +1780,33 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
     stateLock.acquireWriteLock();
     try {
       final OClusterRemote cluster = new OClusterRemote();
-      cluster.configure(this, clusterId, iClusterName.toLowerCase());
+      cluster.configure(this, clusterId, iClusterName.toLowerCase(Locale.ENGLISH));
 
       if (clusters.length <= clusterId)
         clusters = Arrays.copyOf(clusters, clusterId + 1);
       clusters[cluster.getId()] = cluster;
-      clusterMap.put(cluster.getName().toLowerCase(), cluster);
+      clusterMap.put(cluster.getName().toLowerCase(Locale.ENGLISH), cluster);
     } finally {
       stateLock.releaseWriteLock();
     }
   }
 
   public void beginTransaction(ODatabaseDocumentRemote database, OTransactionOptimistic transaction) {
-    OBeginTransactionRequest request = new OBeginTransactionRequest(transaction.getId(), transaction.isUsingLog(),
+    OBeginTransactionRequest request = new OBeginTransactionRequest(transaction.getId(), true, transaction.isUsingLog(),
         transaction.getAllRecordEntries(), transaction.getIndexEntries());
-    OBinaryResponse response = networkOperation(request, "Error on remote treansaction begin");
-
+    OBeginTransactionResponse response = networkOperation(request, "Error on remote treansaction begin");
+    for (Map.Entry<ORID, ORID> entry : response.getUpdatedIds().entrySet()) {
+      transaction.updateIdentityAfterCommit(entry.getKey(), entry.getValue());
+    }
   }
 
   public void reBeginTransaction(ODatabaseDocumentRemote database, OTransactionOptimistic transaction) {
     ORebeginTransactionRequest request = new ORebeginTransactionRequest(transaction.getId(), transaction.isUsingLog(),
         transaction.getAllRecordEntries(), transaction.getIndexEntries());
-    OBinaryResponse response = networkOperation(request, "Error on remote treansaction begin");
-
+    OBeginTransactionResponse response = networkOperation(request, "Error on remote treansaction begin");
+    for (Map.Entry<ORID, ORID> entry : response.getUpdatedIds().entrySet()) {
+      transaction.updateIdentityAfterCommit(entry.getKey(), entry.getValue());
+    }
   }
 
   public void fetchTransaction(ODatabaseDocumentRemote remote) {
@@ -1795,7 +1820,8 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
     switch (type) {
     case OChannelBinaryProtocol.REQUEST_PUSH_DISTRIB_CONFIG:
       return new OPushDistributedConfigurationRequest();
-//    case OChannelBinaryProtocol.REQUEST_PUSH_LIVE_QUERY:
+    case OChannelBinaryProtocol.REQUEST_PUSH_LIVE_QUERY:
+      return new OLiveQueryPushRequest();
 //    case OChannelBinaryProtocol.REQUEST_PUSH_STORAGE_CONFIG:
 //
 //      return  new
@@ -1815,7 +1841,7 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
     OSubscribeLiveQueryRequest request = new OSubscribeLiveQueryRequest(query, params);
     OSubscribeLiveQueryResponse response = pushThread.subscribe(request, getCurrentSession());
     registerLiveListener(response.getMonitorId(), listener);
-    return new OLiveQueryMonitorRemote(response.getMonitorId());
+    return new OLiveQueryMonitorRemote(database, response.getMonitorId());
   }
 
   public OLiveQueryMonitor liveQuery(ODatabaseDocumentRemote database, String query, OLiveQueryClientListener listener,
@@ -1823,7 +1849,12 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
     OSubscribeLiveQueryRequest request = new OSubscribeLiveQueryRequest(query, (Map<String, Object>) params);
     OSubscribeLiveQueryResponse response = pushThread.subscribe(request, getCurrentSession());
     registerLiveListener(response.getMonitorId(), listener);
-    return new OLiveQueryMonitorRemote(response.getMonitorId());
+    return new OLiveQueryMonitorRemote(database, response.getMonitorId());
+  }
+
+  public void unsubscribeLive(ODatabaseDocumentRemote database, long monitorId) {
+    OUnsubscribeRequest request = new OUnsubscribeRequest(new OUnsubscribeLiveQueryRequest(monitorId));
+    OUnsubscribeResponse response = networkOperation(request, "Error on unsubscribe of live query");
   }
 
   public void registerLiveListener(long monitorId, OLiveQueryClientListener listener) {

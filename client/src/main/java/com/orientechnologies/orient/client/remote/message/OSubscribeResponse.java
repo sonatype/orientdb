@@ -15,6 +15,10 @@ public class OSubscribeResponse implements OBinaryResponse {
 
   private OBinaryResponse response;
 
+  public OSubscribeResponse() {
+
+  }
+
   public OSubscribeResponse(OBinaryResponse response) {
     this.response = response;
   }

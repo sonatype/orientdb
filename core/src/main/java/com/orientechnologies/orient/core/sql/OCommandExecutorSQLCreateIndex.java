@@ -34,11 +34,7 @@ import com.orientechnologies.orient.core.metadata.schema.OClassImpl;
 import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * SQL CREATE INDEX command: Create a new index against a property.
@@ -131,13 +127,13 @@ public class OCommandExecutorSQLCreateIndex extends OCommandExecutorSQLAbstract 
         for (int i = 0; i < fields.length; i++) {
           final String fieldName = fields[i];
 
-          final int collatePos = fieldName.toUpperCase().indexOf(" COLLATE ");
+          final int collatePos = fieldName.toUpperCase(Locale.ENGLISH).indexOf(" COLLATE ");
 
           if (collatePos > 0) {
             if (collates == null)
               collates = new String[fields.length];
 
-            collates[i] = fieldName.substring(collatePos + " COLLATE ".length()).toLowerCase().trim();
+            collates[i] = fieldName.substring(collatePos + " COLLATE ".length()).toLowerCase(Locale.ENGLISH).trim();
             fields[i] = fieldName.substring(0, collatePos);
           } else {
             if (collates != null)
@@ -180,7 +176,7 @@ public class OCommandExecutorSQLCreateIndex extends OCommandExecutorSQLAbstract 
         oldPos = pos;
         pos = nextWord(parserText, parserTextUpperCase, oldPos, word, false);
         oldPos = pos;
-        engine = word.toString().toUpperCase();
+        engine = word.toString().toUpperCase(Locale.ENGLISH);
       } else
         parserGoBack();
 
@@ -317,9 +313,9 @@ public class OCommandExecutorSQLCreateIndex extends OCommandExecutorSQLAbstract 
       return;
 
     if (fieldNameParts.length == 3) {
-      if ("by".equals(fieldNameParts[1].toLowerCase())) {
+      if ("by".equals(fieldNameParts[1].toLowerCase(Locale.ENGLISH))) {
         try {
-          OPropertyMapIndexDefinition.INDEX_BY.valueOf(fieldNameParts[2].toUpperCase());
+          OPropertyMapIndexDefinition.INDEX_BY.valueOf(fieldNameParts[2].toUpperCase(Locale.ENGLISH));
         } catch (IllegalArgumentException iae) {
           throw new OCommandSQLParsingException("Illegal field name format, should be '<property> [by key|value]' but was '"
               + fieldName + "'", text, pos);

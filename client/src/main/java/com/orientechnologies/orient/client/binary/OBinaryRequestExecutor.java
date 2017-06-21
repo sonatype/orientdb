@@ -59,6 +59,8 @@ public interface OBinaryRequestExecutor {
 
   OBinaryResponse executeCommit(OCommitRequest request);
 
+  OBinaryResponse executeBatchOperations(OBatchOperationsRequest request);
+
   OBinaryResponse executeGetGlobalConfiguration(OGetGlobalConfigurationRequest request);
 
   OBinaryResponse executeListGlobalConfigurations(OListGlobalConfigurationsRequest request);
@@ -116,4 +118,8 @@ public interface OBinaryRequestExecutor {
   OBinaryResponse executeSubscribePushRequest(OSubscribeDistributedConfigurationRequest request);
 
   OBinaryResponse executeSubscribeLiveQuery(OSubscribeLiveQueryRequest request);
+
+  OBinaryResponse executeUnsubscribe(OUnsubscribeRequest request);
+
+  OBinaryResponse executeUnsubscribeLiveQuery(OUnsubscribeLiveQueryRequest request);
 }

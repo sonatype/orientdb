@@ -7,7 +7,8 @@ public class ORecordOperationRequest {
   private byte    type;
   private byte    recordType;
   private ORID    id;
-  private ORecord record;
+  private ORID    oldId;
+  private byte[] record;
   private int     version;
   private boolean contentChanged;
 
@@ -19,11 +20,19 @@ public class ORecordOperationRequest {
     this.id = id;
   }
 
-  public ORecord getRecord() {
+  public ORID getOldId() {
+    return oldId;
+  }
+
+  public void setOldId(ORID oldId) {
+    this.oldId = oldId;
+  }
+
+  public byte[] getRecord() {
     return record;
   }
 
-  public void setRecord(ORecord record) {
+  public void setRecord(byte[] record) {
     this.record = record;
   }
 

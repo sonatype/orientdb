@@ -2,7 +2,9 @@ package com.orientechnologies.orient.client.remote.message;
 
 import com.orientechnologies.common.comparator.ODefaultComparator;
 import com.orientechnologies.orient.core.db.record.ORecordOperation;
+import com.orientechnologies.orient.core.db.record.ridbag.sbtree.OBonsaiCollectionPointer;
 import com.orientechnologies.orient.core.id.ORecordId;
+import com.orientechnologies.orient.core.index.sbtreebonsai.local.OBonsaiBucketPointer;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.serialization.serializer.record.binary.ORecordSerializerNetworkFactory;
 import com.orientechnologies.orient.core.serialization.serializer.record.binary.ORecordSerializerNetworkV37;
@@ -17,6 +19,17 @@ import java.util.*;
 import static org.junit.Assert.*;
 
 public class ORemoteTransactionMessagesTest {
+  
+  @Test
+  public void testBeginTransactionEmptyWriteRead() throws IOException {
+    MockChannel channel = new MockChannel();
+    OBeginTransactionRequest request = new OBeginTransactionRequest(0, false, true, null, null);
+    request.write(channel, null);
+    channel.close();
+    OBeginTransactionRequest readRequest = new OBeginTransactionRequest();
+    readRequest.read(channel, 0, null);
+    assertFalse(readRequest.isHasContent());
+  }
 
   @Test
   public void testBeginTransactionWriteRead() throws IOException {
@@ -34,7 +47,7 @@ public class ORemoteTransactionMessagesTest {
     changes.put("some", change);
 
     MockChannel channel = new MockChannel();
-    OBeginTransactionRequest request = new OBeginTransactionRequest(0, true, operations, changes);
+    OBeginTransactionRequest request = new OBeginTransactionRequest(0, true, true, operations, changes);
     request.write(channel, null);
 
     channel.close();
@@ -98,6 +111,59 @@ public class ORemoteTransactionMessagesTest {
   }
 
   @Test
+  public void testCommitResponseTransactionWriteRead() throws IOException {
+
+    MockChannel channel = new MockChannel();
+    List<OCommit37Response.OCreatedRecordResponse> creates = new ArrayList<>();
+    creates.add(new OCommit37Response.OCreatedRecordResponse(new ORecordId(1, 2), new ORecordId(-1, -2), 10));
+    creates.add(new OCommit37Response.OCreatedRecordResponse(new ORecordId(1, 3), new ORecordId(-1, -3), 20));
+
+    List<OCommit37Response.OUpdatedRecordResponse> updates = new ArrayList<>();
+    updates.add(new OCommit37Response.OUpdatedRecordResponse(new ORecordId(10, 20), 3));
+    updates.add(new OCommit37Response.OUpdatedRecordResponse(new ORecordId(10, 21), 4));
+
+    List<OCommit37Response.ODeletedRecordResponse> deletes = new ArrayList<>();
+    deletes.add(new OCommit37Response.ODeletedRecordResponse(new ORecordId(10, 50)));
+    deletes.add(new OCommit37Response.ODeletedRecordResponse(new ORecordId(10, 51)));
+
+    Map<UUID, OBonsaiCollectionPointer> changes = new HashMap<>();
+    UUID val = UUID.randomUUID();
+    changes.put(val, new OBonsaiCollectionPointer(10, new OBonsaiBucketPointer(30, 40)));
+    OCommit37Response response = new OCommit37Response(creates, updates, deletes, changes);
+    response.write(channel, 0, null);
+    channel.close();
+
+    OCommit37Response readResponse = new OCommit37Response();
+    readResponse.read(channel, null);
+    assertEquals(readResponse.getCreated().size(), 2);
+    assertEquals(readResponse.getCreated().get(0).getCurrentRid(), new ORecordId(1, 2));
+    assertEquals(readResponse.getCreated().get(0).getCreatedRid(), new ORecordId(-1, -2));
+    assertEquals(readResponse.getCreated().get(0).getVersion(), 10);
+
+    assertEquals(readResponse.getCreated().get(1).getCurrentRid(), new ORecordId(1, 3));
+    assertEquals(readResponse.getCreated().get(1).getCreatedRid(), new ORecordId(-1, -3));
+    assertEquals(readResponse.getCreated().get(1).getVersion(), 20);
+
+    assertEquals(readResponse.getUpdated().size(), 2);
+    assertEquals(readResponse.getUpdated().get(0).getRid(), new ORecordId(10, 20));
+    assertEquals(readResponse.getUpdated().get(0).getVersion(), 3);
+
+    assertEquals(readResponse.getUpdated().get(1).getRid(), new ORecordId(10, 21));
+    assertEquals(readResponse.getUpdated().get(1).getVersion(), 4);
+
+    assertEquals(readResponse.getDeleted().size(), 2);
+    assertEquals(readResponse.getDeleted().get(0).getRid(), new ORecordId(10, 50));
+    assertEquals(readResponse.getDeleted().get(1).getRid(), new ORecordId(10, 51));
+
+
+    assertEquals(readResponse.getCollectionChanges().size(), 1);
+    assertNotNull(readResponse.getCollectionChanges().get(val));
+    assertEquals(readResponse.getCollectionChanges().get(val).getFileId(), 10);
+    assertEquals(readResponse.getCollectionChanges().get(val).getRootPointer().getPageIndex(), 30);
+    assertEquals(readResponse.getCollectionChanges().get(val).getRootPointer().getPageOffset(), 40);
+  }
+
+  @Test
   public void testEmptyCommitTransactionWriteRead() throws IOException {
 
     MockChannel channel = new MockChannel();
@@ -132,12 +198,12 @@ public class ORemoteTransactionMessagesTest {
     changes.put("some", change);
 
     MockChannel channel = new MockChannel();
-    OFetchTransactionResponse response = new OFetchTransactionResponse(10, operations, changes);
+    OFetchTransactionResponse response = new OFetchTransactionResponse(10, operations, changes, new HashMap<>());
     response.write(channel, 0, ORecordSerializerNetworkV37.INSTANCE);
 
     channel.close();
 
-    OFetchTransactionResponse readResponse = new OFetchTransactionResponse(10, operations, changes);
+    OFetchTransactionResponse readResponse = new OFetchTransactionResponse(10, operations, changes, new HashMap<>());
     readResponse.read(channel, null);
 
     assertEquals(readResponse.getOperations().size(), 3);
@@ -152,6 +218,44 @@ public class ORemoteTransactionMessagesTest {
     assertEquals(readResponse.getIndexChanges().get(0).getName(), "some");
     OTransactionIndexChanges val = readResponse.getIndexChanges().get(0).getKeyChanges();
     assertEquals(val.cleared, false);
+    assertEquals(val.changesPerKey.size(), 1);
+    OTransactionIndexChangesPerKey entryChange = val.changesPerKey.firstEntry().getValue();
+    assertEquals(entryChange.key, "key");
+    assertEquals(entryChange.entries.size(), 2);
+    assertEquals(entryChange.entries.get(0).value, new ORecordId(1, 2));
+    assertEquals(entryChange.entries.get(0).operation, OPERATION.PUT);
+    assertEquals(entryChange.entries.get(1).value, new ORecordId(2, 2));
+    assertEquals(entryChange.entries.get(1).operation, OPERATION.REMOVE);
+  }
+
+  @Test
+  public void testTransactionClearIndexFetchResponseWriteRead() throws IOException {
+
+    List<ORecordOperation> operations = new ArrayList<>();
+    Map<String, OTransactionIndexChanges> changes = new HashMap<>();
+    OTransactionIndexChanges change = new OTransactionIndexChanges();
+    change.cleared = true;
+    change.changesPerKey = new TreeMap<>(ODefaultComparator.INSTANCE);
+    OTransactionIndexChangesPerKey keyChange = new OTransactionIndexChangesPerKey("key");
+    keyChange.add(new ORecordId(1, 2), OPERATION.PUT);
+    keyChange.add(new ORecordId(2, 2), OPERATION.REMOVE);
+    change.changesPerKey.put(keyChange.key, keyChange);
+    changes.put("some", change);
+
+    MockChannel channel = new MockChannel();
+    OFetchTransactionResponse response = new OFetchTransactionResponse(10, operations, changes, new HashMap<>());
+    response.write(channel, 0, ORecordSerializerNetworkV37.INSTANCE);
+
+    channel.close();
+
+    OFetchTransactionResponse readResponse = new OFetchTransactionResponse(10, operations, changes, new HashMap<>());
+    readResponse.read(channel, null);
+
+    assertEquals(readResponse.getTxId(), 10);
+    assertEquals(readResponse.getIndexChanges().size(), 1);
+    assertEquals(readResponse.getIndexChanges().get(0).getName(), "some");
+    OTransactionIndexChanges val = readResponse.getIndexChanges().get(0).getKeyChanges();
+    assertEquals(val.cleared, true);
     assertEquals(val.changesPerKey.size(), 1);
     OTransactionIndexChangesPerKey entryChange = val.changesPerKey.firstEntry().getValue();
     assertEquals(entryChange.key, "key");

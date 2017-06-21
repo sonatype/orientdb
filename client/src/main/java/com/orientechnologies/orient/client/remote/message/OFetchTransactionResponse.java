@@ -6,6 +6,7 @@ import com.orientechnologies.orient.client.remote.message.tx.IndexChange;
 import com.orientechnologies.orient.client.remote.message.tx.ORecordOperationRequest;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.db.record.ORecordOperation;
+import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.record.ORecord;
 import com.orientechnologies.orient.core.record.ORecordInternal;
 import com.orientechnologies.orient.core.serialization.serializer.record.ORecordSerializer;
@@ -18,8 +19,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import static com.orientechnologies.orient.client.remote.message.OMessageHelper.writeTransactionEntry;
+import java.util.stream.Collectors;
 
 /**
  * Created by tglman on 30/12/16.
@@ -35,7 +35,9 @@ public class OFetchTransactionResponse implements OBinaryResponse {
   }
 
   public OFetchTransactionResponse(int txId, Iterable<ORecordOperation> operations,
-      Map<String, OTransactionIndexChanges> indexChanges) {
+      Map<String, OTransactionIndexChanges> indexChanges, Map<ORID, ORID> updatedRids) {
+    //In some cases the reference are update twice is not yet possible to guess what is the id in the client
+    Map<ORID, ORID> reversed = updatedRids.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
     this.txId = txId;
     this.indexChanges = new ArrayList<>();
     List<ORecordOperationRequest> netOperations = new ArrayList<>();
@@ -45,9 +47,11 @@ public class OFetchTransactionResponse implements OBinaryResponse {
       ORecordOperationRequest request = new ORecordOperationRequest();
       request.setType(txEntry.type);
       request.setVersion(txEntry.getRecord().getVersion());
-      request.setId(txEntry.getRecord().getIdentity());
+      request.setId(txEntry.getRID());
+      ORID oldID = reversed.get(txEntry.getRID());
+      request.setOldId(oldID != null ? oldID : txEntry.getRID());
       request.setRecordType(ORecordInternal.getRecordType(txEntry.getRecord()));
-      request.setRecord(txEntry.getRecord());
+      request.setRecord(ORecordSerializerNetworkV37.INSTANCE.toStream(txEntry.getRecord(), false));
       request.setContentChanged(ORecordInternal.isContentChanged(txEntry.getRecord()));
       netOperations.add(request);
     }
@@ -78,22 +82,23 @@ public class OFetchTransactionResponse implements OBinaryResponse {
     iNetwork.writeByte((byte) 1);
     iNetwork.writeByte(txEntry.getType());
     iNetwork.writeRID(txEntry.getId());
+    iNetwork.writeRID(txEntry.getOldId());
     iNetwork.writeByte(txEntry.getRecordType());
 
     switch (txEntry.getType()) {
     case ORecordOperation.CREATED:
-      iNetwork.writeBytes(serializer.toStream(txEntry.getRecord(), false));
+      iNetwork.writeBytes(txEntry.getRecord());
       break;
 
     case ORecordOperation.UPDATED:
       iNetwork.writeVersion(txEntry.getVersion());
-      iNetwork.writeBytes(serializer.toStream(txEntry.getRecord(), false));
+      iNetwork.writeBytes(txEntry.getRecord());
       iNetwork.writeBoolean(txEntry.isContentChanged());
       break;
 
     case ORecordOperation.DELETED:
       iNetwork.writeVersion(txEntry.getVersion());
-      iNetwork.writeBytes(serializer.toStream(txEntry.getRecord(), false));
+      iNetwork.writeBytes(txEntry.getRecord());
       break;
     }
   }
@@ -120,20 +125,20 @@ public class OFetchTransactionResponse implements OBinaryResponse {
     ORecordOperationRequest entry = new ORecordOperationRequest();
     entry.setType(channel.readByte());
     entry.setId(channel.readRID());
+    entry.setOldId(channel.readRID());
     entry.setRecordType(channel.readByte());
-    ORecord record = Orient.instance().getRecordFactoryManager().newInstance(entry.getRecordType());
     switch (entry.getType()) {
     case ORecordOperation.CREATED:
-      entry.setRecord(ser.fromStream(channel.readBytes(), record, null));
+      entry.setRecord(channel.readBytes());
       break;
     case ORecordOperation.UPDATED:
       entry.setVersion(channel.readVersion());
-      entry.setRecord(ser.fromStream(channel.readBytes(), record, null));
+      entry.setRecord(channel.readBytes());
       entry.setContentChanged(channel.readBoolean());
       break;
     case ORecordOperation.DELETED:
       entry.setVersion(channel.readVersion());
-      entry.setRecord(ser.fromStream(channel.readBytes(), record, null));
+      entry.setRecord(channel.readBytes());
       break;
     default:
       break;

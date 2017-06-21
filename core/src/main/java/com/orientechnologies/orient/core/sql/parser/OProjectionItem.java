@@ -4,10 +4,13 @@ package com.orientechnologies.orient.core.sql.parser;
 
 import com.orientechnologies.orient.core.command.OCommandContext;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
+import com.orientechnologies.orient.core.db.record.ridbag.ORidBag;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
 import com.orientechnologies.orient.core.sql.executor.AggregationContext;
 import com.orientechnologies.orient.core.sql.executor.OResult;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 public class OProjectionItem extends SimpleNode {
@@ -19,6 +22,8 @@ public class OProjectionItem extends SimpleNode {
   protected OExpression expression;
 
   protected Boolean aggregate;
+
+  protected ONestedProjection nestedProjection;
 
   public OProjectionItem(int id) {
     super(id);
@@ -72,6 +77,10 @@ public class OProjectionItem extends SimpleNode {
       if (expression != null) {
         expression.toString(params, builder);
       }
+      if (nestedProjection != null) {
+        builder.append(" ");
+        nestedProjection.toString(params, builder);
+      }
       if (alias != null) {
 
         builder.append(" AS ");
@@ -81,17 +90,38 @@ public class OProjectionItem extends SimpleNode {
   }
 
   public Object execute(OIdentifiable iCurrentRecord, OCommandContext ctx) {
+    Object result;
     if (all) {
-      return iCurrentRecord;
+      result = iCurrentRecord;
+    } else {
+      result = expression.execute(iCurrentRecord, ctx);
     }
-    return expression.execute(iCurrentRecord, ctx);
+    if (nestedProjection != null) {
+      result = nestedProjection.apply(expression, result, ctx);
+    }
+    return convert(result);
+  }
+
+  private Object convert(Object value) {
+    if (value instanceof ORidBag) {
+      List result = new ArrayList();
+      ((ORidBag) value).forEach(x -> result.add(x));
+      return result;
+    }
+    return value;
   }
 
   public Object execute(OResult iCurrentRecord, OCommandContext ctx) {
+    Object result;
     if (all) {
-      return iCurrentRecord;
+      result = iCurrentRecord;
+    } else {
+      result = expression.execute(iCurrentRecord, ctx);
     }
-    return expression.execute(iCurrentRecord, ctx);
+    if (nestedProjection != null) {
+      result = nestedProjection.apply(expression, result, ctx);
+    }
+    return convert(result);
   }
 
   /**
@@ -108,7 +138,11 @@ public class OProjectionItem extends SimpleNode {
       return alias;
     }
     OIdentifier result = new OIdentifier(-1);
-    result.setStringValue(this.toString());
+    if (all) {
+      result.setStringValue("*");
+    } else {
+      result.setStringValue(expression.toString());
+    }
     return result;
   }
 
@@ -149,6 +183,7 @@ public class OProjectionItem extends SimpleNode {
       OProjectionItem result = new OProjectionItem(-1);
       result.alias = getProjectionAlias();
       result.expression = expression.splitForAggregation(aggregateSplit);
+      result.nestedProjection = nestedProjection;
       return result;
     } else {
       return this;
@@ -167,11 +202,13 @@ public class OProjectionItem extends SimpleNode {
     result.all = all;
     result.alias = alias == null ? null : alias.copy();
     result.expression = expression == null ? null : expression.copy();
+    result.nestedProjection = nestedProjection == null ? null : nestedProjection.copy();
     result.aggregate = aggregate;
     return result;
   }
 
-  @Override public boolean equals(Object o) {
+  @Override
+  public boolean equals(Object o) {
     if (this == o)
       return true;
     if (o == null || getClass() != o.getClass())
@@ -185,16 +222,20 @@ public class OProjectionItem extends SimpleNode {
       return false;
     if (expression != null ? !expression.equals(that.expression) : that.expression != null)
       return false;
+    if (nestedProjection != null ? !nestedProjection.equals(that.nestedProjection) : that.nestedProjection != null)
+      return false;
     if (aggregate != null ? !aggregate.equals(that.aggregate) : that.aggregate != null)
       return false;
 
     return true;
   }
 
-  @Override public int hashCode() {
+  @Override
+  public int hashCode() {
     int result = (all ? 1 : 0);
     result = 31 * result + (alias != null ? alias.hashCode() : 0);
     result = 31 * result + (expression != null ? expression.hashCode() : 0);
+    result = 31 * result + (nestedProjection != null ? nestedProjection.hashCode() : 0);
     result = 31 * result + (aggregate != null ? aggregate.hashCode() : 0);
     return result;
   }
@@ -206,7 +247,7 @@ public class OProjectionItem extends SimpleNode {
   }
 
   public boolean refersToParent() {
-    if(expression!=null){
+    if (expression != null) {
       return expression.refersToParent();
     }
     return false;

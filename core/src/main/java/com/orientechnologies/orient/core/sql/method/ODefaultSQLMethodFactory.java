@@ -18,32 +18,23 @@ package com.orientechnologies.orient.core.sql.method;
 import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
 import com.orientechnologies.orient.core.sql.functions.coll.OSQLMethodMultiValue;
-import com.orientechnologies.orient.core.sql.functions.conversion.OSQLMethodAsDate;
-import com.orientechnologies.orient.core.sql.functions.conversion.OSQLMethodAsDateTime;
-import com.orientechnologies.orient.core.sql.functions.conversion.OSQLMethodAsDecimal;
-import com.orientechnologies.orient.core.sql.functions.conversion.OSQLMethodConvert;
+import com.orientechnologies.orient.core.sql.functions.conversion.*;
 import com.orientechnologies.orient.core.sql.functions.misc.OSQLMethodExclude;
 import com.orientechnologies.orient.core.sql.functions.misc.OSQLMethodInclude;
-import com.orientechnologies.orient.core.sql.functions.text.OSQLMethodAppend;
-import com.orientechnologies.orient.core.sql.functions.text.OSQLMethodFromJSON;
-import com.orientechnologies.orient.core.sql.functions.text.OSQLMethodHash;
-import com.orientechnologies.orient.core.sql.functions.text.OSQLMethodLength;
-import com.orientechnologies.orient.core.sql.functions.text.OSQLMethodReplace;
-import com.orientechnologies.orient.core.sql.functions.text.OSQLMethodRight;
-import com.orientechnologies.orient.core.sql.functions.text.OSQLMethodSubString;
-import com.orientechnologies.orient.core.sql.functions.text.OSQLMethodToJSON;
+import com.orientechnologies.orient.core.sql.functions.text.*;
 import com.orientechnologies.orient.core.sql.method.misc.*;
 import com.orientechnologies.orient.core.sql.method.sequence.OSQLMethodCurrent;
 import com.orientechnologies.orient.core.sql.method.sequence.OSQLMethodNext;
 import com.orientechnologies.orient.core.sql.method.sequence.OSQLMethodReset;
 
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
 /**
  * Default method factory.
- * 
+ *
  * @author Johann Sorel (Geomatys)
  */
 public class ODefaultSQLMethodFactory implements OSQLMethodFactory {
@@ -94,6 +85,7 @@ public class ODefaultSQLMethodFactory implements OSQLMethodFactory {
     register(OSQLMethodSubString.NAME, new OSQLMethodSubString());
     register(OSQLMethodToJSON.NAME, new OSQLMethodToJSON());
     register(OSQLMethodValues.NAME, new OSQLMethodValues());
+    register(OSQLMethodBeforeUpdate.NAME, new OSQLMethodBeforeUpdate());
 
     // SEQUENCE
     register(OSQLMethodCurrent.NAME, new OSQLMethodCurrent());
@@ -102,12 +94,12 @@ public class ODefaultSQLMethodFactory implements OSQLMethodFactory {
   }
 
   public void register(final String iName, final Object iImplementation) {
-    methods.put(iName.toLowerCase(), iImplementation);
+    methods.put(iName.toLowerCase(Locale.ENGLISH), iImplementation);
   }
 
   @Override
   public boolean hasMethod(final String iName) {
-    return methods.containsKey(iName.toLowerCase());
+    return methods.containsKey(iName.toLowerCase(Locale.ENGLISH));
   }
 
   @Override
