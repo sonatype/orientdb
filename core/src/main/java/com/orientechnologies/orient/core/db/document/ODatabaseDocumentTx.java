@@ -1,6 +1,7 @@
 package com.orientechnologies.orient.core.db.document;
 
 import com.orientechnologies.common.concur.ONeedRetryException;
+import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.cache.OLocalRecordCache;
 import com.orientechnologies.orient.core.command.OCommandOutputListener;
@@ -28,6 +29,7 @@ import com.orientechnologies.orient.core.iterator.ORecordIteratorCluster;
 import com.orientechnologies.orient.core.metadata.OMetadataInternal;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
 import com.orientechnologies.orient.core.metadata.schema.OSchema;
+import com.orientechnologies.orient.core.metadata.security.ORole;
 import com.orientechnologies.orient.core.metadata.security.ORule;
 import com.orientechnologies.orient.core.metadata.security.OSecurityUser;
 import com.orientechnologies.orient.core.metadata.security.OToken;
@@ -40,9 +42,7 @@ import com.orientechnologies.orient.core.serialization.serializer.record.ORecord
 import com.orientechnologies.orient.core.shutdown.OShutdownHandler;
 import com.orientechnologies.orient.core.sql.OCommandSQLParsingException;
 import com.orientechnologies.orient.core.sql.executor.OResultSet;
-import com.orientechnologies.orient.core.storage.ORecordCallback;
-import com.orientechnologies.orient.core.storage.ORecordMetadata;
-import com.orientechnologies.orient.core.storage.OStorage;
+import com.orientechnologies.orient.core.storage.*;
 import com.orientechnologies.orient.core.tx.OTransaction;
 import com.orientechnologies.orient.core.util.OURLConnection;
 import com.orientechnologies.orient.core.util.OURLHelper;
@@ -104,14 +104,18 @@ public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
   }
 
   public static void closeAll() {
-    for (OrientDBInternal factory : embedded.values()) {
-      factory.close();
+    synchronized (embedded) {
+      for (OrientDBInternal factory : embedded.values()) {
+        factory.close();
+      }
+      embedded.clear();
     }
-    embedded.clear();
-    for (OrientDBInternal factory : remote.values()) {
-      factory.close();
+    synchronized (remote) {
+      for (OrientDBInternal factory : remote.values()) {
+        factory.close();
+      }
+      remote.clear();
     }
-    remote.clear();
   }
 
   protected OrientDBInternal getOrCreateRemoteFactory(String baseUrl) {
@@ -360,12 +364,6 @@ public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
   }
 
   @Override
-  public Set<ORecord> executeReadRecords(Set<ORecordId> iRids, boolean ignoreCache) {
-    checkOpenness();
-    return internal.executeReadRecords(iRids, ignoreCache);
-  }
-
-  @Override
   public void checkIfActive() {
     internal.checkIfActive();
   }
@@ -392,6 +390,12 @@ public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
     if (internal == null)
       return delegateStorage;
     return internal.getStorage();
+  }
+
+  @Override
+  public OBasicTransaction getMicroOrRegularTransaction() {
+    checkOpenness();
+    return internal.getMicroOrRegularTransaction();
   }
 
   @Override
@@ -1615,5 +1619,11 @@ public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
   public OLiveQueryMonitor live(String query, OLiveQueryResultListener listener, Map<String, ?> args) {
     checkOpenness();
     return internal.live(query, listener, args);
+  }
+
+  @Override
+  public void recycle(ORecord record) {
+    checkOpenness();
+    internal.recycle(record);
   }
 }

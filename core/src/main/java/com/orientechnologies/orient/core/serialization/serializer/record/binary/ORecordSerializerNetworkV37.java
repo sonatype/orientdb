@@ -466,7 +466,9 @@ public class ORecordSerializerNetworkV37 implements ORecordSerializer {
   private OIdentifiable readOptimizedLink(final BytesContainer bytes) {
     ORecordId id = new ORecordId(OVarIntSerializer.readAsInteger(bytes), OVarIntSerializer.readAsLong(bytes));
     if (id.isTemporary()) {
-      return id.getRecord();
+      OIdentifiable persRef = id.getRecord();
+      if (persRef != null)
+        return persRef;
     }
     return id;
   }
@@ -477,7 +479,7 @@ public class ORecordSerializerNetworkV37 implements ORecordSerializer {
 
     for (int i = 0; i < items; i++) {
       OType itemType = readOType(bytes);
-      if (itemType == OType.ANY)
+      if (itemType == null)
         found.add(null);
       else
         found.add(deserializeValue(bytes, itemType, document));
@@ -709,7 +711,7 @@ public class ORecordSerializerNetworkV37 implements ORecordSerializer {
     for (Object itemValue : value) {
       // TODO:manage in a better way null entry
       if (itemValue == null) {
-        writeOType(bytes, bytes.alloc(1), OType.ANY);
+        writeOType(bytes, bytes.alloc(1), null);
         continue;
       }
       OType type;

@@ -24,7 +24,6 @@ import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.db.ODatabaseInternal;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
-import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.intent.OIntentMassiveInsert;
 import com.orientechnologies.orient.core.iterator.ORecordIteratorClass;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
@@ -1474,6 +1473,22 @@ public class OCommandExecutorSQLSelectTest {
     assertEquals(results.size(), 1);
   }
 
+
+  @Test
+  public void testFilterListsOfMaps() {
+
+    String className = "testFilterListaOfMaps";
+
+    db.command(new OCommandSQL("create class " + className)).execute();
+    db.command(new OCommandSQL("create property " + className + ".tagz embeddedmap")).execute();
+    db.command(new OCommandSQL("insert into " + className + " set tagz = {}")).execute();
+    db.command(new OCommandSQL("update " + className + " SET tagz.foo = [{name:'a', surname:'b'}, {name:'c', surname:'d'}]")).execute();
+
+    List<ODocument> results = db.query(new OSQLSynchQuery<ODocument>("select tagz.values()[0][name = 'a'] as t from "+className));
+    assertEquals(results.size(), 1);
+    Map map = results.get(0).field("t");
+    assertEquals(map.get("surname"), "b");
+  }
 
   private long indexUsages(ODatabaseDocumentTx db) {
     final long oldIndexUsage;

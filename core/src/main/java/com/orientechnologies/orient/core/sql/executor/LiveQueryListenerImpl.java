@@ -87,6 +87,7 @@ public class LiveQueryListenerImpl implements OLiveQueryListenerV2 {
 
     } catch (Exception e) {
       clientListener.onError(db);
+      throw e;
     }
   }
 
@@ -118,6 +119,8 @@ public class LiveQueryListenerImpl implements OLiveQueryListenerV2 {
 
   @Override
   public void onLiveResult(OLiveQueryHookV2.OLiveQueryOp iRecord) {
+    execDb.activateOnCurrentThread();
+
     OResultInternal record;
     if (iRecord.type == ORecordOperation.CREATED || iRecord.type == ORecordOperation.UPDATED) {
       record = copy(iRecord.after);

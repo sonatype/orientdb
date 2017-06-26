@@ -330,7 +330,7 @@ public class Orient extends OListenerManger<OOrientListener> {
           handler.shutdown();
           OLogManager.instance().debug(this, "Shutdown handler %s completed", handler);
         } catch (Exception e) {
-          OLogManager.instance().error(this, "Exception during calling of shutdown handler %s", handler);
+          OLogManager.instance().error(this, "Exception during calling of shutdown handler %s", e, handler);
         }
       }
 
@@ -523,6 +523,10 @@ public class Orient extends OListenerManger<OOrientListener> {
       shutdownHook.cancel();
       shutdownHook = null;
     }
+  }
+
+  public OSignalHandler getSignalHandler() {
+    return signalHandler;
   }
 
   public void removeSignalHandler() {
