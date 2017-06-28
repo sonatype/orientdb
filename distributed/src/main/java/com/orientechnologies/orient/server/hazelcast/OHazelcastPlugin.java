@@ -44,6 +44,7 @@ import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.record.ORecordInternal;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.storage.OStorage;
+import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.OLocalPaginatedStorage;
 import com.orientechnologies.orient.server.OServer;
 import com.orientechnologies.orient.server.OSystemDatabase;
@@ -117,12 +118,20 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
     iServer.getDatabases().replaceFactory(new OEmbeddedDatabaseInstanceFactory() {
       @Override
       public ODatabaseDocumentEmbedded newInstance(OStorage storage) {
-        return new ODatabaseDocumentDistributed(storage, OHazelcastPlugin.this);
+        if (OSystemDatabase.SYSTEM_DB_NAME.equals(storage.getName())) {
+          return new ODatabaseDocumentEmbedded(storage);
+        }
+        return new ODatabaseDocumentDistributed(getStorage(storage.getName(), (OAbstractPaginatedStorage) storage),
+            OHazelcastPlugin.this);
       }
 
       @Override
       public ODatabaseDocumentEmbedded newPoolInstance(ODatabasePoolInternal pool, OStorage storage) {
-        return new ODatabaseDocumentDistributedPooled(pool, storage, OHazelcastPlugin.this);
+        if (OSystemDatabase.SYSTEM_DB_NAME.equals(storage.getName())) {
+          return new OEmbeddedDatabasePool(pool, storage);
+        }
+        return new ODatabaseDocumentDistributedPooled(pool, getStorage(storage.getName(), (OAbstractPaginatedStorage) storage),
+            OHazelcastPlugin.this);
       }
     });
   }
@@ -1460,7 +1469,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
   }
 
   @Override
-  public synchronized void removeServer(final String nodeLeftName, final boolean removeOnlyDynamicServers) {
+  public void removeServer(final String nodeLeftName, final boolean removeOnlyDynamicServers) {
     if (nodeLeftName == null)
       return;
 

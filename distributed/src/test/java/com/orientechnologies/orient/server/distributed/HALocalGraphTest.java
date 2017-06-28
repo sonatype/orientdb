@@ -18,15 +18,14 @@ package com.orientechnologies.orient.server.distributed;
 import com.orientechnologies.common.concur.ONeedRetryException;
 import com.orientechnologies.common.util.OCallable;
 import com.orientechnologies.orient.core.Orient;
-import com.orientechnologies.orient.core.db.*;
+import com.orientechnologies.orient.core.db.ODatabasePool;
+import com.orientechnologies.orient.core.db.OrientDBConfig;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocument;
-import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.exception.OConcurrentModificationException;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
 import com.orientechnologies.orient.core.record.OVertex;
 import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.server.OServer;
-import com.orientechnologies.orient.server.distributed.impl.OLocalClusterWrapperStrategy;
 import com.orientechnologies.orient.server.distributed.task.ODistributedRecordLockedException;
 import com.orientechnologies.orient.server.hazelcast.OHazelcastPlugin;
 import org.junit.Assert;
@@ -75,17 +74,16 @@ public class HALocalGraphTest extends AbstractServerClusterTxTest {
   @Override
   protected void onServerStarted(ServerRun server) {
     if (serverStarted++ == 0) {
-      // START THE TEST DURING 2ND NODE STARTUP
       createSchemaAndFirstVertices(server);
       startTest(server);
-
+      // START THE TEST DURING 2ND NODE STARTUP
       task = new TimerTask() {
         @Override
         public void run() {
 
           final OServer server2 = serverInstance.get(SERVERS - 1).getServerInstance();
 
-          if (server2 != null)
+          if (server2 != null) {
             if (serverDown.get() && !serverRestarting.get() && !serverRestarted.get() && !server2.isActive()
                 && operations.get() >= TOTAL_CYCLES_PER_THREAD * CONCURRENCY_LEVEL * 2 / 4) {
               serverRestarting.set(true);
@@ -110,7 +108,7 @@ public class HALocalGraphTest extends AbstractServerClusterTxTest {
                 && operations.get() >= TOTAL_CYCLES_PER_THREAD * CONCURRENCY_LEVEL * 1 / 4) {
 
               // SLOW DOWN A LITTLE BIT
-              sleep = 30;
+              sleep = 5;
 
               // SHUTDOWN LASt SERVER AT 1/3 OF PROGRESS
               banner("SIMULATE SOFT SHUTDOWN OF SERVER " + (SERVERS - 1));
@@ -118,9 +116,11 @@ public class HALocalGraphTest extends AbstractServerClusterTxTest {
 
               serverDown.set(true);
             }
+          }
         }
       };
-      Orient.instance().scheduleTask(task, 2000, 100);
+
+      Orient.instance().scheduleTask(task, 1000, 1000);
     }
   }
 
@@ -215,9 +215,6 @@ System.out.println("\n\n ----------- startThread()");
 System.out.println("\n\n ----------- graph.getURL() = " + graph.getURL());
 
 System.out.println("\n\n ----------- getClusterSelection() = " + graph.getClass("Test").getClusterSelection());
-
-            if (!graph.getURL().startsWith("remote:"))
-              Assert.assertTrue(graph.getClass("Test").getClusterSelection() instanceof OLocalClusterWrapperStrategy);
 
             try {
               if (useSQL) {

@@ -25,6 +25,7 @@ import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.cache.OCommandCacheHook;
 import com.orientechnologies.orient.core.cache.OLocalRecordCache;
+import com.orientechnologies.orient.core.command.OBasicCommandContext;
 import com.orientechnologies.orient.core.command.OCommandManager;
 import com.orientechnologies.orient.core.command.OScriptExecutor;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
@@ -43,13 +44,15 @@ import com.orientechnologies.orient.core.query.live.OLiveQueryHookV2;
 import com.orientechnologies.orient.core.query.live.OLiveQueryListenerV2;
 import com.orientechnologies.orient.core.query.live.OLiveQueryMonitorEmbedded;
 import com.orientechnologies.orient.core.record.ORecord;
-import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.schedule.OSchedulerTrigger;
 import com.orientechnologies.orient.core.serialization.serializer.record.ORecordSerializerFactory;
 import com.orientechnologies.orient.core.serialization.serializer.record.string.ORecordSerializerSchemaAware2CSV;
 import com.orientechnologies.orient.core.sql.OSQLEngine;
 import com.orientechnologies.orient.core.sql.executor.LiveQueryListenerImpl;
+import com.orientechnologies.orient.core.sql.executor.OExecutionPlan;
+import com.orientechnologies.orient.core.sql.executor.OInternalExecutionPlan;
 import com.orientechnologies.orient.core.sql.executor.OResultSet;
+import com.orientechnologies.orient.core.sql.parser.OLocalResultSet;
 import com.orientechnologies.orient.core.sql.parser.OLocalResultSetLifecycleDecorator;
 import com.orientechnologies.orient.core.sql.parser.OStatement;
 import com.orientechnologies.orient.core.storage.OStorage;
@@ -188,16 +191,7 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract impleme
     applyListeners(config);
     metadata = new OMetadataDefault(this);
     installHooksEmbedded();
-    // CREATE THE DEFAULT SCHEMA WITH DEFAULT USER
-    OSharedContext shared = getStorage().getResource(OSharedContext.class.getName(), new Callable<OSharedContext>() {
-      @Override
-      public OSharedContext call() throws Exception {
-        OSharedContext shared = new OSharedContextEmbedded(getStorage());
-        return shared;
-      }
-    });
-    metadata.init(shared);
-    ((OSharedContextEmbedded) shared).create(this);
+    createMetadata();
 
     registerHook(new OCommandCacheHook(this), ORecordHook.HOOK_POSITION.REGULAR);
     registerHook(new OSecurityTrackerHook(metadata.getSecurity(), this), ORecordHook.HOOK_POSITION.LAST);
@@ -213,6 +207,19 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract impleme
       } catch (Throwable ignore) {
       }
 
+  }
+
+  protected void createMetadata() {
+    // CREATE THE DEFAULT SCHEMA WITH DEFAULT USER
+    OSharedContext shared = getStorage().getResource(OSharedContext.class.getName(), new Callable<OSharedContext>() {
+      @Override
+      public OSharedContext call() throws Exception {
+        OSharedContext shared = new OSharedContextEmbedded(getStorage());
+        return shared;
+      }
+    });
+    metadata.init(shared);
+    ((OSharedContextEmbedded) shared).create(this);
   }
 
   @Override
@@ -450,6 +457,19 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract impleme
     this.queryStarted(result);
     result.addLifecycleListener(this);
     return result;
+  }
+
+  public OLocalResultSetLifecycleDecorator query(OExecutionPlan plan, Map<Object, Object> params) {
+    OBasicCommandContext ctx = new OBasicCommandContext();
+    ctx.setDatabase(this);
+    ctx.setInputParameters(params);
+
+    OLocalResultSet result = new OLocalResultSet((OInternalExecutionPlan) plan);
+    OLocalResultSetLifecycleDecorator decorator = new OLocalResultSetLifecycleDecorator(result);
+    this.queryStarted(decorator);
+    decorator.addLifecycleListener(this);
+
+    return decorator;
   }
 
   public OLocalResultSetLifecycleDecorator getActiveQuery(String id) {
