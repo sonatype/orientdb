@@ -46,7 +46,6 @@ import com.orientechnologies.orient.core.exception.*;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.id.ORecordId;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
-import com.orientechnologies.orient.core.metadata.schema.clusterselection.OClusterSelectionStrategy;
 import com.orientechnologies.orient.core.record.ORecord;
 import com.orientechnologies.orient.core.record.ORecordInternal;
 import com.orientechnologies.orient.core.record.impl.ODocument;
@@ -202,6 +201,10 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
   }
 
   public Object command(final OCommandRequestText iCommand) {
+    if (isLocalEnv())
+      // ALREADY DISTRIBUTED
+      return wrapped.command(iCommand);
+
     List<String> servers = (List<String>) iCommand.getContext().getVariable("servers");
     if (servers == null) {
       servers = new ArrayList<String>();
@@ -210,10 +213,6 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
     final String localNodeName = dManager.getLocalNodeName();
 
     servers.add(localNodeName);
-
-    if (OScenarioThreadLocal.INSTANCE.isRunModeDistributed())
-      // ALREADY DISTRIBUTED
-      return wrapped.command(iCommand);
 
     final ODistributedConfiguration dbCfg = distributedConfiguration;
     if (!dbCfg.isReplicationActive(null, localNodeName))
@@ -597,7 +596,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
       final int iRecordVersion, final byte iRecordType, final int iMode, final ORecordCallback<Long> iCallback) {
     resetLastValidBackup();
 
-    if (OScenarioThreadLocal.INSTANCE.isRunModeDistributed()) {
+    if (isLocalEnv()) {
       // ALREADY DISTRIBUTED
       return wrapped.createRecord(iRecordId, iContent, iRecordVersion, iRecordType, iMode, iCallback);
     }
@@ -744,10 +743,15 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
 
   }
 
+  public boolean isLocalEnv() {
+    return localDistributedDatabase == null || dManager == null || distributedConfiguration == null || OScenarioThreadLocal.INSTANCE
+        .isRunModeDistributed();
+  }
+
   public OStorageOperationResult<ORawBuffer> readRecord(final ORecordId iRecordId, final String iFetchPlan,
       final boolean iIgnoreCache, final boolean prefetchRecords, final ORecordCallback<ORawBuffer> iCallback) {
 
-    if (OScenarioThreadLocal.INSTANCE.isRunModeDistributed()) {
+    if (isLocalEnv()) {
       // ALREADY DISTRIBUTED
       return wrapped.readRecord(iRecordId, iFetchPlan, iIgnoreCache, prefetchRecords, iCallback);
     }
@@ -813,6 +817,9 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
   @Override
   public OStorageOperationResult<ORawBuffer> readRecordIfVersionIsNotLatest(final ORecordId rid, final String fetchPlan,
       final boolean ignoreCache, final int recordVersion) throws ORecordNotFoundException {
+    if (isLocalEnv()) {
+      return wrapped.readRecordIfVersionIsNotLatest(rid, fetchPlan, ignoreCache, recordVersion);
+    }
     final ORawBuffer memCopy = localDistributedDatabase.getRecordIfLocked(rid);
     if (memCopy != null)
       return new OStorageOperationResult<ORawBuffer>(memCopy);
@@ -876,7 +883,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
       final ORecordCallback<Integer> iCallback) {
     resetLastValidBackup();
 
-    if (OScenarioThreadLocal.INSTANCE.isRunModeDistributed()) {
+    if (isLocalEnv()) {
       // ALREADY DISTRIBUTED
       return wrapped.updateRecord(iRecordId, updateContent, iContent, iVersion, iRecordType, iMode, iCallback);
     }
@@ -1024,7 +1031,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
       final ORecordCallback<Boolean> iCallback) {
     resetLastValidBackup();
 
-    if (OScenarioThreadLocal.INSTANCE.isRunModeDistributed()) {
+    if (isLocalEnv()) {
       // ALREADY DISTRIBUTED
       return wrapped.deleteRecord(iRecordId, iVersion, iMode, iCallback);
     }
@@ -1383,6 +1390,20 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
       shutdownAsynchronousWorker();
   }
 
+  public void closeOnDrop() {
+    if (wrapped == null)
+      return;
+    if (wrapped instanceof OLocalPaginatedStorage) {
+      // REMOVE distributed-config.json and distributed-sync.json files to allow removal of directory
+      dropStorageFiles();
+    }
+
+    wrapped.close(true, false);
+
+    if (isClosed())
+      shutdownAsynchronousWorker();
+  }
+
   @Override
   public boolean isClosed() {
     if (wrapped == null)
@@ -1395,7 +1416,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
   public List<ORecordOperation> commit(final OTransaction iTx, final Runnable callback) {
     resetLastValidBackup();
 
-    if (OScenarioThreadLocal.INSTANCE.isRunModeDistributed()) {
+    if (isLocalEnv()) {
       // ALREADY DISTRIBUTED
       try {
         return wrapped.commit(iTx, callback);
@@ -1563,7 +1584,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
     for (int retry = 0; retry < 10; ++retry) {
       final AtomicInteger clId = new AtomicInteger();
 
-      if (!OScenarioThreadLocal.INSTANCE.isRunModeDistributed()) {
+      if (!isLocalEnv()) {
 
         final StringBuilder cmd = new StringBuilder("create cluster `");
         cmd.append(iClusterName);
@@ -2099,7 +2120,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
       if (!(cls instanceof OClassDistributed))
         throw new ODistributedException("Cannot install local cluster strategy on class '" + cls.getName() + "'");
 
-      dbCfg = ((OClassDistributed) cls).readConfiguration((ODatabaseDocumentDistributed) db,getDistributedManager());
+      dbCfg = ((OClassDistributed) cls).readConfiguration((ODatabaseDocumentDistributed) db, getDistributedManager());
 
       final String newOwnerNode = dbCfg.getClusterOwner(clusterName);
       if (newOwnerNode.equals(localNodeName))
