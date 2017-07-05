@@ -1669,11 +1669,24 @@ OInsertStatement InsertStatement():
     [
         [ <FROM> { jjtThis.selectWithFrom = true; } ]
         (
-             jjtThis.selectStatement = SelectStatement()
+             (
+                 LOOKAHEAD( SelectStatement() )
+                 jjtThis.selectStatement = SelectStatement()
+                 |
+                 jjtThis.selectStatement = SelectWithoutTargetStatement()
+             )
              |
              LOOKAHEAD(2)
             (
-                <LPAREN> jjtThis.selectStatement = SelectStatement() { jjtThis.selectInParentheses = true; } <RPAREN>
+                <LPAREN>
+                (
+                    LOOKAHEAD( SelectStatement() )
+                    jjtThis.selectStatement = SelectStatement()
+                    |
+                    jjtThis.selectStatement = SelectWithoutTargetStatement()
+                )
+                { jjtThis.selectInParentheses = true; }
+                <RPAREN>
             )
         )
     ]
@@ -1986,13 +1999,14 @@ ONestedProjectionItem NestedProjectionItem():
 {
   (
     (
+      LOOKAHEAD(1)
+      <STAR> { jjtThis.star = true; }
+      |
       (
         [<BANG> {jjtThis.exclude = true;} ]
-        jjtThis.field = Identifier()
+        jjtThis.expression = Expression()
         [<STAR> {jjtThis.rightWildcard = true;} ]
       )
-      |
-      <STAR> { jjtThis.star = true; }
     )
     [jjtThis.expansion = NestedProjection() ]
     [<AS> jjtThis.alias = Identifier()]
