@@ -148,16 +148,6 @@ public abstract class OLuceneIndexEngineAbstract<V> extends OSharedResourceAdapt
 
     // FIXME how many timers are around?
 
-    commitTask = new TimerTask() {
-      @Override
-      public void run() {
-        if (!closed.get()) {
-          commit();
-        }
-      }
-    };
-    Orient.instance().scheduleTask(commitTask, 10000, 10000);
-
     this.index = indexDefinition;
     this.automatic = isAutomatic;
     this.metadata = metadata;
@@ -176,6 +166,17 @@ public abstract class OLuceneIndexEngineAbstract<V> extends OSharedResourceAdapt
     } catch (IOException e) {
       OLogManager.instance().error(this, "Error on initializing Lucene index", e);
     }
+
+    commitTask = new TimerTask() {
+      @Override
+      public void run() {
+        if (!closed.get()) {
+          commit();
+        }
+      }
+    };
+
+    Orient.instance().scheduleTask(commitTask, 10000, 10000);
   }
 
   protected void commit() {
@@ -254,12 +255,10 @@ public abstract class OLuceneIndexEngineAbstract<V> extends OSharedResourceAdapt
   }
 
   private void commitAndCloseWriter() throws IOException {
-    if (mgrWriter != null) {
-      if (mgrWriter.getIndexWriter().isOpen()) {
-        mgrWriter.getIndexWriter().commit();
-        mgrWriter.getIndexWriter().close();
-        closed.set(true);
-      }
+    if (mgrWriter != null && mgrWriter.getIndexWriter().isOpen()) {
+      mgrWriter.getIndexWriter().commit();
+      mgrWriter.getIndexWriter().close();
+      closed.set(true);
     }
     if (commitTask != null) {
       commitTask.cancel();
@@ -272,8 +271,9 @@ public abstract class OLuceneIndexEngineAbstract<V> extends OSharedResourceAdapt
   public void flush() {
 
     try {
-      if (mgrWriter.getIndexWriter().isOpen())
+      if (mgrWriter != null && mgrWriter.getIndexWriter().isOpen())
         mgrWriter.getIndexWriter().commit();
+
     } catch (IOException e) {
       OLogManager.instance().error(this, "Error on flushing Lucene index", e);
     } catch (Throwable e) {
@@ -474,6 +474,7 @@ public abstract class OLuceneIndexEngineAbstract<V> extends OSharedResourceAdapt
   public OIndexCursor descCursor(ValuesTransformer valuesTransformer) {
     throw new UnsupportedOperationException("Cannot iterate over a lucene index");
   }
+
   @Override
   public OIndexCursor cursor(ValuesTransformer valuesTransformer) {
     throw new UnsupportedOperationException("Cannot iterate over a lucene index");
