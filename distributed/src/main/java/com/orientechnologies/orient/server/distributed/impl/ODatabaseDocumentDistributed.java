@@ -80,8 +80,24 @@ public class ODatabaseDocumentDistributed extends ODatabaseDocumentEmbedded {
         //TODO check this!!!
         result.put(getLocalNodeName(), getStorage().getClusterNames());
       } else {
-        result.put(server, cfg.getClustersOnServer(server));
+        result.put(server, getClustersOnServer(cfg, server));
       }
+    }
+    return result;
+  }
+
+  public Set<String> getClustersOnServer(ODistributedConfiguration cfg, String server) {
+    Set<String> result = cfg.getClustersOnServer(server);
+    if (result.contains("*")) {
+      result.remove("*");
+      HashSet<String> more = new HashSet<>();
+      more.addAll(getStorage().getClusterNames());
+      for (String s : cfg.getClusterNames()) {
+        if (!cfg.getServers(s, null).contains(s)) {
+          more.remove(s);
+        }
+      }
+      result.addAll(more);
     }
     return result;
   }
@@ -140,7 +156,8 @@ public class ODatabaseDocumentDistributed extends ODatabaseDocumentEmbedded {
   @Override
   public ODatabaseDocumentInternal copy() {
     ODatabaseDocumentDistributed database = new ODatabaseDocumentDistributed(getStorage(), hazelcastPlugin);
-    database.internalOpen(getUser().getName(), null, getConfig(), false);
+    database.init(getConfig());
+    database.internalOpen(getUser().getName(), null, false);
     database.callOnOpenListeners();
     this.activateOnCurrentThread();
     return database;
@@ -398,9 +415,9 @@ public class ODatabaseDocumentDistributed extends ODatabaseDocumentEmbedded {
   }
 
   @Override
-  public void internalOpen(final String iUserName, final String iUserPassword, OrientDBConfig config, boolean checkPassword) {
+  public void init(OrientDBConfig config) {
     OScenarioThreadLocal.executeAsDistributed(() -> {
-      super.internalOpen(iUserName, iUserPassword, config, checkPassword);
+      super.init(config);
       return null;
     });
   }

@@ -98,14 +98,16 @@ public class OrientDBEmbedded implements OrientDBInternal {
   public ODatabaseDocumentEmbedded openNoAuthenticate(String name, String user) {
     try {
       final ODatabaseDocumentEmbedded embedded;
+      OrientDBConfig config = solveConfig(null);
       synchronized (this) {
-        OrientDBConfig config = solveConfig(null);
         OAbstractPaginatedStorage storage = getOrInitStorage(name);
         // THIS OPEN THE STORAGE ONLY THE FIRST TIME
         storage.open(config.getConfigurations());
         embedded = factory.newInstance(storage);
-        embedded.internalOpen(user, "nopwd", config, false);
+        embedded.init(config);
       }
+      embedded.rebuildIndexes();
+      embedded.internalOpen(user, "nopwd", false);
       embedded.callOnOpenListeners();
       return embedded;
     } catch (Exception e) {
@@ -124,8 +126,10 @@ public class OrientDBEmbedded implements OrientDBInternal {
         // THIS OPEN THE STORAGE ONLY THE FIRST TIME
         storage.open(config.getConfigurations());
         embedded = factory.newInstance(storage);
-        embedded.internalOpen(user, password, config);
+        embedded.init(config);
       }
+      embedded.rebuildIndexes();
+      embedded.internalOpen(user, password);
       embedded.callOnOpenListeners();
       return embedded;
     } catch (Exception e) {
@@ -152,8 +156,10 @@ public class OrientDBEmbedded implements OrientDBInternal {
       OAbstractPaginatedStorage storage = getOrInitStorage(name);
       storage.open(pool.getConfig().getConfigurations());
       embedded = factory.newPoolInstance(pool, storage);
-      embedded.internalOpen(user, password, pool.getConfig());
+      embedded.init(pool.getConfig());
     }
+    embedded.rebuildIndexes();
+    embedded.internalOpen(user, password);
     embedded.callOnOpenListeners();
     return embedded;
   }

@@ -139,6 +139,21 @@
                 </property>
             </activation>
         </profile>
+        <profile>
+            <id>crash-tests</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <version>${surefire.version}</version>
+                        <configuration>
+                            <skipTests>true</skipTests>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
 
 
@@ -157,8 +172,6 @@
                 <configuration>
                     <systemPropertyVariables>
                         <buildDirectory>${project.build.directory}</buildDirectory>
-                        <orient.server.testMode>${orient.server.testMode}</orient.server.testMode>
-                        <orient.server.port>${orient.server.port}</orient.server.port>
                     </systemPropertyVariables>
                     <excludes>
                         <exclude>${exclude.test.1}</exclude>
