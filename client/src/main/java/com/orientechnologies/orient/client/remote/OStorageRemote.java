@@ -1300,6 +1300,7 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
     try {
       network.writeByte(request.getCommand());
       network.writeInt(nodeSession.getSessionId());
+      network.writeBytes(null);
       request.write(network, session);
     } finally {
       endRequest(network);
@@ -1307,7 +1308,7 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
     final int sessionId;
     OOpen37Response response = request.createResponse();
     try {
-      network.beginResponse(nodeSession.getSessionId(), false);
+      network.beginResponse(nodeSession.getSessionId(), true);
       response.read(network, session);
     } finally {
       endResponse(network);
@@ -1881,6 +1882,10 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
 
   @Override
   public void onPushReconnect(String host) {
+    if (status != STATUS.OPEN) {
+      //AVOID RECONNECT ON CLOSE
+      return;
+    }
     OStorageRemoteSession aValidSession = null;
     for (OStorageRemoteSession session : sessions) {
       if (session.getServerSession(host) != null) {

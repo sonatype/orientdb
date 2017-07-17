@@ -116,7 +116,7 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
 
   private boolean prefetchRecords;
 
-  private OMicroTransaction microTransaction = null;
+  protected OMicroTransaction microTransaction = null;
 
   protected ODatabaseDocumentAbstract() {
     // DO NOTHING IS FOR EXTENDED OBJECTS
@@ -3091,34 +3091,10 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
   }
 
   private boolean supportsMicroTransactions(ORecord record) {
-    if (!(record instanceof ODocument))
-      return true;
-
-    final OImmutableClass class_ = ODocumentInternal.getImmutableSchemaClass((ODocument) record);
-
-    // XXX: Function library is force reloading functions from disk on every change, see
-    // OFunctionLibraryImpl.load(ODatabaseDocumentInternal). This conflicts with the data stored in a micro-transaction. For now
-    // we just bypass them, but this makes changes to functions non-atomic. See #7507.
-    //noinspection RedundantIfStatement
-    if (class_ != null && class_.isFunction())
-      return false;
-
     return true;
   }
 
-  private OMicroTransaction beginMicroTransaction() {
-    final OStorage storage = getStorage();
-    if (!(storage instanceof OAbstractPaginatedStorage))
-      return null;
-
-    final OAbstractPaginatedStorage abstractPaginatedStorage = (OAbstractPaginatedStorage) storage;
-
-    if (microTransaction == null)
-      microTransaction = new OMicroTransaction(abstractPaginatedStorage, this);
-
-    microTransaction.begin();
-    return microTransaction;
-  }
+  protected abstract OMicroTransaction beginMicroTransaction();
 
   private void endMicroTransaction(boolean success) {
     assert microTransaction != null;

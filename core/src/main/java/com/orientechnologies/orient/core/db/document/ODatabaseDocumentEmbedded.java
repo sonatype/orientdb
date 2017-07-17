@@ -56,6 +56,8 @@ import com.orientechnologies.orient.core.sql.parser.OLocalResultSet;
 import com.orientechnologies.orient.core.sql.parser.OLocalResultSetLifecycleDecorator;
 import com.orientechnologies.orient.core.sql.parser.OStatement;
 import com.orientechnologies.orient.core.storage.OStorage;
+import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
+import com.orientechnologies.orient.core.storage.impl.local.OMicroTransaction;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -130,8 +132,6 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract impleme
       localCache.startup();
 
       loadMetadata();
-
-      rebuildIndexes();
 
       installHooksEmbedded();
       registerHook(new OCommandCacheHook(this), ORecordHook.HOOK_POSITION.REGULAR);
@@ -508,6 +508,16 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract impleme
   @Override
   public void recycle(final ORecord record) {
     throw new UnsupportedOperationException();
+  }
+
+  protected OMicroTransaction beginMicroTransaction() {
+    final OAbstractPaginatedStorage abstractPaginatedStorage = (OAbstractPaginatedStorage) getStorage().getUnderlying();
+
+    if (microTransaction == null)
+      microTransaction = new OMicroTransaction(abstractPaginatedStorage, this);
+
+    microTransaction.begin();
+    return microTransaction;
   }
 
 }
