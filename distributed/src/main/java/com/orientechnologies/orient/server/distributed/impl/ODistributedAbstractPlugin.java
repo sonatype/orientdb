@@ -1339,10 +1339,9 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
     backuppath += iDatabaseName;
 
     final File backupfullpath = new File(backuppath);
-    final File f = new File(backupdirectory);
-    if (f.exists())
+    if (backupfullpath.exists())
       OFileUtils.deleteRecursively(backupfullpath);
-    f.mkdirs();
+    backupfullpath.getParentFile().mkdirs();
 
     final String dbpath = serverInstance.getDatabaseDirectory() + iDatabaseName;
 
