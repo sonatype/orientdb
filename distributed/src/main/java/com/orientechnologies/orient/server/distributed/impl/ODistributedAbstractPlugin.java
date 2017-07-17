@@ -1354,7 +1354,9 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
 
     final File olddirectory = new File(dbpath);
     try {
-      Files.move(olddirectory.toPath(), backupfullpath.toPath());
+      if (olddirectory.exists()) {
+        Files.move(olddirectory.toPath(), backupfullpath.toPath());
+      }
     } catch (IOException e) {
       ODistributedServerLog.warn(this, nodeName, null, DIRECTION.NONE,
           "error on moving existent database '%s' located in '%s' to '%s'. deleting old database...", e, iDatabaseName, dbpath,
