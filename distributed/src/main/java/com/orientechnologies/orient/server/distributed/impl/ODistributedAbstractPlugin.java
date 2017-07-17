@@ -1355,6 +1355,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
     final File olddirectory = new File(dbpath);
     try {
       if (olddirectory.exists()) {
+        Files.createDirectories(backupfullpath.toPath().getParent());
         Files.move(olddirectory.toPath(), backupfullpath.toPath());
       }
     } catch (IOException e) {
