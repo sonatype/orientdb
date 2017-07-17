@@ -1359,7 +1359,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
         Files.move(olddirectory.toPath(), backupfullpath.toPath());
       }
     } catch (IOException e) {
-      ODistributedServerLog.warn(this, nodeName, null, DIRECTION.NONE,
+      ODistributedServerLog.error(this, nodeName, null, DIRECTION.NONE,
           "error on moving existent database '%s' located in '%s' to '%s'. deleting old database...", e, iDatabaseName, dbpath,
           backupfullpath);
       OFileUtils.deleteRecursively(olddirectory);
