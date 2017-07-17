@@ -1342,8 +1342,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
     final File f = new File(backupdirectory);
     if (f.exists())
       OFileUtils.deleteRecursively(backupfullpath);
-    else
-      f.mkdirs();
+    f.mkdirs();
 
     final String dbpath = serverInstance.getDatabaseDirectory() + iDatabaseName;
 
@@ -1355,7 +1354,6 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
     final File olddirectory = new File(dbpath);
     try {
       if (olddirectory.exists()) {
-        Files.createDirectories(backupfullpath.toPath().getParent());
         Files.move(olddirectory.toPath(), backupfullpath.toPath());
       }
     } catch (IOException e) {
