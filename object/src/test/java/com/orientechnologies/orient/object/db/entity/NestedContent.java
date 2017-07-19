@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 Orient Technologies.
+ * Copyright 2017 dominik.kopczynski.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,19 +13,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package com.orientechnologies.orient.object.db.entity;
 
-package com.orientechnologies.lucene.exception;
+/**
+ * @author dominik.kopczynski
+ */
+public class NestedContent {
+  private String name;
 
-import com.orientechnologies.common.exception.OException;
+  public NestedContent() {
 
-public class OLuceneIndexException extends OException {
-
-  public OLuceneIndexException(String message) {
-    super(message);
   }
 
-  public OLuceneIndexException(OException cause) {
-    super(cause);
+  public NestedContent(String name) {
+    this.name = name;
   }
 
+  public String getName() {
+    return name;
+  }
+
+  public void setName(String name) {
+    this.name = name;
+  }
 }
