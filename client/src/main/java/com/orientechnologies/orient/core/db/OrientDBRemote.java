@@ -66,12 +66,12 @@ public class OrientDBRemote implements OrientDBInternal {
     return String.join(",", hosts) + "/" + name;
   }
 
-  public ODatabaseDocument open(String name, String user, String password) {
+  public ODatabaseDocumentInternal open(String name, String user, String password) {
     return open(name, user, password, null);
   }
 
   @Override
-  public synchronized ODatabaseDocument open(String name, String user, String password, OrientDBConfig config) {
+  public synchronized ODatabaseDocumentInternal open(String name, String user, String password, OrientDBConfig config) {
     checkOpen();
     try {
       OStorageRemote storage;
@@ -178,11 +178,15 @@ public class OrientDBRemote implements OrientDBInternal {
 
   @Override
   public synchronized void close() {
+    if (!open)
+      return;
     Runtime.getRuntime().removeShutdownHook(shutdownThread);
     internalClose();
   }
 
   public synchronized void internalClose() {
+    if (!open)
+      return;
     final List<OStorage> storagesCopy = new ArrayList<OStorage>(storages.values());
     for (OStorage stg : storagesCopy) {
       try {
