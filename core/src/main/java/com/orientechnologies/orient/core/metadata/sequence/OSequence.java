@@ -159,6 +159,9 @@ public abstract class OSequence {
       any = true;
     }
 
+    save();
+    reset();
+
     return any;
   }
 
@@ -275,6 +278,7 @@ public abstract class OSequence {
   protected <T> T callRetry(final Callable<T> callable, final String method) {
     for (int retry = 0; retry < maxRetry; ++retry) {
       try {
+        reloadSequence();
         return callable.call();
       } catch (OConcurrentModificationException ex) {
         try {
@@ -284,7 +288,7 @@ public abstract class OSequence {
           Thread.currentThread().interrupt();
           break;
         }
-        reloadSequence();
+
       } catch (OStorageException e) {
         if (e.getCause() instanceof OConcurrentModificationException) {
           reloadSequence();

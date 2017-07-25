@@ -9,7 +9,10 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Created by luigidellaquila on 17/03/17.
+ * Returns the number of records contained in a class (including subclasses)
+ * Executes a count(*) on a class and returns a single record that contains that value (with a specific alias).
+ *
+ * @author Luigi Dell'Aquila (luigi.dellaquila - at - gmail.com)
  */
 public class CountFromClassStep extends AbstractExecutionStep {
   private final OIdentifier target;
@@ -19,9 +22,16 @@ public class CountFromClassStep extends AbstractExecutionStep {
 
   private boolean executed = false;
 
-  public CountFromClassStep(OIdentifier targetIndex, String alias, OCommandContext ctx, boolean profilingEnabled) {
+  /**
+   *
+   * @param targetClass An identifier containing the name of the class to count
+   * @param alias the name of the property returned in the result-set
+   * @param ctx the query context
+   * @param profilingEnabled true to enable the profiling of the execution (for SQL PROFILE)
+   */
+  public CountFromClassStep(OIdentifier targetClass, String alias, OCommandContext ctx, boolean profilingEnabled) {
     super(ctx, profilingEnabled);
-    this.target = targetIndex;
+    this.target = targetClass;
     this.alias = alias;
   }
 
