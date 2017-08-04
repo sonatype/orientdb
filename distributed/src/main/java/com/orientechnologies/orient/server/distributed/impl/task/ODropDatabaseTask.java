@@ -26,6 +26,7 @@ import com.orientechnologies.orient.server.distributed.ODistributedRequestId;
 import com.orientechnologies.orient.server.distributed.ODistributedServerLog;
 import com.orientechnologies.orient.server.distributed.ODistributedServerManager;
 import com.orientechnologies.orient.server.distributed.task.OAbstractRemoteTask;
+import org.apache.commons.lang.exception.ExceptionUtils;
 
 /**
  * Distributed task to drop a database on all the servers.
@@ -42,6 +43,10 @@ public class ODropDatabaseTask extends OAbstractRemoteTask {
   @Override
   public Object execute(ODistributedRequestId requestId, final OServer iServer, final ODistributedServerManager iManager,
       final ODatabaseDocumentInternal database) throws Exception {
+
+    ODistributedServerLog
+        .warn(this, iManager.getLocalNodeName(), getNodeSource(), ODistributedServerLog.DIRECTION.IN, "Entering ODropDatabaseTask#execute at: %s",
+            ExceptionUtils.getFullStackTrace(new Throwable());
 
     if (database == null) {
       ODistributedServerLog.warn(this, iManager.getLocalNodeName(), getNodeSource(), ODistributedServerLog.DIRECTION.IN,
