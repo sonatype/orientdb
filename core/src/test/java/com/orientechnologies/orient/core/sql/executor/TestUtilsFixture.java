@@ -1,18 +1,21 @@
 package com.orientechnologies.orient.core.sql.executor;
 
-import com.orientechnologies.orient.core.db.ODatabase;
 import com.orientechnologies.orient.core.db.ODatabaseType;
 import com.orientechnologies.orient.core.db.OrientDB;
 import com.orientechnologies.orient.core.db.OrientDBConfig;
+import com.orientechnologies.orient.core.db.document.ODatabaseDocument;
+import com.orientechnologies.orient.core.metadata.schema.OClass;
+import com.orientechnologies.orient.core.metadata.schema.OSchema;
+import org.apache.commons.lang.RandomStringUtils;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 
 /**
  * Created by olena.kolesnyk on 28/07/2017.
  */
-public class CreateMemoryDatabaseFixture {
+public class TestUtilsFixture {
 
-    protected static ODatabase database;
+    protected static ODatabaseDocument database;
     protected static OrientDB factory;
     private static final String PATH = "memory";
     private static final String DB_NAME = "test_database";
@@ -31,6 +34,22 @@ public class CreateMemoryDatabaseFixture {
         database.close();
         factory.drop(DB_NAME);
         factory.close();
+    }
+
+    static OClass createClassInstance() {
+        return getDBSchema().createClass(generateClassName());
+    }
+
+    static OClass createChildClassInstance(OClass superclass) {
+        return getDBSchema().createClass(generateClassName(), superclass);
+    }
+
+    private static OSchema getDBSchema() {
+        return database.getMetadata().getSchema();
+    }
+
+    private static String generateClassName() {
+        return "Class" + RandomStringUtils.randomNumeric(10);
     }
 
 }
