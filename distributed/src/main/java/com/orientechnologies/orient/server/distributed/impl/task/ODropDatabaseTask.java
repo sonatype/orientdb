@@ -46,7 +46,7 @@ public class ODropDatabaseTask extends OAbstractRemoteTask {
 
     ODistributedServerLog
         .warn(this, iManager.getLocalNodeName(), getNodeSource(), ODistributedServerLog.DIRECTION.IN, "Entering ODropDatabaseTask#execute at: %s",
-            ExceptionUtils.getFullStackTrace(new Throwable());
+            ExceptionUtils.getFullStackTrace(new Throwable()));
 
     if (database == null) {
       ODistributedServerLog.warn(this, iManager.getLocalNodeName(), getNodeSource(), ODistributedServerLog.DIRECTION.IN,
