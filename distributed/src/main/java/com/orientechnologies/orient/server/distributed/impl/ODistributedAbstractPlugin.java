@@ -1245,9 +1245,9 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
     throw new ODistributedException("No response received from remote nodes for auto-deploy of database '" + databaseName + "'");
   }
 
-  private void replaceStorageInSessions(OStorage storage) {
+  private void replaceStorageInSessions(final OStorage storage) {
     for (OClientConnection conn : serverInstance.getClientConnectionManager().getConnections()) {
-      ODatabaseDocumentInternal connDb = conn.getDatabase();
+      final ODatabaseDocumentInternal connDb = conn.getDatabase();
       if (connDb != null && connDb.getName().equals(storage.getName())) {
         conn.acquire();
         try {
@@ -1488,7 +1488,14 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
       }
 
       try {
-        rebalanceClusterOwnership(nodeName, db, cfg, false);
+        try {
+          rebalanceClusterOwnership(nodeName, db, cfg, false);
+        } catch (Exception e) {
+          // HANDLE IT AS WARNING
+          ODistributedServerLog
+              .warn(this, nodeName, null, DIRECTION.NONE, "Error on re-balancing the cluster for database '%s'", e, databaseName);
+          // NOT CRITICAL, CONTINUE
+        }
         distrDatabase.setOnline();
       } finally {
         db.activateOnCurrentThread();
