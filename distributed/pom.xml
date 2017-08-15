@@ -135,11 +135,14 @@
             <artifactId>hazelcast</artifactId>
             <version>${hz.version}</version>
         </dependency>
+<!--
+SONATYPE: dependency no longer exists in HZ 3.8.x
         <dependency>
             <groupId>com.hazelcast</groupId>
             <artifactId>hazelcast-cloud</artifactId>
             <version>${hz.version}</version>
         </dependency>
+-->
     </dependencies>
 
     <build>
