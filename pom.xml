@@ -19,7 +19,7 @@
     <!--
     SONATYPE: Custom version to avoid clobbering upstreams snapshots.
     -->
-    <version>2.2.SONATYPE-SNAPSHOT</version>
+    <version>2.2.ATAYLOR-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>OrientDB</name>

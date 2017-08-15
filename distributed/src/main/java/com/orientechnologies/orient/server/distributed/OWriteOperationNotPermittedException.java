@@ -16,7 +16,7 @@
  *  
  */
 
-package com.orientechnologies.orient.server.distributed.impl;
+package com.orientechnologies.orient.server.distributed;
 
 import com.orientechnologies.orient.server.distributed.ODistributedException;
 
