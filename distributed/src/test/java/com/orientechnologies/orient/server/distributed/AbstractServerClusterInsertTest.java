@@ -40,7 +40,6 @@ import org.junit.Assert;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Insert records concurrently against the cluster
@@ -57,7 +56,6 @@ public abstract class AbstractServerClusterInsertTest extends AbstractDistribute
   protected List<ServerRun> executeTestsOnServers = null;
   protected String          className             = "Person";
   protected String          indexName             = "Person.name";
-  protected AtomicLong      counter               = new AtomicLong();
 
   protected class BaseWriter implements Callable<Void> {
     protected final String databaseUrl;
@@ -147,7 +145,7 @@ public abstract class AbstractServerClusterInsertTest extends AbstractDistribute
     protected ODocument createRecord(ODatabaseDocumentTx database, int i, final String uid) throws InterruptedException {
       checkClusterStrategy(database);
 
-      final String uniqueId = "" + counter.getAndIncrement();
+      final String uniqueId = serverId + "-" + threadId + "-" + i;
 
       ODocument person = null;
       for (int retry = 0; retry < 10; ++retry) {
@@ -637,29 +635,29 @@ public abstract class AbstractServerClusterInsertTest extends AbstractDistribute
       try {
         final long total = database.countClass(className);
 
-        if (expected != total) {
-          System.out.println("Server " + server.getServerInstance().getDistributedManager().getLocalNodeName());
-
-          long totalClusters = 0;
-          final OClass cls = database.getMetadata().getSchema().getClass(className);
-          for (int clId : cls.getPolymorphicClusterIds()) {
-            System.out.println("- cluster " + database.getClusterNameById(clId) + ": " + database.countClusterElements(clId));
-            totalClusters += database.countClusterElements(clId);
-          }
-          System.out.println("Total from clusters: " + totalClusters);
-
-          final List<String> orderedNames = new ArrayList<String>();
-          for (Map.Entry<OIdentifiable, StringBuilder> entry : records.entrySet()) {
-            orderedNames.add(
-                (String) ((ODocument) entry.getKey().getRecord()).field("name") + ": " + ((ODocument) entry.getKey().getRecord())
-                    .getIdentity());
-          }
-
-          Collections.sort(orderedNames);
-          for (String entry : orderedNames) {
-            System.out.println("- record " + entry);
-          }
-        }
+//        if (expected != total) {
+//          System.out.println("Server " + server.getServerInstance().getDistributedManager().getLocalNodeName());
+//
+//          long totalClusters = 0;
+//          final OClass cls = database.getMetadata().getSchema().getClass(className);
+//          for (int clId : cls.getPolymorphicClusterIds()) {
+//            System.out.println("- cluster " + database.getClusterNameById(clId) + ": " + database.countClusterElements(clId));
+//            totalClusters += database.countClusterElements(clId);
+//          }
+//          System.out.println("Total from clusters: " + totalClusters);
+//
+//          final List<String> orderedNames = new ArrayList<String>();
+//          for (Map.Entry<OIdentifiable, StringBuilder> entry : records.entrySet()) {
+//            orderedNames.add(
+//                (String) ((ODocument) entry.getKey().getRecord()).field("name") + ": " + ((ODocument) entry.getKey().getRecord())
+//                    .getIdentity());
+//          }
+//
+//          Collections.sort(orderedNames);
+//          for (String entry : orderedNames) {
+//            System.out.println("- record " + entry);
+//          }
+//        }
 
         Assert.assertEquals("Server " + server.getServerId() + " count is not what was expected", expected, total);
 
