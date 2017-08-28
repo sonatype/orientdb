@@ -924,11 +924,10 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
                     databaseInstalled = requestDatabaseDelta(distrDatabase, databaseName, cfg);
 
                   } catch (ODistributedDatabaseDeltaSyncException e) {
-
                     if (deploy == null || !deploy) {
                       // NO AUTO DEPLOY
                       ODistributedServerLog.debug(this, nodeName, null, DIRECTION.NONE,
-                          "Skipping download of database '%s' from the cluster because autoDeploy=false", databaseName);
+                          "Skipping download of the entire database '%s' from the cluster because autoDeploy=false", databaseName);
 
                       setDatabaseStatus(nodeName, databaseName, DB_STATUS.ONLINE);
                       distrDatabase.resume();
@@ -985,6 +984,8 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
 
   protected boolean requestFullDatabase(final ODistributedDatabaseImpl distrDatabase, final String databaseName,
       final boolean backupDatabase, final OModifiableDistributedConfiguration cfg) {
+    ODistributedServerLog.info(this, nodeName, null, DIRECTION.NONE, "Requesting full sync for database '%s'...", databaseName);
+
     for (int retry = 0; retry < DEPLOY_DB_MAX_RETRIES; ++retry) {
       // ASK DATABASE TO THE FIRST NODE, THE FIRST ATTEMPT, OTHERWISE ASK TO EVERYONE
       if (requestDatabaseFullSync(distrDatabase, backupDatabase, databaseName, retry > 0, cfg))
@@ -1026,10 +1027,20 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
       throw new ODistributedDatabaseDeltaSyncException("Requested database delta sync but no LSN was found");
     }
 
+    boolean databaseInstalledCorrectly = false;
+
     for (Map.Entry<String, OLogSequenceNumber> entry : selectedNodes.entrySet()) {
 
       final String targetNode = entry.getKey();
       final OLogSequenceNumber lsn = entry.getValue();
+
+      if (!isNodeOnline(targetNode, databaseName)) {
+        // SKIP THIS SERVER BECAUSE NOT AVAILABLE
+        ODistributedServerLog.info(this, nodeName, targetNode, DIRECTION.OUT,
+            "Skip synchronizing database delta for '%s' (LSN=%s), because server '%s' is not online", databaseName, lsn,
+            targetNode);
+        continue;
+      }
 
       final OSyncDatabaseDeltaTask deployTask = new OSyncDatabaseDeltaTask(lsn,
           distrDatabase.getSyncConfiguration().getLastOperationTimestamp());
@@ -1070,12 +1081,6 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
                   .warn(this, nodeName, server, DIRECTION.IN, "Error on installing database delta for '%s' (err=%s)", databaseName,
                       exc.getMessage());
 
-              ODistributedServerLog
-                  .warn(this, nodeName, server, DIRECTION.IN, "Requesting full database '%s' sync...", databaseName);
-
-              // RESTORE STATUS TO ONLINE
-              setDatabaseStatus(server, databaseName, DB_STATUS.ONLINE);
-
               throw (ODistributedDatabaseDeltaSyncException) value;
 
             } else if (value instanceof ODatabaseIsOldException) {
@@ -1090,7 +1095,10 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
                       databaseName, dbPath, value);
 
               setDatabaseStatus(nodeName, databaseName, DB_STATUS.NOT_AVAILABLE);
-              return false;
+
+              throw OException
+                  .wrapException(new ODistributedDatabaseDeltaSyncException("Requested database delta sync but no LSN was found"),
+                      (Throwable) value);
 
             } else if (value instanceof ODistributedDatabaseChunk) {
               // distrDatabase.filterBeforeThisMomentum(((ODistributedDatabaseChunk) value).getMomentum());
@@ -1103,11 +1111,11 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
                   uniqueClustersBackupDirectory, cfg);
 
               ODistributedServerLog
-                  .info(this, nodeName, targetNode, DIRECTION.IN, "Installed delta of database '%s'...", databaseName);
+                  .info(this, nodeName, targetNode, DIRECTION.IN, "Installed delta of database '%s'", databaseName);
 
-              if (!cfg.isSharded())
-                // DB NOT SHARDED, THE 1ST BACKUP IS GOOD
-                break;
+              // DATABASE INSTALLED CORRECTLY
+              databaseInstalledCorrectly = true;
+              break;
 
             } else
               throw new IllegalArgumentException("Type " + value + " not supported");
@@ -1115,7 +1123,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
         }
       } catch (ODatabaseIsOldException e) {
         // FORWARD IT
-        throw (ODatabaseIsOldException) e;
+        throw e;
       } catch (ODistributedDatabaseDeltaSyncException e) {
         // RE-THROW IT
         throw e;
@@ -1125,11 +1133,18 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
                 databaseName, e.getMessage());
         throw new ODistributedDatabaseDeltaSyncException(lsn, e.toString());
       }
+
+      if (databaseInstalledCorrectly && !cfg.isSharded())
+        // DB NOT SHARDED, THE 1ST BACKUP IS GOOD
+        break;
     }
 
-    distrDatabase.resume();
+    if (databaseInstalledCorrectly) {
+      distrDatabase.resume();
+      return true;
+    }
 
-    return true;
+    throw new ODistributedDatabaseDeltaSyncException("Requested database delta sync error");
   }
 
   protected boolean requestDatabaseFullSync(final ODistributedDatabaseImpl distrDatabase, final boolean backupDatabase,
@@ -1203,7 +1218,7 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
 
       } else if (value instanceof Throwable) {
         ODistributedServerLog
-            .error(this, nodeName, r.getKey(), DIRECTION.IN, "Error on installing database '%s' in %s", (Exception) value,
+            .error(this, nodeName, r.getKey(), DIRECTION.IN, "Error on installing database '%s' in %s", (Throwable) value,
                 databaseName, dbPath);
 
         setDatabaseStatus(nodeName, databaseName, DB_STATUS.NOT_AVAILABLE);
