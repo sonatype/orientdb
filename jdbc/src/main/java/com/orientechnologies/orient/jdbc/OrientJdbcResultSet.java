@@ -1,22 +1,21 @@
 /**
  * Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  * <p>
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
  * <p>
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
  * <p>
  * For more information: http://orientdb.com
  */
 package com.orientechnologies.orient.jdbc;
 
+import com.orientechnologies.common.log.OLogManager;
+import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.db.record.ORecordLazyList;
 import com.orientechnologies.orient.core.db.record.ORecordLazyMultiValue;
@@ -33,6 +32,7 @@ import com.orientechnologies.orient.core.sql.parser.ParseException;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.Reader;
+import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
 import java.net.URL;
 import java.sql.*;
@@ -50,6 +50,7 @@ public class OrientJdbcResultSet implements ResultSet {
   private       List<OResult>               records;
   private       OrientJdbcStatement         statement;
   private       OResult                     result;
+
   private int cursor   = -1;
   private int rowCount = 0;
   private int type;
@@ -106,7 +107,25 @@ public class OrientJdbcResultSet implements ResultSet {
     List<String> fields = new ArrayList<>();
     if (statement.sql != null && !statement.sql.isEmpty()) {
       try {
-        OrientSql osql = new OrientSql(new ByteArrayInputStream(statement.sql.getBytes()));
+
+        OrientSql osql = null;
+        ODatabaseDocumentInternal db = null;
+        try {
+          db = (ODatabaseDocumentInternal) ((OrientJdbcConnection) statement.getConnection()).getDatabase();
+          if (db == null) {
+            osql = new OrientSql(new ByteArrayInputStream(statement.sql.getBytes()));
+          } else {
+            osql = new OrientSql(new ByteArrayInputStream(statement.sql.getBytes()),
+                db.getStorage().getConfiguration().getCharset());
+          }
+        } catch (UnsupportedEncodingException e) {
+          OLogManager.instance()
+              .warn(this, "Invalid charset for database " + db + " " + db.getStorage().getConfiguration().getCharset());
+          osql = new OrientSql(new ByteArrayInputStream(statement.sql.getBytes()));
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+
 
         final OSelectStatement select = osql.SelectStatement();
         if (select.getProjection() != null) {
@@ -527,7 +546,6 @@ public class OrientJdbcResultSet implements ResultSet {
       final Long r = result.getProperty(columnLabel);
       return r != null ? r : 0;
     } catch (Exception e) {
-      e.printStackTrace();
       throw new SQLException("An error occurred during the retrieval of the long value at column '" + columnLabel + "'", e);
     }
   }
@@ -676,7 +694,10 @@ public class OrientJdbcResultSet implements ResultSet {
     }
 
     try {
-      return result.getProperty(columnLabel);
+      return Optional.ofNullable(result.getProperty(columnLabel))
+          .map(v -> "" + v)
+          .orElse(null);
+
     } catch (Exception e) {
       throw new SQLException("An error occurred during the retrieval of the string value at column '" + columnLabel + "'", e);
     }

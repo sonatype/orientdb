@@ -21,7 +21,6 @@
 package com.orientechnologies.orient.core.db.document;
 
 import com.orientechnologies.common.exception.OException;
-import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.cache.OCommandCacheHook;
 import com.orientechnologies.orient.core.cache.OLocalRecordCache;
@@ -46,12 +45,8 @@ import com.orientechnologies.orient.core.query.live.OLiveQueryMonitorEmbedded;
 import com.orientechnologies.orient.core.record.ORecord;
 import com.orientechnologies.orient.core.schedule.OSchedulerTrigger;
 import com.orientechnologies.orient.core.serialization.serializer.record.ORecordSerializerFactory;
-import com.orientechnologies.orient.core.serialization.serializer.record.string.ORecordSerializerSchemaAware2CSV;
 import com.orientechnologies.orient.core.sql.OSQLEngine;
-import com.orientechnologies.orient.core.sql.executor.LiveQueryListenerImpl;
-import com.orientechnologies.orient.core.sql.executor.OExecutionPlan;
-import com.orientechnologies.orient.core.sql.executor.OInternalExecutionPlan;
-import com.orientechnologies.orient.core.sql.executor.OResultSet;
+import com.orientechnologies.orient.core.sql.executor.*;
 import com.orientechnologies.orient.core.sql.parser.OLocalResultSet;
 import com.orientechnologies.orient.core.sql.parser.OLocalResultSetLifecycleDecorator;
 import com.orientechnologies.orient.core.sql.parser.OStatement;
@@ -60,12 +55,10 @@ import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedSt
 import com.orientechnologies.orient.core.storage.impl.local.OMicroTransaction;
 
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.Callable;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Created by tglman on 27/06/16.
@@ -94,7 +87,7 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract impleme
 
       databaseOwner = this;
     } catch (Exception t) {
-      ODatabaseRecordThreadLocal.INSTANCE.remove();
+      ODatabaseRecordThreadLocal.instance().remove();
 
       throw OException.wrapException(new ODatabaseException("Error on opening database "), t);
     }
@@ -138,10 +131,10 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract impleme
 
       initialized = true;
     } catch (OException e) {
-      ODatabaseRecordThreadLocal.INSTANCE.remove();
+      ODatabaseRecordThreadLocal.instance().remove();
       throw e;
     } catch (Exception e) {
-      ODatabaseRecordThreadLocal.INSTANCE.remove();
+      ODatabaseRecordThreadLocal.instance().remove();
       throw OException.wrapException(new ODatabaseException("Cannot open database url=" + getURL()), e);
     }
 
@@ -172,10 +165,10 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract impleme
       }
 
     } catch (OException e) {
-      ODatabaseRecordThreadLocal.INSTANCE.remove();
+      ODatabaseRecordThreadLocal.instance().remove();
       throw e;
     } catch (Exception e) {
-      ODatabaseRecordThreadLocal.INSTANCE.remove();
+      ODatabaseRecordThreadLocal.instance().remove();
       throw OException.wrapException(new ODatabaseException("Cannot open database url=" + getURL()), e);
     }
   }
@@ -232,7 +225,7 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract impleme
     for (ODatabaseListener listener : browseListeners())
       try {
         listener.onCreate(this);
-      } catch (Throwable ignore) {
+      } catch (Exception ignore) {
       }
   }
 
@@ -299,7 +292,13 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract impleme
   public ODatabaseDocumentInternal copy() {
     ODatabaseDocumentEmbedded database = new ODatabaseDocumentEmbedded(storage);
     database.init(config);
-    database.internalOpen(getUser().getName(), null, false);
+    String user;
+    if (getUser() != null) {
+      user = getUser().getName();
+    } else {
+      user = null;
+    }
+    database.internalOpen(user, null, false);
     database.callOnOpenListeners();
     this.activateOnCurrentThread();
     return database;
@@ -352,7 +351,7 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract impleme
     }
     OResultSet original = statement.execute(this, args);
     OLocalResultSetLifecycleDecorator result = new OLocalResultSetLifecycleDecorator(original);
-    this.queryStarted(result.getQueryId(),result);
+    this.queryStarted(result.getQueryId(), result);
     result.addLifecycleListener(this);
     return result;
   }
@@ -365,7 +364,7 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract impleme
     }
     OResultSet original = statement.execute(this, args);
     OLocalResultSetLifecycleDecorator result = new OLocalResultSetLifecycleDecorator(original);
-    this.queryStarted(result.getQueryId(),result);
+    this.queryStarted(result.getQueryId(), result);
     result.addLifecycleListener(this);
     return result;
   }
@@ -374,9 +373,19 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract impleme
   public OResultSet command(String query, Object[] args) {
     OStatement statement = OSQLEngine.parse(query, this);
     OResultSet original = statement.execute(this, args);
-    OLocalResultSetLifecycleDecorator result = new OLocalResultSetLifecycleDecorator(original);
-    this.queryStarted(result.getQueryId(),result);
-    result.addLifecycleListener(this);
+    OLocalResultSetLifecycleDecorator result;
+    if (!statement.isIdempotent()) {
+      //fetch all, close and detach
+      OInternalResultSet prefetched = new OInternalResultSet();
+      original.forEachRemaining(x -> prefetched.add(x));
+      original.close();
+      result = new OLocalResultSetLifecycleDecorator(prefetched);
+    } else {
+      //stream, keep open and attach to the current DB
+      result = new OLocalResultSetLifecycleDecorator(original);
+      this.queryStarted(result.getQueryId(), result);
+      result.addLifecycleListener(this);
+    }
     return result;
   }
 
@@ -384,9 +393,19 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract impleme
   public OResultSet command(String query, Map args) {
     OStatement statement = OSQLEngine.parse(query, this);
     OResultSet original = statement.execute(this, args);
-    OLocalResultSetLifecycleDecorator result = new OLocalResultSetLifecycleDecorator(original);
-    this.queryStarted(result.getQueryId(),result);
-    result.addLifecycleListener(this);
+    OLocalResultSetLifecycleDecorator result;
+    if (!statement.isIdempotent()) {
+      //fetch all, close and detach
+      OInternalResultSet prefetched = new OInternalResultSet();
+      original.forEachRemaining(x -> prefetched.add(x));
+      original.close();
+      result = new OLocalResultSetLifecycleDecorator(prefetched);
+    } else {
+      //stream, keep open and attach to the current DB
+      result = new OLocalResultSetLifecycleDecorator(original);
+      this.queryStarted(result.getQueryId(), result);
+      result.addLifecycleListener(this);
+    }
     return result;
   }
 
@@ -395,7 +414,7 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract impleme
     OScriptExecutor executor = OCommandManager.instance().getScriptExecutor(language);
     OResultSet original = executor.execute(this, script, args);
     OLocalResultSetLifecycleDecorator result = new OLocalResultSetLifecycleDecorator(original);
-    this.queryStarted(result.getQueryId(),result);
+    this.queryStarted(result.getQueryId(), result);
     result.addLifecycleListener(this);
     return result;
   }
@@ -405,7 +424,7 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract impleme
     OScriptExecutor executor = OCommandManager.instance().getScriptExecutor(language);
     OResultSet original = executor.execute(this, script, args);
     OLocalResultSetLifecycleDecorator result = new OLocalResultSetLifecycleDecorator(original);
-    this.queryStarted(result.getQueryId(),result);
+    this.queryStarted(result.getQueryId(), result);
     result.addLifecycleListener(this);
     return result;
   }
@@ -417,7 +436,7 @@ public class ODatabaseDocumentEmbedded extends ODatabaseDocumentAbstract impleme
 
     OLocalResultSet result = new OLocalResultSet((OInternalExecutionPlan) plan);
     OLocalResultSetLifecycleDecorator decorator = new OLocalResultSetLifecycleDecorator(result);
-    this.queryStarted(decorator.getQueryId(),decorator);
+    this.queryStarted(decorator.getQueryId(), decorator);
     decorator.addLifecycleListener(this);
 
     return decorator;

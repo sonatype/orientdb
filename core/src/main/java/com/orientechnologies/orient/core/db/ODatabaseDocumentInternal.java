@@ -20,11 +20,9 @@
 
 package com.orientechnologies.orient.core.db;
 
-import com.orientechnologies.orient.core.db.document.ODatabaseDocument;
 import com.orientechnologies.orient.core.db.document.RecordReader;
 import com.orientechnologies.orient.core.db.record.OCurrentStorageComponentsFactory;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
-import com.orientechnologies.orient.core.db.record.ridbag.sbtree.OSBTreeCollectionManager;
 import com.orientechnologies.orient.core.exception.ORecordNotFoundException;
 import com.orientechnologies.orient.core.hook.ORecordHook;
 import com.orientechnologies.orient.core.id.ORID;
@@ -37,10 +35,12 @@ import com.orientechnologies.orient.core.serialization.serializer.binary.OBinary
 import com.orientechnologies.orient.core.serialization.serializer.record.ORecordSerializer;
 import com.orientechnologies.orient.core.sql.executor.OExecutionPlan;
 import com.orientechnologies.orient.core.sql.executor.OResultSet;
-import com.orientechnologies.orient.core.sql.parser.OLocalResultSetLifecycleDecorator;
 import com.orientechnologies.orient.core.storage.ORecordCallback;
 import com.orientechnologies.orient.core.storage.OStorage;
+import com.orientechnologies.orient.core.storage.ridbag.sbtree.OSBTreeCollectionManager;
 import com.orientechnologies.orient.core.tx.OTransaction;
+import com.orientechnologies.orient.core.tx.OTransactionInternal;
+import com.orientechnologies.orient.core.tx.OTransactionOptimistic;
 
 import java.util.Map;
 
@@ -187,9 +187,9 @@ public interface ODatabaseDocumentInternal extends ODatabaseSession, ODatabaseIn
   /**
    * sends an execution plan to a remote node for a remote query execution
    *
-   * @param nodeName                the node name
-   * @param executionPlan           the execution plan
-   * @param inputParameters         the input parameters for execution
+   * @param nodeName        the node name
+   * @param executionPlan   the execution plan
+   * @param inputParameters the input parameters for execution
    *
    * @return an OResultSet to fetch the results of the query execution
    */
@@ -197,4 +197,10 @@ public interface ODatabaseDocumentInternal extends ODatabaseSession, ODatabaseIn
     throw new UnsupportedOperationException();
   }
 
+  /**
+   * Executed the commit on the storage hiding away storage concepts from the transaction
+   *
+   * @param transaction
+   */
+  void internalCommit(OTransactionInternal transaction);
 }

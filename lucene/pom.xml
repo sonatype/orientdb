@@ -33,17 +33,18 @@
 
     <properties>
         <orientdb.version>${project.version}</orientdb.version>
-        <lucene.version>6.6.0</lucene.version>
+        <lucene.version>6.6.1</lucene.version>
         <geotools.version>13.2</geotools.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <argLine>-ea -XX:MaxDirectMemorySize=512g -Xmx2048m
-            -Dstorage.diskCache.bufferSize=4096
+        <argLine>-ea
+            -XX:MaxDirectMemorySize=512g
+            -Xmx${heapSize}
             -Dindex.flushAfterCreate=false
             -Dstorage.makeFullCheckpointAfterCreate=false
             -Dstorage.makeFullCheckpointAfterClusterCreate=false -Dstorage.wal.syncOnPageFlush=false
             -Dstorage.configuration.syncOnUpdate=false
             -Dmemory.directMemory.trackMode=true
-            -Djava.util.logging.manager=com.orientechnologies.common.log.OLogManager$DebugLogManager
+            -Djava.util.logging.manager=com.orientechnologies.common.log.OLogManager$ShutdownLogManager
             -Dstorage.diskCache.checksumMode=storeAndThrow
         </argLine>
 

@@ -24,17 +24,16 @@ import com.orientechnologies.orient.core.command.OCommandRequestText;
 import com.orientechnologies.orient.core.config.OContextConfiguration;
 import com.orientechnologies.orient.core.conflict.ORecordConflictStrategy;
 import com.orientechnologies.orient.core.db.record.ORecordOperation;
-import com.orientechnologies.orient.core.db.record.ridbag.sbtree.OSBTreeCollectionManager;
 import com.orientechnologies.orient.core.exception.ORecordNotFoundException;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.id.ORecordId;
-import com.orientechnologies.orient.core.tx.OTransaction;
+import com.orientechnologies.orient.core.storage.ridbag.sbtree.OSBTreeCollectionManager;
+import com.orientechnologies.orient.core.tx.OTransactionInternal;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.charset.IllegalCharsetNameException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -148,12 +147,12 @@ public class StorageNamingTests {
     }
 
     @Override
-    public List<ORecordOperation> commit(OTransaction iTx, Runnable callback) {
+    public List<ORecordOperation> commit(OTransactionInternal iTx, Runnable callback) {
       return null;
     }
 
     @Override
-    public void rollback(OTransaction iTx) {
+    public void rollback(OTransactionInternal iTx) {
 
     }
 
@@ -178,12 +177,12 @@ public class StorageNamingTests {
     }
 
     @Override
-    public int addCluster(String iClusterName, boolean forceListBased, Object... iParameters) {
+    public int addCluster(String iClusterName, Object... iParameters) {
       return 0;
     }
 
     @Override
-    public int addCluster(String iClusterName, int iRequestedId, boolean forceListBased, Object... iParameters) {
+    public int addCluster(String iClusterName, int iRequestedId, Object... iParameters) {
       return 0;
     }
 

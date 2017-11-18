@@ -47,7 +47,7 @@ public class ODocumentSerializationPersistentTest {
 
     doc.field("country", linkedDoc);
     doc.field("numbers", Arrays.asList(0, 1, 2, 3, 4, 5));
-    doc.save();
+    doc.save(db.getClusterNameById(db.getDefaultClusterId()));
     docId = doc.getIdentity();
     linkedId = linkedDoc.getIdentity();
   }
@@ -83,7 +83,7 @@ public class ODocumentSerializationPersistentTest {
 
   @Test
   public void testRidBagInEmbeddedDocument() {
-    ODatabaseRecordThreadLocal.INSTANCE.set(db);
+    ODatabaseRecordThreadLocal.instance().set(db);
     ODocument doc = new ODocument();
     ORidBag rids = new ORidBag();
     rids.add(new ORecordId(2, 3));

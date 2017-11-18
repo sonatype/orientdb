@@ -32,18 +32,21 @@ public class OCreateSequenceStatementExecutionTest {
     OResult result = results.next();
     assertThat((Long) result.getProperty("val")).isEqualTo(1L);
     Assert.assertFalse(results.hasNext());
+    results.close();
 
     results = db.query("select sequence('Sequence1').next() as val");
     Assert.assertTrue(results.hasNext());
     result = results.next();
     assertThat((Long) result.getProperty("val")).isEqualTo(2L);
     Assert.assertFalse(results.hasNext());
+    results.close();
 
     results = db.query("select sequence('Sequence1').next() as val");
     Assert.assertTrue(results.hasNext());
     result = results.next();
     assertThat((Long) result.getProperty("val")).isEqualTo(3L);
     Assert.assertFalse(results.hasNext());
+    results.close();
   }
 
   @Test public void testIncrement() {
@@ -54,18 +57,21 @@ public class OCreateSequenceStatementExecutionTest {
     OResult result = results.next();
     assertThat((Long) result.getProperty("val")).isEqualTo(3L);
     Assert.assertFalse(results.hasNext());
+    results.close();
 
     results = db.query("select sequence('SequenceIncrement').next() as val");
     Assert.assertTrue(results.hasNext());
     result = results.next();
     assertThat((Long) result.getProperty("val")).isEqualTo(6L);
     Assert.assertFalse(results.hasNext());
+    results.close();
 
     results = db.query("select sequence('SequenceIncrement').next() as val");
     Assert.assertTrue(results.hasNext());
     result = results.next();
     assertThat((Long) result.getProperty("val")).isEqualTo(9L);
     Assert.assertFalse(results.hasNext());
+    results.close();
   }
 
   @Test public void testStart() {
@@ -76,18 +82,21 @@ public class OCreateSequenceStatementExecutionTest {
     OResult result = results.next();
     assertThat((Long) result.getProperty("val")).isEqualTo(4L);
     Assert.assertFalse(results.hasNext());
+    results.close();
 
     results = db.query("select sequence('SequenceStart').next() as val");
     Assert.assertTrue(results.hasNext());
     result = results.next();
     assertThat((Long) result.getProperty("val")).isEqualTo(5L);
     Assert.assertFalse(results.hasNext());
+    results.close();
 
     results = db.query("select sequence('SequenceStart').next() as val");
     Assert.assertTrue(results.hasNext());
     result = results.next();
     assertThat((Long) result.getProperty("val")).isEqualTo(6L);
     Assert.assertFalse(results.hasNext());
+    results.close();
 
   }
 
@@ -99,18 +108,31 @@ public class OCreateSequenceStatementExecutionTest {
     OResult result = results.next();
     assertThat((Long) result.getProperty("val")).isEqualTo(13L);
     Assert.assertFalse(results.hasNext());
+    results.close();
 
     results = db.query("select sequence('SequenceStartIncrement').next() as val");
     Assert.assertTrue(results.hasNext());
     result = results.next();
     assertThat((Long) result.getProperty("val")).isEqualTo(23L);
     Assert.assertFalse(results.hasNext());
+    results.close();
 
     results = db.query("select sequence('SequenceStartIncrement').next() as val");
     Assert.assertTrue(results.hasNext());
     result = results.next();
     assertThat((Long) result.getProperty("val")).isEqualTo(33L);
     Assert.assertFalse(results.hasNext());
+    results.close();
+
+  }
+
+  @Test public void testCreateSequenceIfNotExists() {
+    db.command("CREATE SEQUENCE SequenceIfNotExists if not exists TYPE ORDERED").close();
+
+    OResultSet result = db.command("CREATE SEQUENCE SequenceIfNotExists if not exists TYPE ORDERED");
+
+    Assert.assertFalse(result.hasNext());
+    result.close();
 
   }
 

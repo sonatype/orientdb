@@ -33,12 +33,17 @@ import static com.orientechnologies.orient.core.config.OGlobalConfiguration.PROF
 
 public class OProfilerStub extends OAbstractProfiler {
 
-  protected volatile ConcurrentMap<String, Long>                    counters;
-  private volatile   ConcurrentLinkedHashMap<String, AtomicInteger> tips;
-  private volatile   ConcurrentLinkedHashMap<String, Long>          tipsTimestamp;
+  protected ConcurrentMap<String, Long>                    counters;
+  private   ConcurrentLinkedHashMap<String, AtomicInteger> tips;
+  private   ConcurrentLinkedHashMap<String, Long>          tipsTimestamp;
 
   public OProfilerStub() {
   }
+
+  public OProfilerStub(boolean registerListener) {
+    super(registerListener);
+  }
+
 
   public OProfilerStub(final OAbstractProfiler profiler) {
     super(profiler);
@@ -54,6 +59,7 @@ public class OProfilerStub extends OAbstractProfiler {
 
   @Override
   public void shutdown() {
+
     if (counters != null) {
       counters.clear();
     }
@@ -224,12 +230,14 @@ public class OProfilerStub extends OAbstractProfiler {
 
   @Override
   public String[] getCountersAsString() {
-    return null;
+    final List<String> keys = new ArrayList<String>(counters.keySet());
+    final String[] result = new String[keys.size()];
+    return keys.toArray(result);
   }
 
   @Override
-  public String[] getChronosAsString() {
-    return null;
+  public List<String> getChronos() {
+    return Collections.emptyList();
   }
 
   @Override
@@ -243,12 +251,22 @@ public class OProfilerStub extends OAbstractProfiler {
   }
 
   @Override
+  public Object getHookValue(final String iName) {
+    return null;
+  }
+
+  @Override
   public String toJSON(String command, final String iPar1) {
     return null;
   }
 
   @Override
   public void resetRealtime(String iText) {
+  }
+
+  @Override
+  public String getStatsAsJson() {
+    return null;
   }
 
   /**

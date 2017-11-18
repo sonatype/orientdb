@@ -1,17 +1,14 @@
 /**
  * Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
  * <p>
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
  * <p>
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
  * <p>
  * For more information: http://orientdb.com
  */
@@ -29,14 +26,12 @@ import com.orientechnologies.orient.core.metadata.schema.OClass.INDEX_TYPE;
 import com.orientechnologies.orient.core.metadata.schema.OProperty;
 import com.orientechnologies.orient.core.metadata.schema.OSchema;
 import com.orientechnologies.orient.core.metadata.schema.OType;
+import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.executor.OInternalResultSet;
 import com.orientechnologies.orient.core.sql.executor.OResultInternal;
 
 import java.sql.*;
 import java.util.*;
-
-import static com.orientechnologies.orient.core.OConstants.ORIENT_VERSION_MAJOR;
-import static com.orientechnologies.orient.core.OConstants.ORIENT_VERSION_MINOR;
 
 /**
  * @author Roberto Franchini (CELI srl - franchini--at--celi.it)
@@ -103,7 +98,7 @@ public class OrientJdbcDatabaseMetaData implements DatabaseMetaData {
   }
 
   public String getDatabaseProductVersion() throws SQLException {
-    return OConstants.ORIENT_VERSION;
+    return OConstants.getVersion();
   }
 
   public String getDriverName() throws SQLException {
@@ -115,11 +110,11 @@ public class OrientJdbcDatabaseMetaData implements DatabaseMetaData {
   }
 
   public int getDriverMajorVersion() {
-    return ORIENT_VERSION_MAJOR;
+    return OConstants.getVersionMajor();
   }
 
   public int getDriverMinorVersion() {
-    return ORIENT_VERSION_MINOR;
+    return OConstants.getVersionMinor();
   }
 
   public boolean usesLocalFiles() throws SQLException {
@@ -177,7 +172,6 @@ public class OrientJdbcDatabaseMetaData implements DatabaseMetaData {
   }
 
   public String getSQLKeywords() throws SQLException {
-
     return "@rid,@class,@version,@size,@type,@this,CONTAINS,CONTAINSALL,CONTAINSKEY,"
         + "CONTAINSVALUE,CONTAINSTEXT,MATCHES,TRAVERSE";
   }
@@ -712,10 +706,8 @@ public class OrientJdbcDatabaseMetaData implements DatabaseMetaData {
       else
         type = "TABLE";
 
-      if (tableTypes.contains(type) &&
-          (tableNamePattern == null ||
-              tableNamePattern.equals("%") ||
-              tableNamePattern.equalsIgnoreCase(className))) {
+      if (tableTypes.contains(type) && (tableNamePattern == null || tableNamePattern.equals("%") || tableNamePattern
+          .equalsIgnoreCase(className))) {
 
         OResultInternal doc = new OResultInternal();
 
@@ -763,6 +755,7 @@ public class OrientJdbcDatabaseMetaData implements DatabaseMetaData {
         ResultSet.CONCUR_READ_ONLY, ResultSet.HOLD_CURSORS_OVER_COMMIT);
   }
 
+  @Override
   public ResultSet getTableTypes() throws SQLException {
     database.activateOnCurrentThread();
 
@@ -774,8 +767,7 @@ public class OrientJdbcDatabaseMetaData implements DatabaseMetaData {
     }
 
     return new OrientJdbcResultSet(new OrientJdbcStatement(connection), resultSet, ResultSet.TYPE_FORWARD_ONLY,
-        ResultSet.CONCUR_READ_ONLY,
-        ResultSet.HOLD_CURSORS_OVER_COMMIT);
+        ResultSet.CONCUR_READ_ONLY, ResultSet.HOLD_CURSORS_OVER_COMMIT);
   }
 
   @Override
@@ -806,8 +798,7 @@ public class OrientJdbcDatabaseMetaData implements DatabaseMetaData {
   }
 
   public ResultSet getColumnPrivileges(final String catalog, final String schema, final String table,
-      final String columnNamePattern)
-      throws SQLException {
+      final String columnNamePattern) throws SQLException {
     return getEmptyResultSet();
   }
 
@@ -867,8 +858,7 @@ public class OrientJdbcDatabaseMetaData implements DatabaseMetaData {
 
     OClass aClass = database.getMetadata().getSchema().getClass(table);
 
-
-    aClass.declaredProperties().stream().forEach(p-> p.getType());
+    aClass.declaredProperties().stream().forEach(p -> p.getType());
     return getEmptyResultSet();
   }
 
@@ -1020,11 +1010,8 @@ public class OrientJdbcDatabaseMetaData implements DatabaseMetaData {
     res.setProperty("SEARCHABLE", true);
     resultSet.add(res);
 
-    return new OrientJdbcResultSet(new OrientJdbcStatement(connection),
-        resultSet,
-        ResultSet.TYPE_FORWARD_ONLY,
-        ResultSet.CONCUR_READ_ONLY,
-        ResultSet.HOLD_CURSORS_OVER_COMMIT);
+    return new OrientJdbcResultSet(new OrientJdbcStatement(connection), resultSet, ResultSet.TYPE_FORWARD_ONLY,
+        ResultSet.CONCUR_READ_ONLY, ResultSet.HOLD_CURSORS_OVER_COMMIT);
   }
 
   @Override
@@ -1233,11 +1220,11 @@ public class OrientJdbcDatabaseMetaData implements DatabaseMetaData {
   }
 
   public int getDatabaseMajorVersion() throws SQLException {
-    return Integer.valueOf(OConstants.ORIENT_VERSION.split("\\.")[0]);
+    return OConstants.getVersionMajor();
   }
 
   public int getDatabaseMinorVersion() throws SQLException {
-    return Integer.valueOf(OConstants.ORIENT_VERSION.split("\\.")[1].substring(0, 1));
+    return OConstants.getVersionMinor();
   }
 
   public int getJDBCMajorVersion() throws SQLException {
@@ -1375,31 +1362,6 @@ public class OrientJdbcDatabaseMetaData implements DatabaseMetaData {
     res.setProperty("CHAR_OCTET_LENGTH", null);
     res.setProperty("ORDINAL_POSITION", prop.getId());
     res.setProperty("IS_NULLABLE", prop.isNotNull() ? "NO" : "YES");
-
-//
-//     *  <LI><B>SCOPE_CATALOG</B> String {@code =>} catalog of table that is the scope
-//        *      of a reference attribute (<code>null</code> if DATA_TYPE isn't REF)
-//        *  <LI><B>SCOPE_SCHEMA</B> String {@code =>} schema of table that is the scope
-//        *      of a reference attribute (<code>null</code> if the DATA_TYPE isn't REF)
-//        *  <LI><B>SCOPE_TABLE</B> String {@code =>} table name that this the scope
-//     *      of a reference attribute (<code>null</code> if the DATA_TYPE isn't REF)
-//        *  <LI><B>SOURCE_DATA_TYPE</B> short {@code =>} source type of a distinct type or user-generated
-//        *      Ref type, SQL type from java.sql.Types (<code>null</code> if DATA_TYPE
-//        *      isn't DISTINCT or user-generated REF)
-//        *   <LI><B>IS_AUTOINCREMENT</B> String  {@code =>} Indicates whether this column is auto incremented
-//     *       <UL>
-//     *       <LI> YES           --- if the column is auto incremented
-//        *       <LI> NO            --- if the column is not auto incremented
-//     *       <LI> empty string  --- if it cannot be determined whether the column is auto incremented
-//     *       </UL>
-//     *   <LI><B>IS_GENERATEDCOLUMN</B> String  {@code =>} Indicates whether this is a generated column
-//     *       <UL>
-//     *       <LI> YES           --- if this a generated column
-//        *       <LI> NO            --- if this not a generated column
-//     *       <LI> empty string  --- if it cannot be determined whether this is a generated column
-//     *       </UL>
-//     *  </OL>
-//
 
     return res;
   }

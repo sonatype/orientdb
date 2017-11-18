@@ -39,6 +39,8 @@
             com.sun.jna;resolution:=optional,
             org.xerial.snappy;resolution:=optional,
             sun.nio.ch;resolution:=optional,
+            com.orientechnologies.orient.server.distributed.impl;resolution:=optional,
+            com.orientechnologies.orient.server.distributed.impl.task;resolution:=optional,
             *
         </osgi.import>
         <osgi.export>com.orientechnologies.orient.core.*,
@@ -47,8 +49,9 @@
         </osgi.export>
         <jna.version>4.0.0</jna.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <argLine>-ea -Xmx3072m -XX:MaxDirectMemorySize=512g
-            -Dstorage.diskCache.bufferSize=4096
+        <argLine>-ea
+            -Xmx${heapSize}
+            -XX:MaxDirectMemorySize=512g
             -Dindex.flushAfterCreate=false
             -Dstorage.makeFullCheckpointAfterCreate=false
             -Dstorage.makeFullCheckpointAfterOpen=false
@@ -59,7 +62,7 @@
             -Ddb.makeFullCheckpointOnSchemaChange=false
             -Dsecurity.userPasswordSaltIterations=10
             -Dmemory.directMemory.trackMode=true
-            -Djava.util.logging.manager=com.orientechnologies.common.log.OLogManager$DebugLogManager
+            -Djava.util.logging.manager=com.orientechnologies.common.log.OLogManager$ShutdownLogManager
             -Dstorage.diskCache.checksumMode=storeAndThrow
         </argLine>
     </properties>
@@ -130,24 +133,23 @@
         </profile>
     </profiles>
 
-    <reporting>
-        <plugins>
-
-        </plugins>
-    </reporting>
-
     <build>
+        <resources>
+            <resource>
+                <directory>${basedir}/src/main/resources</directory>
+                <filtering>true</filtering>
+            </resource>
+        </resources>
         <plugins>
-
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
-                <artifactId>templating-maven-plugin</artifactId>
-                <version>1.0.0</version>
+                <artifactId>buildnumber-maven-plugin</artifactId>
+                <version>1.4</version>
                 <executions>
                     <execution>
-                        <id>generate-verion-class</id>
+                        <phase>validate</phase>
                         <goals>
-                            <goal>filter-sources</goal>
+                            <goal>create</goal>
                         </goals>
                     </execution>
                 </executions>
@@ -225,6 +227,19 @@
     </build>
 
     <dependencies>
+
+        <dependency>
+            <groupId>net.java.dev.jna</groupId>
+            <artifactId>jna</artifactId>
+            <version>4.5.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>net.java.dev.jna</groupId>
+            <artifactId>jna-platform</artifactId>
+            <version>4.5.0</version>
+        </dependency>
+
         <dependency>
             <groupId>org.xerial.snappy</groupId>
             <artifactId>snappy-java</artifactId>

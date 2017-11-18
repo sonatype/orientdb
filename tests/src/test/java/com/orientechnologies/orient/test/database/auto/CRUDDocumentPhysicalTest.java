@@ -283,8 +283,9 @@ public class CRUDDocumentPhysicalTest extends DocumentDBBaseTest {
     ODocument coreDoc = new ODocument();
     ODocument linkDoc = new ODocument();
 
+    linkDoc.save(database.getClusterNameById(database.getDefaultClusterId()));
     coreDoc.field("link", linkDoc);
-    coreDoc.save();
+    coreDoc.save(database.getClusterNameById(database.getDefaultClusterId()));
 
     ODocument coreDocCopy = database.load(coreDoc.getIdentity(), "*:-1", true);
     Assert.assertNotSame(coreDocCopy, coreDoc);
@@ -352,7 +353,7 @@ public class CRUDDocumentPhysicalTest extends DocumentDBBaseTest {
     final Map<String, HashMap<?, ?>> map3 = new HashMap<String, HashMap<?, ?>>();
     map2.put("map3", (HashMap<?, ?>) map3);
 
-    final ORecordId rid = (ORecordId) newDoc.save().getIdentity();
+    final ORecordId rid = (ORecordId) newDoc.save(database.getClusterNameById(database.getDefaultClusterId())).getIdentity();
 
     final ODocument loadedDoc = database.load(rid);
 
@@ -495,7 +496,7 @@ public class CRUDDocumentPhysicalTest extends DocumentDBBaseTest {
   public void testInvalidFetchplanLoad() {
     ODocument doc = database.newInstance();
     doc.field("test", "test");
-    doc.save();
+    doc.save(database.getClusterNameById(database.getDefaultClusterId()));
     ORID docRid = doc.getIdentity().copy();
 
     try {
@@ -541,7 +542,7 @@ public class CRUDDocumentPhysicalTest extends DocumentDBBaseTest {
 
     ODocument doc = new ODocument();
     doc.field("test", s);
-    doc.save();
+    doc.save(database.getClusterNameById(database.getDefaultClusterId()));
 
     doc.reload(null, true);
     Assert.assertEquals(doc.field("test"), s);
@@ -769,7 +770,7 @@ public class CRUDDocumentPhysicalTest extends DocumentDBBaseTest {
   public void testSerialization() {
     ORecordSerializer current = ODatabaseDocumentTx.getDefaultSerializer();
     ODatabaseDocumentTx.setDefaultSerializer(ORecordSerializerSchemaAware2CSV.INSTANCE);
-    ODatabaseDocumentInternal oldDb = ODatabaseRecordThreadLocal.INSTANCE.get();
+    ODatabaseDocumentInternal oldDb = ODatabaseRecordThreadLocal.instance().get();
     ORecordSerializer dbser = oldDb.getSerializer();
     oldDb.setSerializer(ORecordSerializerSchemaAware2CSV.INSTANCE);
     final byte[] streamOrigin = "Account@html:{\"path\":\"html/layout\"},config:{\"title\":\"Github Admin\",\"modules\":(githubDisplay:\"github_display\")},complex:(simple1:\"string1\",one_level1:(simple2:\"string2\"),two_levels:(simple3:\"string3\",one_level2:(simple4:\"string4\")))"
@@ -831,13 +832,13 @@ public class CRUDDocumentPhysicalTest extends DocumentDBBaseTest {
 
     for (int i = 0; i < 10; i++) {
       final ODocument linkDoc = new ODocument();
-      linkDoc.save();
+      linkDoc.save(database.getClusterNameById(database.getDefaultClusterId()));
 
       allDocs.add(linkDoc);
     }
 
     doc.field("linkList", allDocs);
-    doc.save();
+    doc.save(database.getClusterNameById(database.getDefaultClusterId()));
 
     doc.reload();
 
@@ -870,7 +871,7 @@ public class CRUDDocumentPhysicalTest extends DocumentDBBaseTest {
     database.begin();
     {
       doc1 = new ODocument();
-      doc1.save();
+      doc1.save(database.getClusterNameById(database.getDefaultClusterId()));
     }
     database.commit();
 

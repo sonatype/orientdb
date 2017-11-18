@@ -44,6 +44,7 @@ import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.highlight.TextFragment;
 import org.apache.lucene.store.Directory;
 
@@ -64,11 +65,6 @@ public class OLuceneFullTextIndexEngine extends OLuceneIndexEngineAbstract {
     super(storage, idxName);
     builder = new OLuceneDocumentBuilder();
 
-  }
-
-  @Override
-  public IndexWriter openIndexWriter(Directory directory) throws IOException {
-    return createIndexWriter(directory);
   }
 
   @Override
@@ -100,19 +96,16 @@ public class OLuceneFullTextIndexEngine extends OLuceneIndexEngineAbstract {
 
       HashMap<String, TextFragment[]> frag = queryContext.getFragments();
 
-      frag.entrySet()
-          .stream()
-          .forEach(f -> {
-                TextFragment[] fragments = f.getValue();
-                StringBuilder hlField = new StringBuilder();
-                for (int j = 0; j < fragments.length; j++) {
-                  if ((fragments[j] != null) && (fragments[j].getScore() > 0)) {
-                    hlField.append(fragments[j].toString());
-                  }
-                }
-                put("$" + f.getKey() + "_hl", hlField.toString());
-              }
-          );
+      frag.entrySet().stream().forEach(f -> {
+        TextFragment[] fragments = f.getValue();
+        StringBuilder hlField = new StringBuilder();
+        for (int j = 0; j < fragments.length; j++) {
+          if ((fragments[j] != null) && (fragments[j].getScore() > 0)) {
+            hlField.append(fragments[j].toString());
+          }
+        }
+        put("$" + f.getKey() + "_hl", hlField.toString());
+      });
 
       put("$score", score.score);
     }});
@@ -132,7 +125,7 @@ public class OLuceneFullTextIndexEngine extends OLuceneIndexEngineAbstract {
       deleteDocument(query);
       return true;
     } catch (org.apache.lucene.queryparser.classic.ParseException e) {
-      e.printStackTrace();
+      OLogManager.instance().error(this, "Lucene parsing exception", e);
 
     }
     return false;
@@ -180,12 +173,15 @@ public class OLuceneFullTextIndexEngine extends OLuceneIndexEngineAbstract {
     return new OLuceneIndexCursor((OLuceneResultSet) get(rangeFrom), rangeFrom);
   }
 
-  private Set<OIdentifiable> getResults(Query query, OCommandContext context, OLuceneTxChanges changes,
-      ODocument metadata) {
+  private Set<OIdentifiable> getResults(Query query, OCommandContext context, OLuceneTxChanges changes, ODocument metadata) {
+
+    //sort
+
+    final List<SortField> fields = OLuceneIndexEngineUtils.buildSortFields(metadata);
 
     IndexSearcher searcher = searcher();
-    OLuceneQueryContext queryContext = new OLuceneQueryContext(context, searcher, query)
-        .withChanges(changes);
+
+    OLuceneQueryContext queryContext = new OLuceneQueryContext(context, searcher, query, fields).withChanges(changes);
 
     return new OLuceneResultSet(this, queryContext, metadata);
 

@@ -20,7 +20,9 @@
 
 package com.orientechnologies.common.thread;
 
+import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.util.OService;
+import com.orientechnologies.common.util.OUncaughtExceptionHandler;
 
 public abstract class OSoftThread extends Thread implements OService {
   private volatile boolean shutdownFlag;
@@ -28,23 +30,26 @@ public abstract class OSoftThread extends Thread implements OService {
   private boolean dumpExceptions = true;
 
   public OSoftThread() {
+    setUncaughtExceptionHandler(new OUncaughtExceptionHandler());
   }
 
   public OSoftThread(final ThreadGroup iThreadGroup) {
     super(iThreadGroup, OSoftThread.class.getSimpleName());
     setDaemon(true);
+    setUncaughtExceptionHandler(new OUncaughtExceptionHandler());
   }
 
   public OSoftThread(final String name) {
     super(name);
     setDaemon(true);
+    setUncaughtExceptionHandler(new OUncaughtExceptionHandler());
   }
 
   public OSoftThread(final ThreadGroup group, final String name) {
     super(group, name);
     setDaemon(true);
+    setUncaughtExceptionHandler(new OUncaughtExceptionHandler());
   }
-
 
   protected abstract void execute() throws Exception;
 
@@ -76,9 +81,13 @@ public abstract class OSoftThread extends Thread implements OService {
         beforeExecution();
         execute();
         afterExecution();
-      } catch (Throwable t) {
+      } catch (Exception e) {
         if (dumpExceptions)
-          t.printStackTrace();
+          OLogManager.instance().error(this, "Error during thread execution", e);
+      } catch (Error e) {
+        if (dumpExceptions)
+          OLogManager.instance().error(this, "Error during thread execution", e);
+        throw e;
       }
     }
 
@@ -88,17 +97,16 @@ public abstract class OSoftThread extends Thread implements OService {
   /**
    * Pauses current thread until iTime timeout or a wake up by another thread.
    *
-   * @param iTime
    * @return true if timeout has reached, otherwise false. False is the case of wake-up by another thread.
    */
   public static boolean pauseCurrentThread(long iTime) {
     try {
-      if (iTime<=0)
+      if (iTime <= 0)
         iTime = Long.MAX_VALUE;
 
       Thread.sleep(iTime);
       return true;
-    } catch (InterruptedException e) {
+    } catch (InterruptedException ignore) {
       Thread.currentThread().interrupt();
       return false;
     }

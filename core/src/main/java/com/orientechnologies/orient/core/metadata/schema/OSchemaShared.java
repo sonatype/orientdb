@@ -26,6 +26,7 @@ import com.orientechnologies.common.types.OModifiableInteger;
 import com.orientechnologies.common.util.OArrays;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
+import com.orientechnologies.orient.core.db.OMetadataUpdateListener;
 import com.orientechnologies.orient.core.db.OScenarioThreadLocal;
 import com.orientechnologies.orient.core.db.record.ORecordElement;
 import com.orientechnologies.orient.core.exception.OConcurrentModificationException;
@@ -432,7 +433,8 @@ public abstract class OSchemaShared extends ODocumentWrapperNoClass implements O
       final Integer schemaVersion = (Integer) document.field("schemaVersion");
       if (schemaVersion == null) {
         OLogManager.instance().error(this,
-            "Database's schema is empty! Recreating the system classes and allow the opening of the database but double check the integrity of the database");
+            "Database's schema is empty! Recreating the system classes and allow the opening of the database but double check the integrity of the database",
+            null);
         return;
       } else if (schemaVersion != CURRENT_VERSION_NUMBER && VERSION_NUMBER_V5 != schemaVersion) {
         // VERSION_NUMBER_V5 is needed for guarantee the compatibility to 2.0-M1 and 2.0-M2 no changed associated with it
@@ -522,7 +524,7 @@ public abstract class OSchemaShared extends ODocumentWrapperNoClass implements O
         blobClusters = document.field("blobClusters");
 
       if (!hasGlobalProperties) {
-        ODatabaseDocumentInternal database = ODatabaseRecordThreadLocal.INSTANCE.get();
+        ODatabaseDocumentInternal database = ODatabaseRecordThreadLocal.instance().get();
         if (database.getStorage().getUnderlying() instanceof OAbstractPaginatedStorage)
           saveInternal(database);
       }
@@ -741,6 +743,10 @@ public abstract class OSchemaShared extends ODocumentWrapperNoClass implements O
     });
 
     snapshot = new OImmutableSchema(this);
+    for (OMetadataUpdateListener listener : database.getSharedContext().browseListeners()) {
+      listener.onSchemaUpdate(snapshot);
+    }
+
   }
 
   protected void addClusterClassMap(final OClass cls) {
@@ -790,7 +796,7 @@ public abstract class OSchemaShared extends ODocumentWrapperNoClass implements O
     int clId;
     try {
       clId = Integer.parseInt(stringValue);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException ignore) {
       clId = database.getClusterIdByName(stringValue);
     }
     return clId;
@@ -804,7 +810,7 @@ public abstract class OSchemaShared extends ODocumentWrapperNoClass implements O
       try {
         clId = Integer.parseInt(parts[0]);
         throw new IllegalArgumentException("Cluster id '" + clId + "' cannot be added");
-      } catch (NumberFormatException e) {
+      } catch (NumberFormatException ignore) {
         clId = database.addCluster(parts[0]);
       }
     }

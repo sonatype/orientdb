@@ -99,6 +99,7 @@ public abstract class AbstractServerClusterSQLGraphTest extends AbstractServerCl
             break;
           } finally {
             runningWriters.countDown();
+            graph.activateOnCurrentThread();
             graph.close();
           }
         }
@@ -148,7 +149,7 @@ public abstract class AbstractServerClusterSQLGraphTest extends AbstractServerCl
 
     final Object result = graph.command(new OCommandSQL(
         "create vertex Person content {'id': '" + UUID.randomUUID().toString() + "', 'name': 'Billy" + uniqueId
-            + "', 'surname': 'Mayes" + uniqueId + "', 'birthday': '" + ODatabaseRecordThreadLocal.INSTANCE.get().getStorage()
+            + "', 'surname': 'Mayes" + uniqueId + "', 'birthday': '" + ODatabaseRecordThreadLocal.instance().get().getStorage()
             .getConfiguration().getDateFormatInstance().format(new Date()) + "', 'children': '" + uniqueId + "'}")).execute();
     return ((OElement) result).asVertex().get();
   }

@@ -20,11 +20,14 @@
 package com.orientechnologies.orient.core.metadata.function;
 
 import com.orientechnologies.common.exception.OException;
+import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.util.OCallable;
 import com.orientechnologies.orient.core.command.OCommandManager;
 import com.orientechnologies.orient.core.command.script.OCommandExecutorFunction;
 import com.orientechnologies.orient.core.command.script.OCommandFunction;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
+import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
+import com.orientechnologies.orient.core.db.OMetadataUpdateListener;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocument;
 import com.orientechnologies.orient.core.metadata.OMetadataInternal;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
@@ -92,12 +95,14 @@ public class OFunctionLibraryImpl {
 
   public void droppedFunction(ODocument function) {
     functions.remove(function.field("name").toString());
+    onFunctionsChanged(ODatabaseRecordThreadLocal.instance().get());
   }
 
   public void createdFunction(ODocument function) {
     ODocument metadataCopy = function.copy();
     final OFunction f = new OFunction(metadataCopy);
     functions.put(metadataCopy.field("name").toString().toUpperCase(Locale.ENGLISH), f);
+    onFunctionsChanged(ODatabaseRecordThreadLocal.instance().get());
   }
 
   public Set<String> getFunctionNames() {
@@ -119,10 +124,12 @@ public class OFunctionLibraryImpl {
     try {
       f.save();
     } catch (ORecordDuplicatedException ex) {
+      OLogManager.instance().error(this, "Exception is suppressed, original exception is ", ex);
+
+      //noinspection ThrowInsideCatchBlockWhichIgnoresCaughtException
       throw OException.wrapException(new OFunctionDuplicatedException("Function with name '" + iName + "' already exist"), null);
     }
     functions.put(iName.toUpperCase(Locale.ENGLISH), f);
-
     return f;
   }
 
@@ -175,4 +182,11 @@ public class OFunctionLibraryImpl {
     }
     functions.put(metadataCopy.field("name").toString().toUpperCase(Locale.ENGLISH), f);
   }
+
+  private void onFunctionsChanged(ODatabaseDocumentInternal database) {
+    for (OMetadataUpdateListener listener : database.getSharedContext().browseListeners()) {
+      listener.onFunctionLibraryUpdate(database.getMetadata().getFunctionLibrary());
+    }
+  }
+
 }

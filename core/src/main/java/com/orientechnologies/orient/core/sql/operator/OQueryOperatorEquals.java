@@ -53,7 +53,7 @@ public class OQueryOperatorEquals extends OQueryOperatorEqualityNotNulls {
 
   public OQueryOperatorEquals() {
     super("=", 5, false);
-    ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
+    ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.instance().getIfDefined();
     if (db != null)
       binaryEvaluate = db.getSerializer().getSupportBinaryEvaluate();
   }
@@ -108,7 +108,7 @@ public class OQueryOperatorEquals extends OQueryOperatorEqualityNotNulls {
         return Arrays.equals((byte[]) iLeft, (byte[]) iRight);
       }
       return iLeft.equals(right);
-    } catch (Exception e) {
+    } catch (Exception ignore) {
       return false;
     }
   }

@@ -5,17 +5,17 @@ import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.db.record.ridbag.ORidBag;
-import com.orientechnologies.orient.core.db.record.ridbag.sbtree.OBonsaiCollectionPointer;
-import com.orientechnologies.orient.core.db.record.ridbag.sbtree.OSBTreeCollectionManagerShared;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.id.ORecordId;
-import com.orientechnologies.orient.core.index.sbtreebonsai.local.OSBTreeBonsai;
 import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.storage.index.sbtreebonsai.local.OSBTreeBonsai;
+import com.orientechnologies.orient.core.storage.ridbag.sbtree.OBonsaiCollectionPointer;
+import com.orientechnologies.orient.core.storage.ridbag.sbtree.OSBTreeCollectionManagerShared;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertNull;
 
 /**
  * Created by tglman on 01/07/16.
@@ -44,7 +44,7 @@ public class SBTreeBagDeleteTest {
       bag.add(new ORecordId(10, i));
     doc.field("bag", bag);
 
-    ORID id = db.save(doc).getIdentity();
+    ORID id = db.save(doc, db.getClusterNameById(db.getDefaultClusterId())).getIdentity();
 
     bag = doc.field("bag");
     OBonsaiCollectionPointer pointer = bag.getPointer();
@@ -71,7 +71,7 @@ public class SBTreeBagDeleteTest {
       bag.add(new ORecordId(10, i));
     doc.field("bag", bag);
 
-    ORID id = db.save(doc).getIdentity();
+    ORID id = db.save(doc, db.getClusterNameById(db.getDefaultClusterId())).getIdentity();
 
     bag = doc.field("bag");
     OBonsaiCollectionPointer pointer = bag.getPointer();

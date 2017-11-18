@@ -196,7 +196,7 @@ public class OSecurityShared implements OSecurity, OCloseable {
       // NO AUTHORIZATION: CAN'T ACCESS
       return false;
 
-    final OSecurityUser currentUser = ODatabaseRecordThreadLocal.INSTANCE.get().getUser();
+    final OSecurityUser currentUser = ODatabaseRecordThreadLocal.instance().get().getUser();
     if (currentUser != null) {
       // CHECK IF CURRENT USER IS ENLISTED
       if (iAllowAll == null || (iAllowAll != null && !iAllowAll.contains(currentUser.getIdentity()))) {
@@ -244,7 +244,7 @@ public class OSecurityShared implements OSecurity, OCloseable {
         // WAIT A BIT TO AVOID BRUTE FORCE
         try {
           Thread.sleep(200);
-        } catch (InterruptedException e) {
+        } catch (InterruptedException ignore) {
           Thread.currentThread().interrupt();
         }
         throw new OSecurityAccessException(dbName, "User or password not valid for database: '" + dbName + "'");
@@ -591,7 +591,7 @@ public class OSecurityShared implements OSecurity, OCloseable {
   }
 
   public void createClassTrigger() {
-    final ODatabaseDocument db = ODatabaseRecordThreadLocal.INSTANCE.get();
+    final ODatabaseDocument db = ODatabaseRecordThreadLocal.instance().get();
     OClass classTrigger = db.getMetadata().getSchema().getClass(OClassTrigger.CLASSNAME);
     if (classTrigger == null)
       classTrigger = db.getMetadata().getSchema().createAbstractClass(OClassTrigger.CLASSNAME);
@@ -633,6 +633,6 @@ public class OSecurityShared implements OSecurity, OCloseable {
   }
 
   protected ODatabaseDocumentInternal getDatabase() {
-    return ODatabaseRecordThreadLocal.INSTANCE.get();
+    return ODatabaseRecordThreadLocal.instance().get();
   }
 }

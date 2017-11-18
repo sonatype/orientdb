@@ -21,7 +21,6 @@ package com.orientechnologies.orient.core.storage.cache;
 
 import com.orientechnologies.common.directmemory.OByteBufferPool;
 import com.orientechnologies.common.log.OLogManager;
-import com.orientechnologies.orient.core.storage.impl.local.paginated.wal.OLogSequenceNumber;
 
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -249,6 +248,7 @@ public class OCachePointer {
     readWriteLock.readLock().unlock();
   }
 
+  @SuppressWarnings("BooleanMethodIsAlwaysInverted")
   public boolean tryAcquireSharedLock() {
     return readWriteLock.readLock().tryLock();
   }
@@ -261,11 +261,11 @@ public class OCachePointer {
 
     if (getReaders(readersWritersReferrer.get()) != 0) {
       needInfo = true;
-      OLogManager.instance().error(this, "OCachePointer.finalize: readers != 0");
+      OLogManager.instance().error(this, "OCachePointer.finalize: readers != 0", null);
     }
     if (getWriters(readersWritersReferrer.get()) != 0) {
       needInfo = true;
-      OLogManager.instance().error(this, "OCachePointer.finalize: writers != 0");
+      OLogManager.instance().error(this, "OCachePointer.finalize: writers != 0", null);
     }
 
     if (needInfo && buffer != null)
@@ -290,7 +290,7 @@ public class OCachePointer {
     buffer.position(0);
     that.buffer.position(0);
 
-    if (buffer != null ? !buffer.equals(that.buffer) : that.buffer != null)
+    if (!buffer.equals(that.buffer))
       return false;
 
     return true;
@@ -311,6 +311,7 @@ public class OCachePointer {
   }
 
   private int getReaders(long readersWriters) {
+    //noinspection PointlessBitwiseExpression
     return (int) (readersWriters & READERS_MASK);
   }
 

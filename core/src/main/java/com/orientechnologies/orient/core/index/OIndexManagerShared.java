@@ -19,9 +19,11 @@
  */
 package com.orientechnologies.orient.core.index;
 
+import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.listener.OProgressListener;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.util.OMultiKey;
+import com.orientechnologies.common.util.OUncaughtExceptionHandler;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.db.ODatabase;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
@@ -225,8 +227,10 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
     int[] clusterIdsToIndex = null;
 
     acquireExclusiveLock();
+
+    OIndex<?> idx = null;
     try {
-      final OIndex<?> idx = indexes.remove(iIndexName);
+      idx = indexes.remove(iIndexName);
       if (idx != null) {
         final Set<String> clusters = idx.getClusters();
         if (clusters != null && !clusters.isEmpty()) {
@@ -246,7 +250,10 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
 
         notifyInvolvedClasses(clusterIdsToIndex);
       }
-
+    } catch (OException e) {
+      indexes.put(iIndexName, idx);
+      reload();
+      throw e;
     } finally {
       releaseExclusiveLock();
     }
@@ -294,6 +301,7 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
 
       Runnable recreateIndexesTask = new RecreateIndexesTask(database.getStorage());
       recreateIndexesThread = new Thread(recreateIndexesTask, "OrientDB rebuild indexes");
+      recreateIndexesThread.setUncaughtExceptionHandler(new OUncaughtExceptionHandler());
       recreateIndexesThread.start();
     } finally {
       releaseExclusiveLock();
@@ -324,7 +332,7 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
           recreateIndexesThread.join();
           OLogManager.instance().info(this, "Indexes restore after crash was finished.");
         } catch (InterruptedException e) {
-          OLogManager.instance().info(this, "Index rebuild task was interrupted.");
+          OLogManager.instance().info(this, "Index rebuild task was interrupted.", e);
         }
     }
   }
@@ -591,7 +599,7 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
 
             engine.deleteWithoutLoad(index.getName());
           } catch (Exception e2) {
-            // do nothing
+            OLogManager.instance().error(this, "Error during deletion of index engine %s", e2, index.getName());
           }
         }
       }
@@ -620,7 +628,7 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
       } else {
         errors++;
         OLogManager.instance().error(this, "Information about index was restored incorrectly, following data were loaded : "
-            + "index name '%s', index definition '%s', clusters %s, type %s", indexName, indexDefinition, clusters, type);
+            + "index name '%s', index definition '%s', clusters %s, type %s", null, indexName, indexDefinition, clusters, type);
       }
     }
 
@@ -633,7 +641,7 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
         OLogManager.instance().info(this, "Index '%s' was added in DB index list", index.getName());
       } else {
         try {
-          OLogManager.instance().error(this, "Index '%s' can't be restored and will be deleted", index.getName());
+          OLogManager.instance().error(this, "Index '%s' can't be restored and will be deleted", null, index.getName());
           index.delete();
         } catch (Exception e) {
           OLogManager.instance().error(this, "Error while deleting index '%s'", e, index.getName());
@@ -650,7 +658,7 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
 
       ODocument metadata = idx.field(OIndexInternal.METADATA);
       if (indexType == null) {
-        OLogManager.instance().error(this, "Index type is null, will process other record");
+        OLogManager.instance().error(this, "Index type is null, will process other record", null);
         throw new OIndexException("Index type is null, will process other record. Index configuration: " + idx.toString());
       }
 

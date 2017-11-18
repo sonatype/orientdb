@@ -1,6 +1,7 @@
 package com.orientechnologies.orient.core.sql.executor;
 
 import com.orientechnologies.common.concur.OTimeoutException;
+import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.orient.core.command.OCommandContext;
 import com.orientechnologies.orient.core.db.record.ORecordOperation;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
@@ -97,7 +98,7 @@ public class FetchTemporaryFromTxStep extends AbstractExecutionStep {
     long begin = profilingEnabled ? System.nanoTime() : 0;
     try {
       if (this.txEntries == null) {
-        Iterable<? extends ORecordOperation> iterable = ctx.getDatabase().getTransaction().getAllRecordEntries();
+        Iterable<? extends ORecordOperation> iterable = ctx.getDatabase().getTransaction().getRecordOperations();
 
         List<ORecord> records = new ArrayList<>();
         if (iterable != null) {
@@ -204,7 +205,7 @@ public class FetchTemporaryFromTxStep extends AbstractExecutionStep {
       OExecutionStepInternal.basicDeserialize(fromResult, this);
       className = fromResult.getProperty("className");
     } catch (Exception e) {
-      throw new OCommandExecutionException("");
+      throw OException.wrapException(new OCommandExecutionException(""), e);
     }
   }
 }

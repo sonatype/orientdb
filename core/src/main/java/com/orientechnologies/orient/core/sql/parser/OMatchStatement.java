@@ -4,9 +4,11 @@ package com.orientechnologies.orient.core.sql.parser;
 
 import com.orientechnologies.common.exception.OErrorCode;
 import com.orientechnologies.common.listener.OProgressListener;
+import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.util.OPair;
 import com.orientechnologies.orient.core.command.*;
 import com.orientechnologies.orient.core.db.ODatabase;
+import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocument;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
@@ -29,6 +31,7 @@ import com.orientechnologies.orient.core.sql.query.OSQLSynchQuery;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -101,7 +104,10 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
   protected           List<OIdentifier>       returnAliases           = new ArrayList<>();
   protected           List<ONestedProjection> returnNestedProjections = new ArrayList<>();
   protected           boolean                 returnDistinct          = false;
+  protected OGroupBy groupBy;
   protected OOrderBy orderBy;
+  protected OUnwind  unwind;
+  protected OSkip    skip;
   protected OLimit   limit;
 
   // post-parsing generated data
@@ -200,7 +206,20 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
 
     // please, do not look at this... refactor this ASAP with new executor structure
     final InputStream is = new ByteArrayInputStream(queryText.getBytes());
-    final OrientSql osql = new OrientSql(is);
+    OrientSql osql = null;
+    try {
+      ODatabaseDocumentInternal db = getDatabase();
+      if (db == null) {
+        osql = new OrientSql(is);
+      } else {
+        osql = new OrientSql(is, db.getStorage().getConfiguration().getCharset());
+      }
+    } catch (UnsupportedEncodingException e) {
+      OLogManager.instance().warn(this,
+          "Invalid charset for database " + getDatabase() + " " + getDatabase().getStorage().getConfiguration().getCharset());
+      osql = new OrientSql(is);
+    }
+
     try {
       OMatchStatement result = (OMatchStatement) osql.parse();
       this.matchExpressions = result.matchExpressions;
@@ -307,6 +326,16 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
     if (orderBy != null) {
       throw new OCommandExecutionException("ORDER BY is not supported in MATCH on the legacy API");
     }
+    if (groupBy != null) {
+      throw new OCommandExecutionException("GROUP BY is not supported in MATCH on the legacy API");
+    }
+    if (unwind != null) {
+      throw new OCommandExecutionException("UNWIND is not supported in MATCH on the legacy API");
+    }
+    if (skip != null) {
+      throw new OCommandExecutionException("SKIP is not supported in MATCH on the legacy API");
+    }
+
     Map<Object, Object> iArgs = context.getInputParameters();
     try {
 
@@ -1355,9 +1384,21 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
       i++;
       first = false;
     }
+    if (groupBy != null) {
+      builder.append(" ");
+      groupBy.toString(params, builder);
+    }
     if (orderBy != null) {
       builder.append(" ");
       orderBy.toString(params, builder);
+    }
+    if (unwind != null) {
+      builder.append(" ");
+      unwind.toString(params, builder);
+    }
+    if (skip != null) {
+      builder.append(" ");
+      skip.toString(params, builder);
     }
     if (limit != null) {
       builder.append(" ");
@@ -1383,7 +1424,10 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
     result.returnAliases = returnAliases == null ? null : returnAliases.stream().map(x -> x.copy()).collect(Collectors.toList());
     result.returnNestedProjections =
         returnNestedProjections == null ? null : returnNestedProjections.stream().map(x -> x.copy()).collect(Collectors.toList());
+    result.groupBy = groupBy == null ? null : groupBy.copy();
     result.orderBy = orderBy == null ? null : orderBy.copy();
+    result.unwind = unwind == null ? null : unwind.copy();
+    result.skip = skip == null ? null : skip.copy();
     result.limit = limit == null ? null : limit.copy();
     result.returnDistinct = this.returnDistinct;
     result.buildPatterns();
@@ -1409,7 +1453,13 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
         !returnNestedProjections.equals(that.returnNestedProjections) :
         that.returnNestedProjections != null)
       return false;
+    if (groupBy != null ? !groupBy.equals(that.groupBy) : that.groupBy != null)
+      return false;
     if (orderBy != null ? !orderBy.equals(that.orderBy) : that.orderBy != null)
+      return false;
+    if (unwind != null ? !unwind.equals(that.unwind) : that.unwind != null)
+      return false;
+    if (skip != null ? !skip.equals(that.skip) : that.skip != null)
       return false;
     if (limit != null ? !limit.equals(that.limit) : that.limit != null)
       return false;
@@ -1426,7 +1476,10 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
     result = 31 * result + (returnItems != null ? returnItems.hashCode() : 0);
     result = 31 * result + (returnAliases != null ? returnAliases.hashCode() : 0);
     result = 31 * result + (returnNestedProjections != null ? returnNestedProjections.hashCode() : 0);
+    result = 31 * result + (groupBy != null ? groupBy.hashCode() : 0);
     result = 31 * result + (orderBy != null ? orderBy.hashCode() : 0);
+    result = 31 * result + (unwind != null ? unwind.hashCode() : 0);
+    result = 31 * result + (skip != null ? skip.hashCode() : 0);
     result = 31 * result + (limit != null ? limit.hashCode() : 0);
     return result;
   }
@@ -1477,6 +1530,30 @@ public class OMatchStatement extends OStatement implements OCommandExecutor, OIt
 
   public void setOrderBy(OOrderBy orderBy) {
     this.orderBy = orderBy;
+  }
+
+  public OGroupBy getGroupBy() {
+    return groupBy;
+  }
+
+  public void setGroupBy(OGroupBy groupBy) {
+    this.groupBy = groupBy;
+  }
+
+  public OUnwind getUnwind() {
+    return unwind;
+  }
+
+  public void setUnwind(OUnwind unwind) {
+    this.unwind = unwind;
+  }
+
+  public OSkip getSkip() {
+    return skip;
+  }
+
+  public void setSkip(OSkip skip) {
+    this.skip = skip;
   }
 }
 /* JavaCC - OriginalChecksum=6ff0afbe9d31f08b72159fcf24070c9f (do not edit this line) */

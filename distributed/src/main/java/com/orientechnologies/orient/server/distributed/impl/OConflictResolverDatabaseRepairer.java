@@ -115,7 +115,7 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
 
           check();
 
-        } catch (Throwable t) {
+        } catch (Exception t) {
           OLogManager.instance().error(this, "Error on repairing distributed database", t);
           // IGNORE THE EXCEPTION
         } finally {
@@ -314,7 +314,7 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
                   "Auto repairing of cluster '%s' completed. Repaired %d records (reqId=%s)", clusterName, repaired, requestId);
       }
 
-    } catch (Throwable e) {
+    } catch (Exception e) {
       ODistributedServerLog.debug(this, dManager.getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
           "Error executing auto repairing on cluster '%s' (error=%s, reqId=%s)", clusterName, e.toString(), requestId);
       return;
@@ -476,6 +476,8 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
         completedTask.init(requestId, false, tx.getPartitionKey());
         repairMap.put(server, completedTask);
       }
+
+      boolean skipTheRest = false;
 
       try {
         if (response != null) {
@@ -656,23 +658,30 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
                 ODistributedServerLog.debug(this, dManager.getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
                     "Auto repair cannot execute the fix, retrying it later (error=%s)",
                     response != null ? response.getPayload() : "no response");
-                return false;
+
+                //usage of return inside finally can mask thrown exception
+                skipTheRest = true;
+                break;
               }
             }
           }
         }
 
-        if (repaired == 0)
-          ODistributedServerLog
-              .debug(this, dManager.getLocalNodeName(), involvedServers.toString(), ODistributedServerLog.DIRECTION.OUT,
-                  "Auto repairing completed. No fix is needed (reqId=%s)", repaired, requestId);
-        else
-          ODistributedServerLog
-              .info(this, dManager.getLocalNodeName(), involvedServers.toString(), ODistributedServerLog.DIRECTION.OUT,
-                  "Auto repairing completed. Sent %d fix messages for %d records (reqId=%s)", repaired, rids.size(), requestId);
+        if (!skipTheRest) {
+          if (repaired == 0)
+            ODistributedServerLog
+                .debug(this, dManager.getLocalNodeName(), involvedServers.toString(), ODistributedServerLog.DIRECTION.OUT,
+                    "Auto repairing completed. No fix is needed (reqId=%s)", repaired, requestId);
+          else
+            ODistributedServerLog
+                .info(this, dManager.getLocalNodeName(), involvedServers.toString(), ODistributedServerLog.DIRECTION.OUT,
+                    "Auto repairing completed. Sent %d fix messages for %d records (reqId=%s)", repaired, rids.size(), requestId);
+        }
       }
 
-    } catch (Throwable e) {
+      if (skipTheRest)
+        return false;
+    } catch (Exception e) {
       ODistributedServerLog.debug(this, dManager.getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
           "Error executing auto repairing (error=%s, reqId=%s)", e.toString(), requestId);
       return false;

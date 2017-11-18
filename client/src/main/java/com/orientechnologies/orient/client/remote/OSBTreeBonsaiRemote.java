@@ -20,27 +20,20 @@
 
 package com.orientechnologies.orient.client.remote;
 
+import com.orientechnologies.common.serialization.types.OBinarySerializer;
+import com.orientechnologies.common.serialization.types.OByteSerializer;
+import com.orientechnologies.orient.client.remote.message.*;
+import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
+import com.orientechnologies.orient.core.db.record.OIdentifiable;
+import com.orientechnologies.orient.core.serialization.serializer.binary.OBinarySerializerFactory;
+import com.orientechnologies.orient.core.storage.index.sbtreebonsai.local.OBonsaiBucketPointer;
+import com.orientechnologies.orient.core.storage.index.sbtreebonsai.local.OSBTreeBonsai;
+import com.orientechnologies.orient.core.storage.ridbag.sbtree.Change;
+import com.orientechnologies.orient.core.storage.ridbag.sbtree.OBonsaiCollectionPointer;
+
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-
-import com.orientechnologies.common.serialization.types.OBinarySerializer;
-import com.orientechnologies.common.serialization.types.OByteSerializer;
-import com.orientechnologies.orient.client.remote.message.OSBTFetchEntriesMajorRequest;
-import com.orientechnologies.orient.client.remote.message.OSBTFetchEntriesMajorResponse;
-import com.orientechnologies.orient.client.remote.message.OSBTFirstKeyRequest;
-import com.orientechnologies.orient.client.remote.message.OSBTFirstKeyResponse;
-import com.orientechnologies.orient.client.remote.message.OSBTGetRealBagSizeRequest;
-import com.orientechnologies.orient.client.remote.message.OSBTGetRealBagSizeResponse;
-import com.orientechnologies.orient.client.remote.message.OSBTGetRequest;
-import com.orientechnologies.orient.client.remote.message.OSBTGetResponse;
-import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
-import com.orientechnologies.orient.core.db.record.OIdentifiable;
-import com.orientechnologies.orient.core.db.record.ridbag.sbtree.OBonsaiCollectionPointer;
-import com.orientechnologies.orient.core.db.record.ridbag.sbtree.Change;
-import com.orientechnologies.orient.core.index.sbtreebonsai.local.OBonsaiBucketPointer;
-import com.orientechnologies.orient.core.index.sbtreebonsai.local.OSBTreeBonsai;
-import com.orientechnologies.orient.core.serialization.serializer.binary.OBinarySerializerFactory;
 
 /**
  * Implementation of {@link OSBTreeBonsai} for remote storage.
@@ -76,7 +69,7 @@ public class OSBTreeBonsaiRemote<K, V> implements OSBTreeBonsai<K, V> {
 
   @Override
   public V get(K key) {
-    final OStorageRemote storage = (OStorageRemote) ODatabaseRecordThreadLocal.INSTANCE.get().getStorage().getUnderlying();
+    final OStorageRemote storage = (OStorageRemote) ODatabaseRecordThreadLocal.instance().get().getStorage().getUnderlying();
     final byte[] keyStream = new byte[keySerializer.getObjectSize(key)];
     keySerializer.serialize(key, keyStream, 0);
     final OBonsaiCollectionPointer collectionPointer = getCollectionPointer();
@@ -158,7 +151,7 @@ public class OSBTreeBonsaiRemote<K, V> implements OSBTreeBonsai<K, V> {
   private List<Map.Entry<K, V>> fetchEntriesMajor(final K key, final boolean inclusive) {
     final byte[] keyStream = new byte[keySerializer.getObjectSize(key)];
     keySerializer.serialize(key, keyStream, 0);
-    final OStorageRemote storage = (OStorageRemote) ODatabaseRecordThreadLocal.INSTANCE.get().getStorage().getUnderlying();
+    final OStorageRemote storage = (OStorageRemote) ODatabaseRecordThreadLocal.instance().get().getStorage().getUnderlying();
     OSBTFetchEntriesMajorRequest<K, V> request = new OSBTFetchEntriesMajorRequest<K, V>(inclusive, keyStream,
         getCollectionPointer(), keySerializer, valueSerializer);
     OSBTFetchEntriesMajorResponse<K, V> response = storage.networkOperation(request, "Cannot get first key from sb-tree bonsai");
@@ -174,7 +167,7 @@ public class OSBTreeBonsaiRemote<K, V> implements OSBTreeBonsai<K, V> {
 
   @Override
   public K firstKey() {
-    final OStorageRemote storage = (OStorageRemote) ODatabaseRecordThreadLocal.INSTANCE.get().getStorage().getUnderlying();
+    final OStorageRemote storage = (OStorageRemote) ODatabaseRecordThreadLocal.instance().get().getStorage().getUnderlying();
     final OBonsaiCollectionPointer collectionPointer = getCollectionPointer();
     OSBTFirstKeyRequest request = new OSBTFirstKeyRequest(collectionPointer);
     OSBTFirstKeyResponse response = storage.networkOperation(request, "Cannot get first key from sb-tree bonsai");
@@ -201,7 +194,7 @@ public class OSBTreeBonsaiRemote<K, V> implements OSBTreeBonsai<K, V> {
 
   @Override
   public int getRealBagSize(final Map<K, Change> changes) {
-    final OStorageRemote storage = (OStorageRemote) ODatabaseRecordThreadLocal.INSTANCE.get().getStorage().getUnderlying();
+    final OStorageRemote storage = (OStorageRemote) ODatabaseRecordThreadLocal.instance().get().getStorage().getUnderlying();
     final OBonsaiCollectionPointer collectionPointer = getCollectionPointer();
     OSBTGetRealBagSizeRequest request = new OSBTGetRealBagSizeRequest((OBinarySerializer<OIdentifiable>) keySerializer,
         collectionPointer, (Map<OIdentifiable, Change>) changes);

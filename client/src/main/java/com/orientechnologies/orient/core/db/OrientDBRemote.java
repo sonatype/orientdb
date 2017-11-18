@@ -242,8 +242,11 @@ public class OrientDBRemote implements OrientDBInternal {
         ODatabaseDocumentRemote.deInit(stg);
         OLogManager.instance().info(this, "- shutdown storage: " + stg.getName() + "...");
         stg.shutdown();
-      } catch (Throwable e) {
+      } catch (Exception e) {
         OLogManager.instance().warn(this, "-- error on shutdown storage", e);
+      } catch (Error e) {
+        OLogManager.instance().warn(this, "-- error on shutdown storage", e);
+        throw e;
       }
     }
     storages.clear();
@@ -322,5 +325,17 @@ public class OrientDBRemote implements OrientDBInternal {
   public void restore(String name, InputStream in, Map<String, Object> options, Callable<Object> callable,
       OCommandOutputListener iListener) {
     throw new UnsupportedOperationException("raw restore is not supported in remote");
+  }
+
+  @Override
+  public ODatabaseDocumentInternal openNoAuthorization(String name) {
+    throw new UnsupportedOperationException("impossible skip authentication and authorization in remote");
+  }
+
+  /**
+   * @inheritDoc
+   */
+  @Override
+  public void handleJVMError(Error e) {
   }
 }

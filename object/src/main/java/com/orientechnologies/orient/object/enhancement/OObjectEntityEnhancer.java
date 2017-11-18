@@ -138,7 +138,7 @@ public class OObjectEntityEnhancer {
         }
         if (constructor != null) {
           newEntity = (T) constructor.newInstance(iArgs);
-          initDocument(iClass, newEntity, doc, (ODatabaseObject) ODatabaseRecordThreadLocal.INSTANCE.get().getDatabaseOwner());
+          initDocument(iClass, newEntity, doc, (ODatabaseObject) ODatabaseRecordThreadLocal.instance().get().getDatabaseOwner());
         } else {
           if (iEnclosingInstance != null)
             newEntity = createInstanceNoParameters(c, iEnclosingInstance);
@@ -270,7 +270,7 @@ public class OObjectEntityEnhancer {
       try {
         instanceToReturn = iProxiedClass.newInstance();
       } catch (InstantiationException e) {
-        OLogManager.instance().error(this, "Cannot create an instance of the enclosing class '%s'", iOriginalClass);
+        OLogManager.instance().error(this, "Cannot create an instance of the enclosing class '%s'", e, iOriginalClass);
         throw e;
       }
     }

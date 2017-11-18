@@ -27,14 +27,14 @@ import com.orientechnologies.orient.core.conflict.ORecordConflictStrategy;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.db.record.OCurrentStorageComponentsFactory;
 import com.orientechnologies.orient.core.db.record.ORecordOperation;
-import com.orientechnologies.orient.core.db.record.ridbag.sbtree.OSBTreeCollectionManager;
 import com.orientechnologies.orient.core.engine.OEngine;
 import com.orientechnologies.orient.core.engine.OEngineAbstract;
 import com.orientechnologies.orient.core.exception.ORecordNotFoundException;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.id.ORecordId;
 import com.orientechnologies.orient.core.storage.*;
-import com.orientechnologies.orient.core.tx.OTransaction;
+import com.orientechnologies.orient.core.storage.ridbag.sbtree.OSBTreeCollectionManager;
+import com.orientechnologies.orient.core.tx.OTransactionInternal;
 import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -323,12 +323,12 @@ public class PostponedEngineStartTest {
         }
 
         @Override
-        public List<ORecordOperation> commit(OTransaction iTx, Runnable callback) {
+        public List<ORecordOperation> commit(OTransactionInternal iTx, Runnable callback) {
           return null;
         }
 
         @Override
-        public void rollback(OTransaction iTx) {
+        public void rollback(OTransactionInternal iTx) {
 
         }
 
@@ -358,12 +358,12 @@ public class PostponedEngineStartTest {
         }
 
         @Override
-        public int addCluster(String iClusterName, boolean forceListBased, Object... iParameters) {
+        public int addCluster(String iClusterName, Object... iParameters) {
           return 0;
         }
 
         @Override
-        public int addCluster(String iClusterName, int iRequestedId, boolean forceListBased, Object... iParameters) {
+        public int addCluster(String iClusterName, int iRequestedId, Object... iParameters) {
           return 0;
         }
 

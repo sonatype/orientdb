@@ -267,7 +267,7 @@ public class OGremlinHelper {
         // ***************************************************************************************************************************************
         // 3. Polymorphic clone (Deep cloning by Serialization)
         // ***************************************************************************************************************************************
-      } catch (Throwable e1) {
+      } catch (Exception e1) {
         try {
           final ByteArrayOutputStream bytes = new ByteArrayOutputStream() {
             public synchronized byte[] toByteArray() {
@@ -285,7 +285,7 @@ public class OGremlinHelper {
           // ***************************************************************************************************************************************
           // 4. Impossible to clone
           // ***************************************************************************************************************************************
-        } catch (Throwable e2) {
+        } catch (Exception e2) {
           OLogManager.instance()
               .error(null, "[GremlinHelper] error on cloning object %s, previous %s", e2, objectToClone, previousClone);
           return null;
@@ -299,7 +299,7 @@ public class OGremlinHelper {
   }
 
   public static ODatabaseDocumentInternal getGraphDatabase(final ODatabaseDocumentInternal iCurrentDatabase) {
-    ODatabaseDocumentInternal currentDb = ODatabaseRecordThreadLocal.INSTANCE.get();
+    ODatabaseDocumentInternal currentDb = ODatabaseRecordThreadLocal.instance().get();
     if (currentDb == null && iCurrentDatabase != null)
       // GET FROM THE RECORD
       currentDb = iCurrentDatabase;

@@ -176,6 +176,30 @@ public class OMatchStatementTest {
     checkRightSyntax("MATCH {class: 'V', as: foo}-->{as:bar} RETURN foo:{name, surname} as bloo, bar:{*}");
   }
 
+  @Test
+  public void testUnwind() {
+    checkRightSyntax("MATCH {class: 'V', as: foo}-->{as:bar} RETURN foo.name, bar.name as x unwind x");
+
+  }
+
+  @Test
+  public void testDepthAlias() {
+    checkRightSyntax("MATCH {class: 'V', as: foo}-->{as:bar, while:($depth < 2), depthAlias: depth} RETURN depth");
+
+  }
+
+  @Test
+  public void testPathAlias() {
+    checkRightSyntax("MATCH {class: 'V', as: foo}-->{as:bar, while:($depth < 2), pathAlias: barPath} RETURN barPath");
+
+  }
+
+  @Test
+  public void testSkip() {
+    checkRightSyntax("MATCH {class: 'V', as: foo}-->{as:bar} RETURN foo.name, bar.name skip 10 limit 10");
+  }
+
+
   protected OrientSql getParserFor(String string) {
     InputStream is = new ByteArrayInputStream(string.getBytes());
     OrientSql osql = new OrientSql(is);

@@ -538,7 +538,7 @@ public class ODirectMemoryOnlyDiskCache extends OAbstractWriteCache implements O
 
         try {
           return content.lastKey() + 1;
-        } catch (NoSuchElementException e) {
+        } catch (NoSuchElementException ignore) {
           return 0;
         }
 
@@ -655,7 +655,7 @@ public class ODirectMemoryOnlyDiskCache extends OAbstractWriteCache implements O
   }
 
   @Override
-  public void updateDirtyPagesTable(OCachePointer pointer) throws IOException {
+  public void updateDirtyPagesTable(OCachePointer pointer) {
   }
 
   @Override
@@ -697,13 +697,33 @@ public class ODirectMemoryOnlyDiskCache extends OAbstractWriteCache implements O
     return result;
   }
 
+  /**
+   * @inheritDoc
+   */
+  @Override
+  public int pageSize() {
+    return pageSize;
+  }
+
+  /**
+   * @inheritDoc
+   */
+  @Override
+  public boolean fileIdsAreEqual(long firsId, long secondId) {
+    final int firstIntId = extractFileId(firsId);
+    final int secondIntId = extractFileId(secondId);
+
+    return firstIntId == secondIntId;
+  }
+
+
   @Override
   public String restoreFileById(long fileId) throws IOException {
     return null;
   }
 
   @Override
-  public void closeFile(long fileId, boolean flush, OWriteCache writeCache) throws IOException {
+  public void closeFile(long fileId, boolean flush, OWriteCache writeCache) {
     close(fileId, flush);
   }
 

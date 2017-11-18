@@ -29,7 +29,9 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import com.orientechnologies.common.directmemory.OByteBufferPool;
@@ -37,8 +39,10 @@ import com.orientechnologies.common.io.OFileUtils;
 import com.orientechnologies.common.listener.OListenerManger;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.parser.OSystemVariableResolver;
+import com.orientechnologies.common.profiler.OAbstractProfiler;
 import com.orientechnologies.common.profiler.OProfiler;
 import com.orientechnologies.common.profiler.OProfilerStub;
+import com.orientechnologies.common.thread.OThreadPoolExecutorWithLogging;
 import com.orientechnologies.common.util.OClassLoaderHelper;
 import com.orientechnologies.orient.core.cache.OLocalRecordCacheFactory;
 import com.orientechnologies.orient.core.cache.OLocalRecordCacheFactoryImpl;
@@ -59,7 +63,9 @@ public class Orient extends OListenerManger<OOrientListener> {
   public static final String ORIENTDB_HOME = "ORIENTDB_HOME";
   public static final String URL_SYNTAX    = "<engine>:<db-type>:<db-name>[?<db-param>=<db-value>[&]]*";
 
-  private static final    Orient  instance               = new Orient();
+  private static volatile Orient instance;
+  private static final Lock initLock = new ReentrantLock();
+
   private static volatile boolean registerDatabaseByPath = false;
 
   private final ConcurrentMap<String, OEngine> engines = new ConcurrentHashMap<String, OEngine>();
@@ -98,16 +104,12 @@ public class Orient extends OListenerManger<OOrientListener> {
 
   private Set<OrientDBInternal> runningInstances = new HashSet<>();
 
-  static {
-    instance.startup();
-  }
-
   private final String os;
 
   private volatile Timer timer;
   private volatile ORecordFactoryManager recordFactoryManager = new ORecordFactoryManager();
   private          OrientShutdownHook          shutdownHook;
-  private volatile OProfiler                   profiler;
+  private volatile OAbstractProfiler           profiler;
   private          ODatabaseThreadLocalFactory databaseThreadFactory;
   private volatile boolean active = false;
   private          ThreadPoolExecutor workers;
@@ -153,7 +155,7 @@ public class Orient extends OListenerManger<OOrientListener> {
     }
   }
 
-  protected Orient() {
+  Orient() {
     super(true);
     this.os = System.getProperty("os.name").toLowerCase(Locale.ENGLISH);
     threadGroup = new ThreadGroup("OrientDB");
@@ -161,6 +163,22 @@ public class Orient extends OListenerManger<OOrientListener> {
   }
 
   public static Orient instance() {
+    if (instance != null)
+      return instance;
+
+    initLock.lock();
+    try {
+      if (instance != null)
+        return instance;
+
+      final Orient orient = new Orient();
+      orient.startup();
+
+      instance = orient;
+    } finally {
+      initLock.unlock();
+    }
+
     return instance;
   }
 
@@ -209,7 +227,7 @@ public class Orient extends OListenerManger<OOrientListener> {
       if (timer == null)
         timer = new Timer(true);
 
-      profiler = new OProfilerStub();
+      profiler = new OProfilerStub(false);
 
       shutdownHook = new OrientShutdownHook();
       if (signalHandler == null) {
@@ -219,19 +237,20 @@ public class Orient extends OListenerManger<OOrientListener> {
 
       final int cores = Runtime.getRuntime().availableProcessors();
 
-      workers = new ThreadPoolExecutor(cores, cores * 3, 10, TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>(cores * 500) {
-        @Override
-        public boolean offer(Runnable e) {
-          // turn offer() and add() into a blocking calls (unless interrupted)
-          try {
-            put(e);
-            return true;
-          } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-          }
-          return false;
-        }
-      });
+      workers = new OThreadPoolExecutorWithLogging(cores, cores * 3, 10, TimeUnit.SECONDS,
+          new LinkedBlockingQueue<Runnable>(cores * 500) {
+            @Override
+            public boolean offer(Runnable e) {
+              // turn offer() and add() into a blocking calls (unless interrupted)
+              try {
+                put(e);
+                return true;
+              } catch (InterruptedException ignore) {
+                Thread.currentThread().interrupt();
+              }
+              return false;
+            }
+          });
 
       registerEngines();
 
@@ -262,6 +281,7 @@ public class Orient extends OListenerManger<OOrientListener> {
         }
 
       initShutdownQueue();
+      registerWeakOrientStartupListener(profiler);
     } finally {
       engineLock.writeLock().unlock();
     }
@@ -314,7 +334,7 @@ public class Orient extends OListenerManger<OOrientListener> {
         registerEngine(engine);
       } catch (IllegalArgumentException e) {
         if (engine != null)
-          OLogManager.instance().debug(this, "Failed to replace engine " + engine.getName());
+          OLogManager.instance().debug(this, "Failed to replace engine " + engine.getName(), e);
       }
     }
   }
@@ -354,6 +374,23 @@ public class Orient extends OListenerManger<OOrientListener> {
     }
 
     return this;
+  }
+
+  /**
+   * This method is called once JVM Error is observed by OrientDB to be thrown. Typically it means that all storages will be put in
+   * read-only mode and user will be asked to restart JVM.
+   *
+   * @param e Error happened during JVM execution
+   */
+  public void handleJVMError(Error e) {
+    engineLock.readLock().lock();
+    try {
+      for (OrientDBInternal orientDB : runningInstances) {
+        orientDB.handleJVMError(e);
+      }
+    } finally {
+      engineLock.readLock().unlock();
+    }
   }
 
   public void scheduleTask(final TimerTask task, final long delay, final long period) {
@@ -591,7 +628,7 @@ public class Orient extends OListenerManger<OOrientListener> {
     return profiler;
   }
 
-  public void setProfiler(final OProfiler iProfiler) {
+  public void setProfiler(final OAbstractProfiler iProfiler) {
     profiler = iProfiler;
   }
 
@@ -753,6 +790,7 @@ public class Orient extends OListenerManger<OOrientListener> {
       try {
         workers.awaitTermination(2, TimeUnit.MINUTES);
       } catch (InterruptedException e) {
+        OLogManager.instance().error(this, "Shutdown was interrupted", e);
       }
     }
 
@@ -786,7 +824,8 @@ public class Orient extends OListenerManger<OOrientListener> {
 
     @Override
     public String toString() {
-      return getClass().getSimpleName();
+      //it is strange but windows defender block compilation if we get class name programmatically using Class instance
+      return "OShutdownPendingThreadsHandler";
     }
   }
 
@@ -887,11 +926,22 @@ public class Orient extends OListenerManger<OOrientListener> {
   }
 
   public void addOrientDB(OrientDBInternal internal) {
-    runningInstances.add(internal);
+    engineLock.writeLock().lock();
+    try {
+      runningInstances.add(internal);
+    } finally {
+      engineLock.writeLock().unlock();
+    }
+
   }
 
   public void removeOrientDB(OrientDBInternal internal) {
-    runningInstances.remove(internal);
+    engineLock.writeLock().lock();
+    try {
+      runningInstances.remove(internal);
+    } finally {
+      engineLock.writeLock().unlock();
+    }
   }
 
 }

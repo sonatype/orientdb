@@ -217,7 +217,7 @@ public class OServerNetworkListener extends Thread {
           // CONFIGURE THE PROTOCOL FOR THE INCOMING CONNECTION
           protocol.config(this, server, socket, configuration);
 
-        } catch (Throwable e) {
+        } catch (Exception e) {
           if (active)
             OLogManager.instance().error(this, "Error on client connection", e);
         } finally {
@@ -354,7 +354,8 @@ public class OServerNetworkListener extends Thread {
     }
 
     OLogManager.instance()
-        .error(this, "Unable to listen for connections using the configured ports '%s' on host '%s'", iHostPortRange, iHostName);
+        .error(this, "Unable to listen for connections using the configured ports '%s' on host '%s'", null, iHostPortRange,
+            iHostName);
     throw new OSystemException("Unable to listen for connections using the configured ports '%s' on host '%s'");
   }
 

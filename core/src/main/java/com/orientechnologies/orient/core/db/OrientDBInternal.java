@@ -23,6 +23,7 @@ package com.orientechnologies.orient.core.db;
 import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.command.OCommandOutputListener;
+import com.orientechnologies.orient.core.db.document.ODatabaseDocumentEmbedded;
 import com.orientechnologies.orient.core.exception.ODatabaseException;
 import com.orientechnologies.orient.core.storage.OStorage;
 import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
@@ -43,8 +44,7 @@ public interface OrientDBInternal extends AutoCloseable {
   /**
    * Create a new factory from a given url.
    * <p/>
-   * possible kind of urls 'embedded','remote', for the case of remote and distributed can be specified multiple nodes
-   * using comma.
+   * possible kind of urls 'embedded','remote', for the case of remote and distributed can be specified multiple nodes using comma.
    *
    * @param url           the url for the specific factory.
    * @param configuration configuration for the specific factory for the list of option {@see OGlobalConfiguration}.
@@ -87,8 +87,9 @@ public interface OrientDBInternal extends AutoCloseable {
       Constructor<?> constructor = kass.getConstructor(String[].class, OrientDBConfig.class, Orient.class);
       factory = (OrientDBInternal) constructor.newInstance(hosts, configuration, Orient.instance());
     } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException | InstantiationException e) {
-      throw new ODatabaseException("OrientDB client API missing");
+      throw OException.wrapException(new ODatabaseException("OrientDB client API missing"), e);
     } catch (InvocationTargetException e) {
+      //noinspection ThrowInsideCatchBlockWhichIgnoresCaughtException
       throw OException.wrapException(new ODatabaseException("Error creating OrientDB remote factory"), e.getTargetException());
     }
     return factory;
@@ -121,8 +122,9 @@ public interface OrientDBInternal extends AutoCloseable {
       Constructor<?> constructor = kass.getConstructor(String.class, OrientDBConfig.class, Orient.class);
       factory = (OrientDBInternal) constructor.newInstance(directoryPath, configuration, Orient.instance());
     } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException | InstantiationException e) {
-      throw new ODatabaseException("OrientDB distributed API missing");
+      throw OException.wrapException(new ODatabaseException("OrientDB distributed API missing"), e);
     } catch (InvocationTargetException e) {
+      //noinspection ThrowInsideCatchBlockWhichIgnoresCaughtException
       throw OException.wrapException(new ODatabaseException("Error creating OrientDB remote factory"), e.getTargetException());
     }
     return factory;
@@ -232,13 +234,6 @@ public interface OrientDBInternal extends AutoCloseable {
 
   /**
    * Internal api for request to open a database with a pool
-   *
-   * @param name
-   * @param user
-   * @param password
-   * @param pool
-   *
-   * @return
    */
   ODatabaseDocumentInternal poolOpen(String name, String user, String password, ODatabasePoolInternal pool);
 
@@ -259,15 +254,11 @@ public interface OrientDBInternal extends AutoCloseable {
 
   /**
    * Internal API for pool close
-   *
-   * @param toRemove
    */
   void removePool(ODatabasePoolInternal toRemove);
 
   /**
    * Check if the current instance is open
-   *
-   * @return
    */
   boolean isOpen();
 
@@ -278,6 +269,8 @@ public interface OrientDBInternal extends AutoCloseable {
   }
 
   ODatabaseDocumentInternal openNoAuthenticate(String iDbUrl, String user);
+
+  ODatabaseDocumentInternal openNoAuthorization(String name);
 
   void initCustomStorage(String name, String baseUrl, String userName, String userPassword);
 
@@ -292,4 +285,12 @@ public interface OrientDBInternal extends AutoCloseable {
   void replaceFactory(OEmbeddedDatabaseInstanceFactory instanceFactory);
 
   OEmbeddedDatabaseInstanceFactory getFactory();
+
+  /**
+   * This method is called once JVM Error is observed by OrientDB to be thrown. Typically it means that all storages will be put in
+   * read-only mode and user will be asked to restart JVM, but that is not mandatory.
+   *
+   * @param e Error happened during JVM execution
+   */
+  void handleJVMError(Error e);
 }

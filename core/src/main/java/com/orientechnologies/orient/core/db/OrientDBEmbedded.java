@@ -92,11 +92,26 @@ public class OrientDBEmbedded implements OrientDBInternal {
         embedded.init(config);
       }
       embedded.rebuildIndexes();
+      embedded.internalOpen(user, "nopwd", false);
+      embedded.callOnOpenListeners();
+      return embedded;
+    } catch (Exception e) {
+      throw OException.wrapException(new ODatabaseException("Cannot open database '" + name + "'"), e);
+    }
+  }
 
-      //** THIS IS COMMENTED OUT BECAUSE WE NEED BOTH (NO PASSWORD AND NO USER AUTHORIZATION CHECK).
-      // embedded.internalOpen(user, "nopwd", false);
-      ////////////////////////////////////////////////////////////////////////////////////////////
-
+  public ODatabaseDocumentEmbedded openNoAuthorization(String name) {
+    try {
+      final ODatabaseDocumentEmbedded embedded;
+      OrientDBConfig config = solveConfig(null);
+      synchronized (this) {
+        OAbstractPaginatedStorage storage = getOrInitStorage(name);
+        // THIS OPEN THE STORAGE ONLY THE FIRST TIME
+        storage.open(config.getConfigurations());
+        embedded = factory.newInstance(storage);
+        embedded.init(config);
+      }
+      embedded.rebuildIndexes();
       embedded.callOnOpenListeners();
       return embedded;
     } catch (Exception e) {
@@ -347,8 +362,11 @@ public class OrientDBEmbedded implements OrientDBInternal {
         OLogManager.instance().info(this, "- shutdown storage: " + stg.getName() + "...");
         ODatabaseDocumentEmbedded.deInit(stg);
         stg.shutdown();
-      } catch (Throwable e) {
+      } catch (Exception e) {
         OLogManager.instance().warn(this, "-- error on shutdown storage", e);
+      } catch (Error e) {
+        OLogManager.instance().warn(this, "-- error on shutdown storage", e);
+        throw e;
       }
     }
     storages.clear();
@@ -443,5 +461,17 @@ public class OrientDBEmbedded implements OrientDBInternal {
   @Override
   public boolean isEmbedded() {
     return true;
+  }
+
+  /**
+   * @inheritDoc
+   */
+  @Override
+  public void handleJVMError(Error e) {
+    synchronized (this) {
+      for (OAbstractPaginatedStorage storage : storages.values()) {
+        storage.handleJVMError(e);
+      }
+    }
   }
 }

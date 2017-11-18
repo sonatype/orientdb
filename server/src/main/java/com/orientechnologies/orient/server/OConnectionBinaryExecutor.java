@@ -26,8 +26,6 @@ import com.orientechnologies.orient.core.db.ODatabaseType;
 import com.orientechnologies.orient.core.db.OLiveQueryMonitor;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.db.record.ORecordOperation;
-import com.orientechnologies.orient.core.db.record.ridbag.sbtree.OBonsaiCollectionPointer;
-import com.orientechnologies.orient.core.db.record.ridbag.sbtree.OSBTreeCollectionManager;
 import com.orientechnologies.orient.core.db.tool.ODatabaseImport;
 import com.orientechnologies.orient.core.exception.OConfigurationException;
 import com.orientechnologies.orient.core.exception.ODatabaseException;
@@ -41,8 +39,6 @@ import com.orientechnologies.orient.core.fetch.remote.ORemoteFetchContext;
 import com.orientechnologies.orient.core.fetch.remote.ORemoteFetchListener;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.id.ORecordId;
-import com.orientechnologies.orient.core.index.sbtree.OTreeInternal;
-import com.orientechnologies.orient.core.index.sbtreebonsai.local.OSBTreeBonsai;
 import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.query.live.OLiveQueryHookV2;
 import com.orientechnologies.orient.core.record.ORecord;
@@ -53,7 +49,6 @@ import com.orientechnologies.orient.core.record.impl.ODocumentInternal;
 import com.orientechnologies.orient.core.serialization.serializer.record.ORecordSerializer;
 import com.orientechnologies.orient.core.serialization.serializer.record.ORecordSerializerFactory;
 import com.orientechnologies.orient.core.serialization.serializer.record.binary.ORecordSerializerNetworkV37;
-import com.orientechnologies.orient.core.sql.executor.OResult;
 import com.orientechnologies.orient.core.sql.executor.OResultInternal;
 import com.orientechnologies.orient.core.sql.executor.OResultSet;
 import com.orientechnologies.orient.core.sql.parser.OLocalResultSetLifecycleDecorator;
@@ -61,6 +56,10 @@ import com.orientechnologies.orient.core.sql.query.OSQLAsynchQuery;
 import com.orientechnologies.orient.core.sql.query.OSQLSynchQuery;
 import com.orientechnologies.orient.core.storage.*;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.OOfflineClusterException;
+import com.orientechnologies.orient.core.storage.index.sbtree.OTreeInternal;
+import com.orientechnologies.orient.core.storage.index.sbtreebonsai.local.OSBTreeBonsai;
+import com.orientechnologies.orient.core.storage.ridbag.sbtree.OBonsaiCollectionPointer;
+import com.orientechnologies.orient.core.storage.ridbag.sbtree.OSBTreeCollectionManager;
 import com.orientechnologies.orient.core.tx.OTransaction;
 import com.orientechnologies.orient.core.tx.OTransactionOptimistic;
 import com.orientechnologies.orient.enterprise.channel.binary.OChannelBinaryProtocol;
@@ -398,6 +397,7 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
       } catch (ORecordNotFoundException e) {
         // MAINTAIN COHERENT THE BEHAVIOR FOR ALL THE STORAGE TYPES
         if (e.getCause() instanceof OOfflineClusterException)
+          //noinspection ThrowInsideCatchBlockWhichIgnoresCaughtException
           throw (OOfflineClusterException) e.getCause();
       }
 
@@ -450,6 +450,7 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
     } catch (ORecordNotFoundException e) {
       // MAINTAIN COHERENT THE BEHAVIOR FOR ALL THE STORAGE TYPES
       if (e.getCause() instanceof OOfflineClusterException)
+        //noinspection ThrowInsideCatchBlockWhichIgnoresCaughtException
         throw (OOfflineClusterException) e.getCause();
       result = 0;
     }
@@ -1077,7 +1078,7 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
       return new OShutdownResponse();
     }
 
-    OLogManager.instance().error(this, "Authentication error of remote client: shutdown is aborted.");
+    OLogManager.instance().error(this, "Authentication error of remote client: shutdown is aborted.", null);
 
     throw new OSecurityAccessException("Invalid user/password to shutdown the server");
   }
@@ -1117,7 +1118,7 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
   public static byte[] getRecordBytes(OClientConnection connection, final ORecord iRecord) {
     final byte[] stream;
     String dbSerializerName = null;
-    if (ODatabaseRecordThreadLocal.INSTANCE.getIfDefined() != null)
+    if (ODatabaseRecordThreadLocal.instance().getIfDefined() != null)
       dbSerializerName = ((ODatabaseDocumentInternal) iRecord.getDatabase()).getSerializer().toString();
     String name = connection.getData().getSerializationImpl();
     if (ORecordInternal.getRecordType(iRecord) == ODocument.RECORD_TYPE && (dbSerializerName == null || !dbSerializerName
@@ -1186,8 +1187,6 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
     OResultSet query = db.getActiveQuery(queryId);
     if (query != null) {
       query.close();
-    } else {
-      throw new ODatabaseException("Cannot close query: " + oQueryRequest.getQueryId());
     }
     return new OCloseQueryResponse();
   }
@@ -1197,17 +1196,18 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
     final long serverTimeout = connection.getDatabase().getConfiguration().getValueAsLong(OGlobalConfiguration.COMMAND_TIMEOUT);
     //TODO set a timeout on the request?
 
-    OResultSet rs = connection.getDatabase().getActiveQuery(request.getQueryId());
+    OLocalResultSetLifecycleDecorator rs = (OLocalResultSetLifecycleDecorator) connection.getDatabase().getActiveQuery(request.getQueryId());
 
     //copy the result-set to make sure that the execution is successful
     List<OResultInternal> rsCopy = new ArrayList<>(request.getRecordsPerPage());
     int i = 0;
-    while (rs.hasNext() && i < request.getRecordsPerPage()) {
+    //if it's OInternalResultSet it means that it's a Command, not a Query, so the result has to be sent as it is, not streamed
+    while (rs.hasNext() && (rs.isDetached() || i < request.getRecordsPerPage())) {
       rsCopy.add((OResultInternal) rs.next());
       i++;
     }
     boolean hasNext = rs.hasNext();
-    return new OQueryResponse(((OLocalResultSetLifecycleDecorator) rs).getQueryId(), false, rsCopy, rs.getExecutionPlan(), hasNext,
+    return new OQueryResponse(rs.getQueryId(), false, rsCopy, rs.getExecutionPlan(), hasNext,
         rs.getQueryStats());
   }
 
@@ -1276,7 +1276,7 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
     if (!database.getTransaction().isActive())
       throw new ODatabaseException("No Transaction Active");
     OTransactionOptimistic tx = (OTransactionOptimistic) database.getTransaction();
-    return new OFetchTransactionResponse(tx.getId(), tx.getAllRecordEntries(), tx.getIndexEntries(), tx.getUpdatedRids());
+    return new OFetchTransactionResponse(tx.getId(), tx.getRecordOperations(), tx.getIndexOperations(), tx.getUpdatedRids());
   }
 
   @Override

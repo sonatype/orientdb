@@ -9,6 +9,7 @@ import com.orientechnologies.orient.core.sql.query.OSQLSynchQuery;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
+import org.junit.Test;
 
 /**
  * @author Luigi Dell'Aquila (l.dellaquila-(at)-orientdb.com)
@@ -33,7 +34,7 @@ public class OUpdateEdgeStatementExecutionTest {
     database.close();
   }
 
-  //TODO enable when CREATE EDGE is implemented
+  @Test
   public void testUpdateEdge() {
 
     database.command("create class V1 extends V");
@@ -92,8 +93,8 @@ public class OUpdateEdgeStatementExecutionTest {
     result.close();
 
   }
-
-  //TODO enable when CREATE EDGE is implemented
+  
+  @Test
   public void testUpdateEdgeOfTypeE() {
     //issue #6378
     ODocument v1 = database.command(new OCommandSQL("create vertex")).execute();

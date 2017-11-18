@@ -54,8 +54,9 @@ public class OETLEdgeTransformerTest extends OETLBaseTest {
 
   @After
   public void tearDown() throws Exception {
-    OFileUtils.deleteRecursively(new File("./target/databases/"));
+    closeResources();
 
+    OFileUtils.deleteRecursively(new File("./target/databases/"));
   }
 
   public void createClasses(ODatabaseDocument db) {
@@ -178,6 +179,7 @@ public class OETLEdgeTransformerTest extends OETLBaseTest {
     assertEquals(v0.getProperty("name"), "Jay");
     assertEquals(v0.getProperty("surname"), "Miner");
     assertEquals(v0.<Integer>getProperty("id"), Integer.valueOf(0));
+    v.close();
     db.close();
   }
 
@@ -265,5 +267,4 @@ public class OETLEdgeTransformerTest extends OETLBaseTest {
     assertEquals(7, db.countClass("FriendMF"));
     db.close();
   }
-
 }

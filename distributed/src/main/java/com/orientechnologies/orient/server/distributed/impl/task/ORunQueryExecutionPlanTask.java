@@ -1,5 +1,6 @@
 package com.orientechnologies.orient.server.distributed.impl.task;
 
+import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.orient.core.command.OCommandDistributedReplicateRequest;
 import com.orientechnologies.orient.core.db.DistributedQueryContext;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
@@ -29,7 +30,7 @@ import java.util.UUID;
  */
 public class ORunQueryExecutionPlanTask extends OAbstractRemoteTask {
 
-  public static final int FACTORYID = 29;
+  public static final int FACTORYID = 40;
 
   private String              nodeName;
   private OExecutionPlan      plan;
@@ -58,7 +59,7 @@ public class ORunQueryExecutionPlanTask extends OAbstractRemoteTask {
   public Object execute(ODistributedRequestId requestId, OServer iServer, ODistributedServerManager iManager,
       ODatabaseDocumentInternal database) throws Exception {
 
-    ODatabaseDocumentInternal prev = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
+    ODatabaseDocumentInternal prev = ODatabaseRecordThreadLocal.instance().getIfDefined();
     try {
       ODatabaseDocumentInternal db = database.copy();
       db.activateOnCurrentThread();
@@ -85,9 +86,9 @@ public class ORunQueryExecutionPlanTask extends OAbstractRemoteTask {
       return serialized;
     } finally {
       if (prev == null) {
-        ODatabaseRecordThreadLocal.INSTANCE.remove();
+        ODatabaseRecordThreadLocal.instance().remove();
       } else {
-        ODatabaseRecordThreadLocal.INSTANCE.set(prev);
+        ODatabaseRecordThreadLocal.instance().set(prev);
       }
     }
   }
@@ -147,8 +148,7 @@ public class ORunQueryExecutionPlanTask extends OAbstractRemoteTask {
       internalPlan = (OInternalExecutionPlan) Class.forName(className).newInstance();
       internalPlan.deserialize(serializedExecutionPlan);
     } catch (Exception e) {
-      e.printStackTrace();//TODO
-      throw new ODistributedException("Cannot create execution plan: " + className);
+      throw OException.wrapException(new ODistributedException("Cannot create execution plan: " + className), e);
     }
     return internalPlan;
   }

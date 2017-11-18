@@ -4,9 +4,9 @@ import com.orientechnologies.orient.client.binary.OChannelBinaryAsynchClient;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
-import com.orientechnologies.orient.core.db.record.ridbag.sbtree.OBonsaiCollectionPointer;
-import com.orientechnologies.orient.core.index.sbtreebonsai.local.OBonsaiBucketPointer;
-import com.orientechnologies.orient.core.index.sbtreebonsai.local.OSBTreeBonsai;
+import com.orientechnologies.orient.core.storage.index.sbtreebonsai.local.OBonsaiBucketPointer;
+import com.orientechnologies.orient.core.storage.index.sbtreebonsai.local.OSBTreeBonsai;
+import com.orientechnologies.orient.core.storage.ridbag.sbtree.OBonsaiCollectionPointer;
 import com.orientechnologies.orient.enterprise.channel.binary.OChannelBinaryProtocol;
 import org.junit.Before;
 import org.junit.Ignore;
@@ -48,7 +48,7 @@ public class OSBTreeCollectionManagerRemoteTest {
   @Ignore
   public void testCreateTree() throws Exception {
     OSBTreeCollectionManagerRemote remoteManager = new OSBTreeCollectionManagerRemote(storageMock, networkSerializerMock);
-    ODatabaseRecordThreadLocal.INSTANCE.set(dbMock);
+    ODatabaseRecordThreadLocal.instance().set(dbMock);
 
     when(dbMock.getStorage()).thenReturn(storageMock);
     when(storageMock.getUnderlying()).thenReturn(storageMock);

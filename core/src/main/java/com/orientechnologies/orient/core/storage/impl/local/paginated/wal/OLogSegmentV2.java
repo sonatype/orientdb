@@ -16,6 +16,7 @@ import java.nio.ByteOrder;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -28,8 +29,10 @@ import java.util.zip.CRC32;
 final class OLogSegmentV2 implements OLogSegment {
   private final ODiskWriteAheadLog writeAheadLog;
 
-  private volatile long               writtenUpTo;
+  private volatile long writtenUpTo;
+
   private volatile OLogSequenceNumber storedUpTo;
+  private volatile OLogSequenceNumber syncedUpTo;
 
   private final Path path;
   private final long order;
@@ -159,7 +162,7 @@ final class OLogSegmentV2 implements OLogSegment {
         }
 
         writeAheadLog.checkFreeSpace();
-      } catch (Throwable e) {
+      } catch (Exception e) {
         OLogManager.instance().error(this, "Error during WAL background flush", e);
       }
     }
@@ -197,14 +200,23 @@ final class OLogSegmentV2 implements OLogSegment {
     }
   }
 
-  @SuppressWarnings("SpellCheckingInspection")
-  private final class FSyncer implements Runnable {
+  private final class SyncTask implements Runnable {
     @Override
     public void run() {
       try {
-        fsync();
+        final OLogSequenceNumber stored = storedUpTo;
+        final OLogSequenceNumber synced = syncedUpTo;
+
+        if (stored == null) // nothing stored yet, so there is nothing to sync, exit
+          return;
+
+        if (synced == null || synced.compareTo(stored) < 0) { // it's a first sync request or we have a new data to sync
+          segmentCache.sync();
+          syncedUpTo = stored;
+          writeAheadLog.setFlushedLsn(stored);
+        }
       } catch (IOException ioe) {
-        OLogManager.instance().error(this, "Can not force sync content of file " + path);
+        OLogManager.instance().error(this, "Can not force sync content of file " + path, ioe);
       }
     }
   }
@@ -231,7 +243,7 @@ final class OLogSegmentV2 implements OLogSegment {
   public void startBackgroundWrite() {
     if (writeAheadLog.getCommitDelay() > 0) {
       commitExecutor.scheduleAtFixedRate(new WriteTask(), 100, 100, TimeUnit.MICROSECONDS);
-      commitExecutor.scheduleAtFixedRate(new FSyncer(), writeAheadLog.getCommitDelay(), writeAheadLog.getCommitDelay(),
+      commitExecutor.scheduleAtFixedRate(new SyncTask(), writeAheadLog.getCommitDelay(), writeAheadLog.getCommitDelay(),
           TimeUnit.MILLISECONDS);
     }
   }
@@ -240,7 +252,7 @@ final class OLogSegmentV2 implements OLogSegment {
    * {@inheritDoc}
    */
   @Override
-  public void stopBackgroundWrite(boolean flush) throws IOException {
+  public void stopBackgroundWrite(boolean flush) {
     if (flush)
       flush();
 
@@ -251,7 +263,7 @@ final class OLogSegmentV2 implements OLogSegment {
           throw new OStorageException("WAL flush task for '" + getPath() + "' segment cannot be stopped");
 
       } catch (InterruptedException e) {
-        OLogManager.instance().error(this, "Cannot shutdown background WAL commit thread");
+        OLogManager.instance().error(this, "Cannot shutdown background WAL commit thread", e);
       }
     }
   }
@@ -266,13 +278,6 @@ final class OLogSegmentV2 implements OLogSegment {
     CRC32 crc32 = new CRC32();
     crc32.update(data);
     content.putInt(OWALPage.CRC_OFFSET, (int) crc32.getValue());
-  }
-
-  private void fsync() throws IOException {
-    OLogSequenceNumber stored = storedUpTo;
-    segmentCache.sync();
-
-    writeAheadLog.casFlushedLsn(stored);
   }
 
   /**
@@ -317,7 +322,7 @@ final class OLogSegmentV2 implements OLogSegment {
         filledUpTo = 0;
 
         OLogManager.instance()
-            .error(this, "%d pages in WAL segment %s are broken and will be truncated, some data will be lost after restore.",
+            .error(this, "%d pages in WAL segment %s are broken and will be truncated, some data will be lost after restore.", null,
                 pages, path.getFileName());
 
         segmentCache.truncate(0);
@@ -343,7 +348,7 @@ final class OLogSegmentV2 implements OLogSegment {
     if (currentPage + 1 < pages) {
       OLogManager.instance()
           .error(this, "Last %d pages in WAL segment %s are broken and will be truncate, some data will be lost after restore.",
-              pages - currentPage - 1, path.getFileName());
+              null, pages - currentPage - 1, path.getFileName());
 
       segmentCache.truncate(currentPage + 1);
       segmentCache.sync();
@@ -358,7 +363,7 @@ final class OLogSegmentV2 implements OLogSegment {
     if (OWALPage.PAGE_SIZE - lastRecordEnd != freeSpaceOffset) {
       OLogManager.instance().error(this, "For the page '%d' of WAL segment '%s' amount of free space '%d' does not match"
               + " the end of last record in page '%d' it will be fixed automatically but may lead to data loss during recovery after crash",
-          currentPage, path.getFileName(), freeSpaceOffset, lastRecordEnd);
+          null, currentPage, path.getFileName(), freeSpaceOffset, lastRecordEnd);
       buffer.putInt(OWALPage.FREE_SPACE_OFFSET, OWALPage.PAGE_SIZE - lastRecordEnd);
       preparePageForFlush(buffer);
 
@@ -662,23 +667,43 @@ final class OLogSegmentV2 implements OLogSegment {
    * {@inheritDoc}
    */
   @Override
-  public void flush() throws IOException {
+  public void flush() {
     writeData();
-    fsync();
+    syncData();
   }
 
   private void writeData() {
-    if (!commitExecutor.isShutdown()) {
-      try {
-        commitExecutor.submit(new WriteTask()).get();
-      } catch (InterruptedException e) {
-        Thread.interrupted();
-        throw OException.wrapException(new OStorageException("Thread was interrupted during flush"), e);
-      } catch (ExecutionException e) {
-        throw OException.wrapException(new OStorageException("Error during WAL segment '" + getPath() + "' flush"), e);
-      }
-    } else {
-      new WriteTask().run();
+    if (commitExecutor.isShutdown())
+      if (flushNewData)
+        throw new OStorageException("Unable to write data, WAL thread is shutdown");
+      else
+        return;
+
+    try {
+      commitExecutor.submit(new WriteTask()).get();
+    } catch (InterruptedException e) {
+      Thread.interrupted();
+      throw OException.wrapException(new OStorageException("Thread was interrupted during data write"), e);
+    } catch (ExecutionException e) {
+      throw OException.wrapException(new OStorageException("Error during WAL segment '" + getPath() + "' data write"), e);
+    }
+  }
+
+  private void syncData() {
+    if (commitExecutor.isShutdown()) {
+      if (flushNewData || !Objects.equals(storedUpTo, syncedUpTo))
+        throw new OStorageException("Unable to sync data, WAL thread is shutdown");
+      else
+        return;
+    }
+
+    try {
+      commitExecutor.submit(new SyncTask()).get();
+    } catch (InterruptedException e) {
+      Thread.interrupted();
+      throw OException.wrapException(new OStorageException("Thread was interrupted during data sync"), e);
+    } catch (ExecutionException e) {
+      throw OException.wrapException(new OStorageException("Error during WAL segment '" + getPath() + "' data sync"), e);
     }
   }
 

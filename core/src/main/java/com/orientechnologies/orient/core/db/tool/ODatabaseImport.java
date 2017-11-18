@@ -38,8 +38,8 @@ import com.orientechnologies.orient.core.exception.OSerializationException;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.id.ORecordId;
 import com.orientechnologies.orient.core.index.*;
-import com.orientechnologies.orient.core.index.hashindex.local.OHashIndexFactory;
-import com.orientechnologies.orient.core.index.hashindex.local.OMurmurHash3HashFunction;
+import com.orientechnologies.orient.core.storage.index.hashindex.local.OHashIndexFactory;
+import com.orientechnologies.orient.core.storage.index.hashindex.local.OMurmurHash3HashFunction;
 import com.orientechnologies.orient.core.intent.OIntentMassiveInsert;
 import com.orientechnologies.orient.core.metadata.OMetadataDefault;
 import com.orientechnologies.orient.core.metadata.function.OFunction;
@@ -112,7 +112,7 @@ public class ODatabaseImport extends ODatabaseImpExpAbstract {
     bf.mark(1024);
     try {
       inStream = new GZIPInputStream(bf, 16384); // 16KB
-    } catch (Exception e) {
+    } catch (Exception ignore) {
       bf.reset();
       inStream = bf;
     }
@@ -242,7 +242,7 @@ public class ODatabaseImport extends ODatabaseImpExpAbstract {
       }
 
       listener.onMessage("\nStart rebuild index " + indexName);
-      database.command("rebuild index " + indexName);
+      database.command("rebuild index " + indexName).close();
       listener.onMessage("\nRebuild  of index " + indexName + " is completed.");
     }
     listener.onMessage("\nStale indexes were rebuilt...");
@@ -251,7 +251,7 @@ public class ODatabaseImport extends ODatabaseImpExpAbstract {
   public ODatabaseImport removeExportImportRIDsMap() {
     listener.onMessage("\nDeleting RID Mapping table...");
     if (exportImportHashTable != null) {
-      database.command("drop index " + EXPORT_IMPORT_MAP_NAME);
+      database.command("drop index " + EXPORT_IMPORT_MAP_NAME).close();
       exportImportHashTable = null;
     }
 
@@ -941,7 +941,7 @@ public class ODatabaseImport extends ODatabaseImpExpAbstract {
           .equalsIgnoreCase(OMetadataDefault.CLUSTER_INTERNAL_NAME) || name
           .equalsIgnoreCase(OMetadataDefault.CLUSTER_INDEX_NAME))) {
         if (!merge)
-          database.command("truncate cluster `" + name + "`");
+          database.command("truncate cluster `" + name + "`").close();
 
         for (OIndex existingIndex : database.getMetadata().getIndexManager().getIndexes()) {
           if (existingIndex.getClusters().contains(name)) {
@@ -1201,10 +1201,10 @@ public class ODatabaseImport extends ODatabaseImpExpAbstract {
       if (record != null)
         OLogManager.instance().error(this,
             "Error importing record " + record.getIdentity() + ". Source line " + jsonReader.getLineNumber() + ", column "
-                + jsonReader.getColumnNumber());
+                + jsonReader.getColumnNumber(), t);
       else
         OLogManager.instance().error(this,
-            "Error importing record. Source line " + jsonReader.getLineNumber() + ", column " + jsonReader.getColumnNumber());
+            "Error importing record. Source line " + jsonReader.getLineNumber() + ", column " + jsonReader.getColumnNumber(), t);
 
       if (!(t instanceof ODatabaseException)) {
         throw t;

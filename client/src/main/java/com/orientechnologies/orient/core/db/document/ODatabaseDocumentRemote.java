@@ -80,7 +80,7 @@ public class ODatabaseDocumentRemote extends ODatabaseDocumentAbstract {
 
       databaseOwner = this;
     } catch (Exception t) {
-      ODatabaseRecordThreadLocal.INSTANCE.remove();
+      ODatabaseRecordThreadLocal.instance().remove();
 
       throw OException.wrapException(new ODatabaseException("Error on opening database "), t);
     }
@@ -220,8 +220,11 @@ public class ODatabaseDocumentRemote extends ODatabaseDocumentAbstract {
     for (ODatabaseListener listener : browseListeners())
       try {
         listener.onBeforeTxBegin(this);
-      } catch (Throwable t) {
+      } catch (Exception t) {
         OLogManager.instance().error(this, "Error before tx begin", t);
+      } catch (Error e) {
+        OLogManager.instance().error(this, "Error before tx begin", e);
+        throw e;
       }
 
     switch (iType) {
@@ -336,8 +339,12 @@ public class ODatabaseDocumentRemote extends ODatabaseDocumentAbstract {
   }
 
   public void closeQuery(String queryId) {
-    super.queryClosed(queryId);
     storage.closeQuery(this, queryId);
+  }
+
+  @Override
+  public void queryStarted(String id, OResultSet rs) {
+    //do nothing
   }
 
   public void fetchNextPage(ORemoteResultSet rs) {

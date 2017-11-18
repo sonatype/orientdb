@@ -218,7 +218,7 @@ public class ODatabaseExport extends ODatabaseImpExpAbstract {
               .error(this, "\nError on exporting record %s because of I/O problems", e, rec == null ? null : rec.getIdentity());
           // RE-THROW THE EXCEPTION UP
           throw e;
-        } catch (Throwable t) {
+        } catch (Exception t) {
           if (rec != null) {
             final byte[] buffer = rec.toStream();
 
@@ -347,7 +347,7 @@ public class ODatabaseExport extends ODatabaseImpExpAbstract {
     writer.writeAttribute(2, true, "name", database.getName().replace('\\', '/'));
     writer.writeAttribute(2, true, "default-cluster-id", database.getDefaultClusterId());
     writer.writeAttribute(2, true, "exporter-version", VERSION);
-    writer.writeAttribute(2, true, "engine-version", OConstants.ORIENT_VERSION);
+    writer.writeAttribute(2, true, "engine-version", OConstants.getVersion());
     final String engineBuild = OConstants.getBuildNumber();
     if (engineBuild != null)
       writer.writeAttribute(2, true, "engine-build", engineBuild);
@@ -613,7 +613,7 @@ public class ODatabaseExport extends ODatabaseImpExpAbstract {
           listener.onMessage(".");
 
         return true;
-      } catch (Throwable t) {
+      } catch (Exception t) {
         if (rec != null) {
           final ORID rid = rec.getIdentity().copy();
 

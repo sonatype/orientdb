@@ -36,12 +36,14 @@ import com.orientechnologies.orient.core.config.OContextConfiguration;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.config.OStorageConfiguration;
 import com.orientechnologies.orient.core.conflict.ORecordConflictStrategy;
-import com.orientechnologies.orient.core.db.*;
+import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
+import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
+import com.orientechnologies.orient.core.db.OExecutionThreadLocal;
+import com.orientechnologies.orient.core.db.OScenarioThreadLocal;
 import com.orientechnologies.orient.core.db.OScenarioThreadLocal.RUN_MODE;
 import com.orientechnologies.orient.core.db.record.OCurrentStorageComponentsFactory;
 import com.orientechnologies.orient.core.db.record.OPlaceholder;
 import com.orientechnologies.orient.core.db.record.ORecordOperation;
-import com.orientechnologies.orient.core.db.record.ridbag.sbtree.OSBTreeCollectionManager;
 import com.orientechnologies.orient.core.exception.*;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.id.ORecordId;
@@ -59,7 +61,8 @@ import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedSt
 import com.orientechnologies.orient.core.storage.impl.local.OFreezableStorageComponent;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.OLocalPaginatedStorage;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.wal.OLogSequenceNumber;
-import com.orientechnologies.orient.core.tx.OTransaction;
+import com.orientechnologies.orient.core.storage.ridbag.sbtree.OSBTreeCollectionManager;
+import com.orientechnologies.orient.core.tx.OTransactionInternal;
 import com.orientechnologies.orient.enterprise.channel.binary.ODistributedRedirectException;
 import com.orientechnologies.orient.server.OServer;
 import com.orientechnologies.orient.server.distributed.*;
@@ -111,6 +114,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
       return;
 
     this.wrapped = wrapped;
+    this.wrapped.underDistributedStorage();
     this.localDistributedDatabase = dManager.getMessageService().getDatabase(getName());
     this.txManager = new ODistributedTransactionManager(this, dManager, localDistributedDatabase);
 
@@ -176,7 +180,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
 
             Thread.interrupted();
 
-          } catch (Throwable e) {
+          } catch (Exception e) {
             if (running)
               // ASYNC: IGNORE IT
               if (e instanceof ONeedRetryException)
@@ -365,10 +369,10 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
       // PASS THROUGH
       throw e;
     } catch (HazelcastInstanceNotActiveException e) {
-      throw new OOfflineNodeException("Hazelcast instance is not available");
+      throw OException.wrapException(new OOfflineNodeException("Hazelcast instance is not available"), e);
 
     } catch (HazelcastException e) {
-      throw new OOfflineNodeException("Hazelcast instance is not available");
+      throw OException.wrapException(new OOfflineNodeException("Hazelcast instance is not available"), e);
 
     } catch (Exception e) {
       handleDistributedException("Cannot route COMMAND operation to the distributed node", e);
@@ -729,10 +733,10 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
       // PASS THROUGH
       throw e;
     } catch (HazelcastInstanceNotActiveException e) {
-      throw new OOfflineNodeException("Hazelcast instance is not available");
+      throw OException.wrapException(new OOfflineNodeException("Hazelcast instance is not available"), e);
 
     } catch (HazelcastException e) {
-      throw new OOfflineNodeException("Hazelcast instance is not available");
+      throw OException.wrapException(new OOfflineNodeException("Hazelcast instance is not available"), e);
 
     } catch (Exception e) {
       localDistributedDatabase.getDatabaseRepairer().enqueueRepairRecord(iRecordId);
@@ -806,10 +810,10 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
       // PASS THROUGH
       throw e;
     } catch (HazelcastInstanceNotActiveException e) {
-      throw new OOfflineNodeException("Hazelcast instance is not available");
+      throw OException.wrapException(new OOfflineNodeException("Hazelcast instance is not available"), e);
 
     } catch (HazelcastException e) {
-      throw new OOfflineNodeException("Hazelcast instance is not available");
+      throw OException.wrapException(new OOfflineNodeException("Hazelcast instance is not available"), e);
 
     } catch (Exception e) {
       handleDistributedException("Cannot route read record operation for %s to the distributed node", e, iRecordId);
@@ -869,10 +873,10 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
       // PASS THROUGH
       throw e;
     } catch (HazelcastInstanceNotActiveException e) {
-      throw new OOfflineNodeException("Hazelcast instance is not available");
+      throw OException.wrapException(new OOfflineNodeException("Hazelcast instance is not available"), e);
 
     } catch (HazelcastException e) {
-      throw new OOfflineNodeException("Hazelcast instance is not available");
+      throw OException.wrapException(new OOfflineNodeException("Hazelcast instance is not available"), e);
 
     } catch (Exception e) {
       handleDistributedException("Cannot route read record operation for %s to the distributed node", e, rid);
@@ -1015,10 +1019,10 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
       throw e;
 
     } catch (HazelcastInstanceNotActiveException e) {
-      throw new OOfflineNodeException("Hazelcast instance is not available");
+      throw OException.wrapException(new OOfflineNodeException("Hazelcast instance is not available"), e);
 
     } catch (HazelcastException e) {
-      throw new OOfflineNodeException("Hazelcast instance is not available");
+      throw OException.wrapException(new OOfflineNodeException("Hazelcast instance is not available"), e);
 
     } catch (Exception e) {
       localDistributedDatabase.getDatabaseRepairer().enqueueRepairRecord(iRecordId);
@@ -1164,10 +1168,10 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
       throw e;
 
     } catch (HazelcastInstanceNotActiveException e) {
-      throw new OOfflineNodeException("Hazelcast instance is not available");
+      throw OException.wrapException(new OOfflineNodeException("Hazelcast instance is not available"), e);
 
     } catch (HazelcastException e) {
-      throw new OOfflineNodeException("Hazelcast instance is not available");
+      throw OException.wrapException(new OOfflineNodeException("Hazelcast instance is not available"), e);
 
     } catch (Exception e) {
       localDistributedDatabase.getDatabaseRepairer().enqueueRepairRecord(iRecordId);
@@ -1389,7 +1393,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
   }
 
   @Override
-  public List<ORecordOperation> commit(final OTransaction iTx, final Runnable callback) {
+  public List<ORecordOperation> commit(final OTransactionInternal iTx, final Runnable callback) {
     resetLastValidBackup();
 
     if (isLocalEnv()) {
@@ -1437,7 +1441,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
           try {
 
             final List<ORecordOperation> result = txManager
-                .commit(ODatabaseRecordThreadLocal.INSTANCE.get(), iTx, callback, eventListener);
+                .commit(ODatabaseRecordThreadLocal.instance().get(), iTx, callback, eventListener);
 
             if (result != null) {
               for (ORecordOperation r : result) {
@@ -1448,7 +1452,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
 
             return result;
 
-          } catch (Throwable e) {
+          } catch (Exception e) {
             lastException = e;
 
             if (retry >= maxAutoRetry) {
@@ -1460,7 +1464,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
 
             // SKIP RETRY IN CASE OF OConcurrentModificationException BECAUSE IT NEEDS A RETRY AT APPLICATION LEVEL
             if (!(e instanceof OConcurrentModificationException) && (e instanceof ONeedRetryException
-                || e instanceof ORecordNotFoundException)) {
+                || e instanceof ORecordNotFoundException) && !(e instanceof ODistributedRedirectException)) {
               // RETRY
               final long wait = autoRetryDelay / 2 + new Random().nextInt(autoRetryDelay);
 
@@ -1487,10 +1491,10 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
     } catch (OValidationException e) {
       throw e;
     } catch (HazelcastInstanceNotActiveException e) {
-      throw new OOfflineNodeException("Hazelcast instance is not available");
+      throw OException.wrapException(new OOfflineNodeException("Hazelcast instance is not available"), e);
 
     } catch (HazelcastException e) {
-      throw new OOfflineNodeException("Hazelcast instance is not available");
+      throw OException.wrapException(new OOfflineNodeException("Hazelcast instance is not available"), e);
 
     } catch (Exception e) {
       handleDistributedException("Cannot route TX operation against distributed node", e);
@@ -1510,7 +1514,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
     if (eventListener != null) {
       try {
         eventListener.onAfterRecordLock(rid);
-      } catch (Throwable t) {
+      } catch (Exception t) {
         // IGNORE IT
         ODistributedServerLog.error(this, dManager.getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
             "Caught exception during ODistributedStorageEventListener.onAfterRecordLock", t);
@@ -1525,7 +1529,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
     if (eventListener != null) {
       try {
         eventListener.onAfterRecordUnlock(rid);
-      } catch (Throwable t) {
+      } catch (Exception t) {
         // IGNORE IT
         ODistributedServerLog.error(this, dManager.getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
             "Caught exception during ODistributedStorageEventListener.onAfterRecordUnlock", t);
@@ -1534,7 +1538,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
   }
 
   @Override
-  public void rollback(final OTransaction iTx) {
+  public void rollback(final OTransactionInternal iTx) {
     wrapped.rollback(iTx);
   }
 
@@ -1564,7 +1568,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
   }
 
   @Override
-  public int addCluster(final String iClusterName, boolean forceListBased, final Object... iParameters) {
+  public int addCluster(final String iClusterName, final Object... iParameters) {
     for (int retry = 0; retry < 10; ++retry) {
       final AtomicInteger clId = new AtomicInteger();
 
@@ -1582,7 +1586,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
                   new OCallable<Object, OModifiableDistributedConfiguration>() {
                     @Override
                     public Object call(OModifiableDistributedConfiguration iArgument) {
-                      clId.set(wrapped.addCluster(iClusterName, false, iParameters));
+                      clId.set(wrapped.addCluster(iClusterName, iParameters));
 
                       final OCommandSQL commandSQL = new OCommandSQL(cmd.toString());
                       commandSQL.addExcludedNode(getNodeId());
@@ -1626,7 +1630,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
           continue;
         }
       } else
-        clId.set(wrapped.addCluster(iClusterName, false, iParameters));
+        clId.set(wrapped.addCluster(iClusterName, iParameters));
 
       return clId.get();
     }
@@ -1636,8 +1640,8 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
   }
 
   @Override
-  public int addCluster(String iClusterName, int iRequestedId, boolean forceListBased, Object... iParameters) {
-    return wrapped.addCluster(iClusterName, iRequestedId, forceListBased, iParameters);
+  public int addCluster(String iClusterName, int iRequestedId, Object... iParameters) {
+    return wrapped.addCluster(iClusterName, iRequestedId, iParameters);
   }
 
   public boolean dropCluster(final String iClusterName, final boolean iTruncate) {
@@ -1970,7 +1974,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
     if (OExecutionThreadLocal.INSTANCE.get().onAsyncReplicationError != null) {
 
       final OAsyncReplicationError subCallback = OExecutionThreadLocal.INSTANCE.get().onAsyncReplicationError;
-      final ODatabaseDocumentInternal currentDatabase = ODatabaseRecordThreadLocal.INSTANCE.get();
+      final ODatabaseDocumentInternal currentDatabase = ODatabaseRecordThreadLocal.instance().get();
       final ODatabaseDocumentInternal copyDatabase = currentDatabase.copy();
       currentDatabase.activateOnCurrentThread();
 
@@ -2028,7 +2032,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
       OScenarioThreadLocal.executeAsDistributed(new Callable<Object>() {
         @Override
         public Object call() throws Exception {
-          ODatabaseDocumentInternal database = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
+          ODatabaseDocumentInternal database = ODatabaseRecordThreadLocal.instance().getIfDefined();
           final boolean databaseAlreadyDefined;
 
           if (database == null) {
@@ -2100,7 +2104,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
       return null;
 
     final OCluster cl = getClusterByName(clusterName);
-    final ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.INSTANCE.get();
+    final ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.instance().get();
     final OClass cls = db.getMetadata().getSchema().getClassByClusterId(cl.getId());
     String newClusterName = null;
     if (cls != null) {
@@ -2220,4 +2224,11 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
     return new File(serverInstance.getDatabaseDirectory() + getName() + "/" + ODistributedServerManager.FILE_DISTRIBUTED_DB_CONFIG);
   }
 
+  public ODistributedTransactionManager getTxManager() {
+    return txManager;
+  }
+
+  public ODistributedDatabase getLocalDistributedDatabase() {
+    return localDistributedDatabase;
+  }
 }

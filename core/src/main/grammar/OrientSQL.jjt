@@ -49,6 +49,10 @@ public class OrientSql {
       this(new JavaCharStream(stream));
     }
 
+    public OrientSql(InputStream stream, String charset) throws java.io.UnsupportedEncodingException {
+      this(new JavaCharStream(stream, charset));
+    }
+
 }
 
 PARSER_END(OrientSql)
@@ -362,6 +366,10 @@ TOKEN:
 	< FOREACH: ( "F" | "f" ) ( "O" | "o" ) ( "R" | "r" ) ( "E" | "e" ) ( "A" | "a" ) ( "C" | "c" ) ( "H" | "h" ) >
 	|
 	< MOVE: ( "m" | "M" ) ( "o" | "O" ) ( "v" | "V" ) ( "e" | "E" ) >
+	|
+	< DEPTH_ALIAS: ( "d" | "D" ) ( "e" | "E" ) ( "p" | "P" ) ( "t" | "T" ) ( "h" | "H" ) ( "a" | "A" ) ( "l" | "L" ) ( "i" | "I" ) ( "a" | "A" ) ( "s" | "S" )>
+	|
+	< PATH_ALIAS: ( "p" | "P" ) ( "a" | "A" ) ( "t" | "T" ) ( "h" | "H" ) ( "a" | "A" ) ( "l" | "L" ) ( "i" | "I" ) ( "a" | "A" ) ( "s" | "S" )>
 	|
 	< THIS: "@" ( ( "t" | "T" ) ( "h" | "H" ) ( "i" | "I" ) ( "s" | "S" ) ) >
 	|
@@ -868,6 +876,10 @@ OIdentifier Identifier():
     |
     token = <MOVE>
     |
+    token = <DEPTH_ALIAS>
+    |
+    token = <PATH_ALIAS>
+    |
     quotedToken = <QUOTED_IDENTIFIER>
 ) {
 
@@ -1275,7 +1287,10 @@ OMatchStatement MatchStatement():
                 jjtThis.returnNestedProjections.add(lastNestedProjection);
             }
         )*
+        [ jjtThis.groupBy = GroupBy() ]
         [ jjtThis.orderBy = OrderBy() ]
+        [ jjtThis.unwind = Unwind() ]
+        [ jjtThis.skip = Skip() ]
         [ jjtThis.limit = Limit() ]
     ){ return jjtThis; }
 }
@@ -2040,7 +2055,7 @@ OArrayNumberSelector ArrayNumberSelector():
         |
         LOOKAHEAD( Integer() )
         tokenVal = <INTEGER_LITERAL> { jjtThis.integer = Integer.parseInt(tokenVal.image); }
-        /* TODO for 3.0
+        /*
         |
         LOOKAHEAD( MathExpression() )
     	jjtThis.expressionValue = MathExpression()
@@ -2091,8 +2106,6 @@ OArrayRangeSelector ArrayRangeSelector():
         (
             jjtThis.fromSelector = ArrayNumberSelector()
             (
-              (<MINUS>)
-              |
               (<RANGE> {jjtThis.newRange = true;})
               |
               (<ELLIPSIS> {jjtThis.newRange = true; jjtThis.included = true;})
@@ -3641,6 +3654,14 @@ OMatchFilterItem MatchFilterItem():
                 <FALSE> { jjtThis.optional = false; }
             )
         )
+        |
+        (
+              <DEPTH_ALIAS> <COLON> jjtThis.depthAlias = Identifier()
+        )
+        |
+        (
+              <PATH_ALIAS> <COLON> jjtThis.pathAlias = Identifier()
+        )
     )
     { return jjtThis; }
 }
@@ -4364,6 +4385,7 @@ OCreateClusterStatement CreateClusterStatement():
             ( <BLOB> <CLUSTER> { jjtThis.blob = true; } )
         )
         jjtThis.name = Identifier()
+        [ <IF> <NOT> <EXISTS> { jjtThis.ifNotExists = true; } ]
         [ <ID> jjtThis.id = Integer() ]
 	)
 	{ return jjtThis; }
@@ -4391,6 +4413,7 @@ ODropClusterStatement DropClusterStatement():
 		|
 		jjtThis.id = Integer()
 	)
+	[ <IF> <EXISTS> { jjtThis.ifExists = true; } ]
 	{ return jjtThis; }
 }
 
@@ -4713,6 +4736,7 @@ OCreateSequenceStatement CreateSequenceStatement():
     (
         <CREATE> <SEQUENCE>
         jjtThis.name = Identifier()
+        [ <IF> <NOT> <EXISTS> { jjtThis.ifNotExists = true; } ]
         <TYPE>
         lastIdentifier = Identifier(){
             if(lastIdentifier.getStringValue().equalsIgnoreCase("cached")){
@@ -4755,6 +4779,7 @@ ODropSequenceStatement DropSequenceStatement():
     (
         <DROP> <SEQUENCE>
         jjtThis.name = Identifier()
+        [ <IF> <EXISTS> { jjtThis.ifExists = true; } ]
     )
     { return jjtThis; }
 }

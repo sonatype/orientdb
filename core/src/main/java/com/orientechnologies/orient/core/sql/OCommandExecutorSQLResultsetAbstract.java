@@ -38,13 +38,9 @@ import com.orientechnologies.orient.core.metadata.security.ORole;
 import com.orientechnologies.orient.core.metadata.security.ORule;
 import com.orientechnologies.orient.core.record.ORecord;
 import com.orientechnologies.orient.core.record.impl.ODocument;
-import com.orientechnologies.orient.core.record.impl.ODocumentHelper;
 import com.orientechnologies.orient.core.record.impl.ODocumentInternal;
 import com.orientechnologies.orient.core.serialization.serializer.OStringSerializerHelper;
-import com.orientechnologies.orient.core.sql.filter.OSQLFilter;
-import com.orientechnologies.orient.core.sql.filter.OSQLFilterCondition;
-import com.orientechnologies.orient.core.sql.filter.OSQLFilterItemField;
-import com.orientechnologies.orient.core.sql.filter.OSQLTarget;
+import com.orientechnologies.orient.core.sql.filter.*;
 import com.orientechnologies.orient.core.sql.functions.OSQLFunctionRuntime;
 import com.orientechnologies.orient.core.sql.operator.OQueryOperator;
 import com.orientechnologies.orient.core.sql.operator.OQueryOperatorEquals;
@@ -270,7 +266,7 @@ public abstract class OCommandExecutorSQLResultsetAbstract extends OCommandExecu
 
   protected boolean pushResult(final Object rec) {
     if (rec instanceof ORecord) {
-      final ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
+      final ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.instance().getIfDefined();
       if (db != null)
         db.getLocalCache().updateRecord((ORecord) rec);
     }
@@ -344,7 +340,7 @@ public abstract class OCommandExecutorSQLResultsetAbstract extends OCommandExecu
 
     try {
       limit = Integer.parseInt(word);
-    } catch (Exception e) {
+    } catch (NumberFormatException ignore) {
       throwParsingException("Invalid LIMIT value setted to '" + word + "' but it should be a valid integer. Example: LIMIT 10");
     }
 
@@ -371,7 +367,7 @@ public abstract class OCommandExecutorSQLResultsetAbstract extends OCommandExecu
     try {
       skip = Integer.parseInt(word);
 
-    } catch (Exception e) {
+    } catch (NumberFormatException ignore) {
       throwParsingException("Invalid SKIP value setted to '" + word
           + "' but it should be a valid positive integer. Example: SKIP 10");
     }
@@ -431,7 +427,7 @@ public abstract class OCommandExecutorSQLResultsetAbstract extends OCommandExecu
           subQuery.getContext().setParent(context);
           subQuery.getContext().setVariable("parentQuery", this);
           subQuery.getContext().setVariable("current", iRecord);
-          varValue = ODatabaseRecordThreadLocal.INSTANCE.get().query(subQuery);
+          varValue = ODatabaseRecordThreadLocal.instance().get().query(subQuery);
           if (varValue instanceof OLegacyResultSet) {
             varValue = ((OLegacyResultSet) varValue).copy();
           }
@@ -443,9 +439,10 @@ public abstract class OCommandExecutorSQLResultsetAbstract extends OCommandExecu
             varValue = f.getFunction().getResult();
           } else
             varValue = f.execute(iRecord, iRecord, null, context);
-        } else if (letValue instanceof String)
-          varValue = ODocumentHelper.getFieldValue(iRecord, ((String) letValue).trim(), context);
-        else
+        } else if (letValue instanceof String) {
+          OSQLPredicate pred = new OSQLPredicate(((String) letValue).trim());
+          varValue = pred.evaluate(iRecord, (ODocument)iRecord, context);
+        } else
           varValue = letValue;
 
         context.setVariable(varName, varValue);

@@ -11,7 +11,6 @@ import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.db.record.ORecordOperation;
-import com.orientechnologies.orient.core.db.record.ridbag.sbtree.OBonsaiCollectionPointer;
 import com.orientechnologies.orient.core.exception.OSerializationException;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.id.ORecordId;
@@ -28,12 +27,15 @@ import com.orientechnologies.orient.core.sql.executor.OResult;
 import com.orientechnologies.orient.core.sql.executor.OResultInternal;
 import com.orientechnologies.orient.core.storage.OCluster;
 import com.orientechnologies.orient.core.storage.OPhysicalPosition;
+import com.orientechnologies.orient.core.storage.ridbag.sbtree.OBonsaiCollectionPointer;
 import com.orientechnologies.orient.core.tx.OTransactionIndexChanges;
 import com.orientechnologies.orient.core.tx.OTransactionIndexChangesPerKey;
 import com.orientechnologies.orient.enterprise.channel.binary.OChannelBinaryProtocol;
 import com.orientechnologies.orient.enterprise.channel.binary.OChannelDataInput;
 import com.orientechnologies.orient.enterprise.channel.binary.OChannelDataOutput;
 
+import java.io.DataInput;
+import java.io.DataOutput;
 import java.io.IOException;
 import java.util.*;
 import java.util.Map.Entry;
@@ -73,7 +75,7 @@ public class OMessageHelper {
 
     final byte[] stream;
     String dbSerializerName = null;
-    if (ODatabaseRecordThreadLocal.INSTANCE.getIfDefined() != null)
+    if (ODatabaseRecordThreadLocal.instance().getIfDefined() != null)
       dbSerializerName = ((ODatabaseDocumentInternal) iRecord.getDatabase()).getSerializer().toString();
     if (ORecordInternal.getRecordType(iRecord) == ODocument.RECORD_TYPE && (dbSerializerName == null || !dbSerializerName
         .equals(serializer.toString()))) {
@@ -184,6 +186,33 @@ public class OMessageHelper {
     }
   }
 
+  public static void writeTransactionEntry(final DataOutput iNetwork, final ORecordOperationRequest txEntry) throws IOException {
+    iNetwork.writeByte(txEntry.getType());
+    iNetwork.writeInt(txEntry.getId().getClusterId());
+    iNetwork.writeLong(txEntry.getId().getClusterPosition());
+    iNetwork.writeByte(txEntry.getRecordType());
+
+    switch (txEntry.getType()) {
+    case ORecordOperation.CREATED:
+      byte[] record = txEntry.getRecord();
+      iNetwork.writeInt(record.length);
+      iNetwork.write(record);
+      break;
+
+    case ORecordOperation.UPDATED:
+      iNetwork.writeInt(txEntry.getVersion());
+      byte[] record2 = txEntry.getRecord();
+      iNetwork.writeInt(record2.length);
+      iNetwork.write(record2);
+      iNetwork.writeBoolean(txEntry.isContentChanged());
+      break;
+
+    case ORecordOperation.DELETED:
+      iNetwork.writeInt(txEntry.getVersion());
+      break;
+    }
+  }
+
   static void writeTransactionEntry(final OChannelDataOutput iNetwork, final ORecordOperationRequest txEntry,
       ORecordSerializer serializer) throws IOException {
     iNetwork.writeByte((byte) 1);
@@ -206,6 +235,38 @@ public class OMessageHelper {
       iNetwork.writeVersion(txEntry.getVersion());
       break;
     }
+  }
+
+  public static ORecordOperationRequest readTransactionEntry(final DataInput iNetwork) throws IOException {
+    ORecordOperationRequest result = new ORecordOperationRequest();
+    result.setType(iNetwork.readByte());
+    int clusterId = iNetwork.readInt();
+    long clusterPosition = iNetwork.readLong();
+    result.setId(new ORecordId(clusterId, clusterPosition));
+    result.setRecordType(iNetwork.readByte());
+
+    switch (result.getType()) {
+    case ORecordOperation.CREATED:
+      int length = iNetwork.readInt();
+      byte[] record = new byte[length];
+      iNetwork.readFully(record);
+      result.setRecord(record);
+      break;
+
+    case ORecordOperation.UPDATED:
+      result.setVersion(iNetwork.readInt());
+      int length2 = iNetwork.readInt();
+      byte[] record2 = new byte[length2];
+      iNetwork.readFully(record2);
+      result.setRecord(record2);
+      result.setContentChanged(iNetwork.readBoolean());
+      break;
+
+    case ORecordOperation.DELETED:
+      result.setVersion(iNetwork.readInt());
+      break;
+    }
+    return result;
   }
 
   static ORecordOperationRequest readTransactionEntry(OChannelDataInput channel, ORecordSerializer ser) throws IOException {

@@ -77,6 +77,13 @@ public class OSelectExecutionPlanner {
     // TODO optimization: in most cases the projections can be calculated on remote nodes
     buildDistributedExecutionPlan(result, info, ctx, enableProfiling);
 
+    handleProjectionsBlock(result, info, ctx, enableProfiling);
+
+    return result;
+  }
+
+  public static  void handleProjectionsBlock(OSelectExecutionPlan result, QueryPlanningInfo info, OCommandContext ctx,
+      boolean enableProfiling) {
     handleProjectionsBeforeOrderBy(result, info, ctx, enableProfiling);
 
     if (info.expand || info.unwind != null) {
@@ -112,8 +119,6 @@ public class OSelectExecutionPlanner {
         handleProjections(result, info, ctx, enableProfiling);
       }
     }
-
-    return result;
   }
 
   private void buildDistributedExecutionPlan(OSelectExecutionPlan result, QueryPlanningInfo info, OCommandContext ctx,
@@ -381,7 +386,7 @@ public class OSelectExecutionPlanner {
    *
    * @param projection the projection
    */
-  private OProjection translateDistinct(OProjection projection) {
+  protected static OProjection translateDistinct(OProjection projection) {
     if (projection != null && projection.getItems().size() == 1) {
       if (isDistinct(projection.getItems().get(0))) {
         projection = projection.copy();
@@ -410,7 +415,7 @@ public class OSelectExecutionPlanner {
    *
    * @return
    */
-  private boolean isDistinct(OProjectionItem item) {
+  private static boolean isDistinct(OProjectionItem item) {
     if (item.getExpression() == null) {
       return false;
     }
@@ -525,24 +530,24 @@ public class OSelectExecutionPlanner {
     return item.getExpression().isCount();
   }
 
-  private void handleUnwind(OSelectExecutionPlan result, QueryPlanningInfo info, OCommandContext ctx, boolean profilingEnabled) {
+  public static void handleUnwind(OSelectExecutionPlan result, QueryPlanningInfo info, OCommandContext ctx, boolean profilingEnabled) {
     if (info.unwind != null) {
       result.chain(new UnwindStep(info.unwind, ctx, profilingEnabled));
     }
   }
 
-  private void handleDistinct(OSelectExecutionPlan result, QueryPlanningInfo info, OCommandContext ctx, boolean profilingEnabled) {
+  private static void handleDistinct(OSelectExecutionPlan result, QueryPlanningInfo info, OCommandContext ctx, boolean profilingEnabled) {
     result.chain(new DistinctExecutionStep(ctx, profilingEnabled));
   }
 
-  private void handleProjectionsBeforeOrderBy(OSelectExecutionPlan result, QueryPlanningInfo info, OCommandContext ctx,
+  private static void handleProjectionsBeforeOrderBy(OSelectExecutionPlan result, QueryPlanningInfo info, OCommandContext ctx,
       boolean profilingEnabled) {
     if (info.orderBy != null) {
       handleProjections(result, info, ctx, profilingEnabled);
     }
   }
 
-  private void handleProjections(OSelectExecutionPlan result, QueryPlanningInfo info, OCommandContext ctx,
+  private static void handleProjections(OSelectExecutionPlan result, QueryPlanningInfo info, OCommandContext ctx,
       boolean profilingEnabled) {
     if (!info.projectionsCalculated && info.projection != null) {
       if (info.preAggregateProjection != null) {
@@ -557,7 +562,7 @@ public class OSelectExecutionPlanner {
     }
   }
 
-  private void optimizeQuery(QueryPlanningInfo info) {
+  protected static void optimizeQuery(QueryPlanningInfo info) {
     splitLet(info);
     extractSubQueries(info);
     if (info.projection != null && info.projection.isExpand()) {
@@ -577,7 +582,7 @@ public class OSelectExecutionPlanner {
   /**
    * splits LET clauses in global (executed once) and local (executed once per record)
    */
-  private void splitLet(QueryPlanningInfo info) {
+  private static void splitLet(QueryPlanningInfo info) {
     if (info.perRecordLetClause != null && info.perRecordLetClause.getItems() != null) {
       Iterator<OLetItem> iterator = info.perRecordLetClause.getItems().iterator();
       while (iterator.hasNext()) {
@@ -600,7 +605,7 @@ public class OSelectExecutionPlanner {
    *
    * @return
    */
-  private List<OAndBlock> moveFlattededEqualitiesLeft(List<OAndBlock> flattenedWhereClause) {
+  private static List<OAndBlock> moveFlattededEqualitiesLeft(List<OAndBlock> flattenedWhereClause) {
     if (flattenedWhereClause == null) {
       return null;
     }
@@ -633,7 +638,7 @@ public class OSelectExecutionPlanner {
   /**
    * creates additional projections for ORDER BY
    */
-  private void addOrderByProjections(QueryPlanningInfo info) {
+  private static void addOrderByProjections(QueryPlanningInfo info) {
     if (info.orderApplied || info.expand || info.unwind != null || info.orderBy == null || info.orderBy.getItems().size() == 0
         || info.projection == null || info.projection.getItems() == null || (info.projection.getItems().size() == 1
         && info.projection.getItems().get(0).isAll())) {
@@ -676,7 +681,7 @@ public class OSelectExecutionPlanner {
    * @return a list of additional projections to add to the existing projections to allow ORDER BY calculation (empty if nothing has
    * to be added).
    */
-  private List<OProjectionItem> calculateAdditionalOrderByProjections(Set<String> allAliases, OOrderBy orderBy) {
+  private static List<OProjectionItem> calculateAdditionalOrderByProjections(Set<String> allAliases, OOrderBy orderBy) {
     List<OProjectionItem> result = new ArrayList<>();
     int nextAliasCount = 0;
     if (orderBy != null && orderBy.getItems() != null || !orderBy.getItems().isEmpty()) {
@@ -707,7 +712,7 @@ public class OSelectExecutionPlanner {
   /**
    * splits projections in three parts (pre-aggregate, aggregate and final) to efficiently manage aggregations
    */
-  private void splitProjectionsForGroupBy(QueryPlanningInfo info) {
+  private static void splitProjectionsForGroupBy(QueryPlanningInfo info) {
     if (info.projection == null) {
       return;
     }
@@ -760,14 +765,14 @@ public class OSelectExecutionPlanner {
     }
   }
 
-  private boolean isAggregate(OProjectionItem item) {
+  private static boolean isAggregate(OProjectionItem item) {
     if (item.isAggregate()) {
       return true;
     }
     return false;
   }
 
-  private OProjectionItem projectionFromAlias(OIdentifier oIdentifier) {
+  private static OProjectionItem projectionFromAlias(OIdentifier oIdentifier) {
     OProjectionItem result = new OProjectionItem(-1);
     result.setExpression(new OExpression(oIdentifier));
     return result;
@@ -777,7 +782,7 @@ public class OSelectExecutionPlanner {
    * if GROUP BY is performed on an expression that is not explicitly in the pre-aggregate projections, then
    * that expression has to be put in the pre-aggregate (only here, in subsequent steps it's removed)
    */
-  private void addGroupByExpressionsToProjections(QueryPlanningInfo info) {
+  private static void addGroupByExpressionsToProjections(QueryPlanningInfo info) {
     if (info.groupBy == null || info.groupBy.getItems() == null || info.groupBy.getItems().size() == 0) {
       return;
     }
@@ -822,7 +827,7 @@ public class OSelectExecutionPlanner {
   /**
    * translates subqueries to LET statements
    */
-  private void extractSubQueries(QueryPlanningInfo info) {
+  private static void extractSubQueries(QueryPlanningInfo info) {
     SubQueryCollector collector = new SubQueryCollector();
     if (info.perRecordLetClause != null) {
       info.perRecordLetClause.extractSubQueries(collector);
@@ -864,7 +869,7 @@ public class OSelectExecutionPlanner {
     }
   }
 
-  private void addGlobalLet(QueryPlanningInfo info, OIdentifier alias, OExpression exp) {
+  private static void addGlobalLet(QueryPlanningInfo info, OIdentifier alias, OExpression exp) {
     if (info.globalLetClause == null) {
       info.globalLetClause = new OLetClause(-1);
     }
@@ -874,7 +879,7 @@ public class OSelectExecutionPlanner {
     info.globalLetClause.addItem(item);
   }
 
-  private void addGlobalLet(QueryPlanningInfo info, OIdentifier alias, OStatement stm) {
+  private static void addGlobalLet(QueryPlanningInfo info, OIdentifier alias, OStatement stm) {
     if (info.globalLetClause == null) {
       info.globalLetClause = new OLetClause(-1);
     }
@@ -884,7 +889,7 @@ public class OSelectExecutionPlanner {
     info.globalLetClause.addItem(item);
   }
 
-  private void addGlobalLet(QueryPlanningInfo info, OIdentifier alias, OStatement stm, int pos) {
+  private static void addGlobalLet(QueryPlanningInfo info, OIdentifier alias, OStatement stm, int pos) {
     if (info.globalLetClause == null) {
       info.globalLetClause = new OLetClause(-1);
     }
@@ -894,7 +899,7 @@ public class OSelectExecutionPlanner {
     info.globalLetClause.getItems().add(pos, item);
   }
 
-  private void addRecordLevelLet(QueryPlanningInfo info, OIdentifier alias, OStatement stm) {
+  private static void addRecordLevelLet(QueryPlanningInfo info, OIdentifier alias, OStatement stm) {
     if (info.perRecordLetClause == null) {
       info.perRecordLetClause = new OLetClause(-1);
     }
@@ -904,7 +909,7 @@ public class OSelectExecutionPlanner {
     info.perRecordLetClause.addItem(item);
   }
 
-  private void addRecordLevelLet(QueryPlanningInfo info, OIdentifier alias, OStatement stm, int pos) {
+  private static void addRecordLevelLet(QueryPlanningInfo info, OIdentifier alias, OStatement stm, int pos) {
     if (info.perRecordLetClause == null) {
       info.perRecordLetClause = new OLetClause(-1);
     }
@@ -1193,7 +1198,7 @@ public class OSelectExecutionPlanner {
     plan.chain(new FetchFromRidsStep(actualRids, ctx, profilingEnabled));
   }
 
-  private void handleExpand(OSelectExecutionPlan result, QueryPlanningInfo info, OCommandContext ctx, boolean profilingEnabled) {
+  private static void handleExpand(OSelectExecutionPlan result, QueryPlanningInfo info, OCommandContext ctx, boolean profilingEnabled) {
     if (info.expand) {
       result.chain(new ExpandStep(ctx, profilingEnabled));
     }
@@ -1251,7 +1256,7 @@ public class OSelectExecutionPlanner {
     }
   }
 
-  private void handleOrderBy(OSelectExecutionPlan plan, QueryPlanningInfo info, OCommandContext ctx, boolean profilingEnabled) {
+  public static void handleOrderBy(OSelectExecutionPlan plan, QueryPlanningInfo info, OCommandContext ctx, boolean profilingEnabled) {
     int skipSize = info.skip == null ? 0 : info.skip.getValue(ctx);
     if (skipSize < 0) {
       throw new OCommandExecutionException("Cannot execute a query with a negative SKIP");

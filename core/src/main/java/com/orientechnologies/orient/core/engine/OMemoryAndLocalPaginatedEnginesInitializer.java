@@ -20,10 +20,13 @@
 package com.orientechnologies.orient.core.engine;
 
 import com.orientechnologies.common.io.OFileUtils;
+import com.orientechnologies.common.jna.ONative;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.util.OMemory;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.storage.cache.local.twoq.O2QCache;
+
+import java.util.Locale;
 
 /**
  * Manages common initialization logic for memory and plocal engines. These engines are tight together through dependency to {@link
@@ -58,10 +61,10 @@ public class OMemoryAndLocalPaginatedEnginesInitializer {
   }
 
   private void configureDefaults() {
-    if (System.getProperty(OGlobalConfiguration.DISK_CACHE_SIZE.getKey()) == null)
+    if (!OGlobalConfiguration.DISK_CACHE_SIZE.isChanged())
       configureDefaultDiskCacheSize();
 
-    if (System.getProperty(OGlobalConfiguration.WAL_RESTORE_BATCH_SIZE.getKey()) == null)
+    if (!OGlobalConfiguration.WAL_RESTORE_BATCH_SIZE.isChanged())
       configureDefaultWalRestoreBatchSize();
   }
 
@@ -76,17 +79,24 @@ public class OMemoryAndLocalPaginatedEnginesInitializer {
   }
 
   private void configureDefaultDiskCacheSize() {
-    final long osMemory = OMemory.getPhysicalMemorySize();
+    final ONative.MemoryLimitResult osMemory = ONative.instance().getMemoryLimit(true);
+    if (osMemory == null) {
+      OLogManager.instance()
+          .warnNoDb(this, "Can not determine amount of memory installed on machine, default size of disk cache will be used");
+      return;
+    }
+
     final long jvmMaxMemory = OMemory.getCappedRuntimeMaxMemory(2L * 1024 * 1024 * 1024 /* 2GB */);
+    OLogManager.instance().infoNoDb(this, "JVM can use maximum %dMB of heap memory", jvmMaxMemory / (1024 * 1024));
     final long maxDirectMemory = OMemory.getConfiguredMaxDirectMemory();
 
     if (maxDirectMemory == -1) {
       //subtract 2MB because Java also uses direct byte buffers
       final long diskCacheInMB = jvmMaxMemory / 1024 / 1024 - 2;
-      OLogManager.instance().info(this,
+      OLogManager.instance().infoNoDb(this,
           "OrientDB auto-config DISKCACHE=%,dMB (heap=%,dMB direct=%,dMB os=%,dMB), assuming maximum direct memory size "
               + "equals to maximum JVM heap size", diskCacheInMB, jvmMaxMemory / 1024 / 1024, jvmMaxMemory / 1024 / 1024,
-          osMemory / 1024 / 1024);
+          osMemory.memoryLimit / 1024 / 1024);
 
       OGlobalConfiguration.DISK_CACHE_SIZE.setValue(diskCacheInMB);
       OGlobalConfiguration.MEMORY_CHUNK_SIZE
@@ -96,12 +106,29 @@ public class OMemoryAndLocalPaginatedEnginesInitializer {
 
     final long maxDirectMemoryInMB = maxDirectMemory / 1024 / 1024;
 
-    // DISK-CACHE IN MB = OS MEMORY - MAX HEAP JVM MEMORY - 2 GB
-    long diskCacheInMB = (osMemory - jvmMaxMemory) / (1024 * 1024) - 2 * 1024;
+    long diskCacheInMB;
+    if (osMemory.insideContainer) {
+      OLogManager.instance().infoNoDb(this,
+          "Because OrientDB is running inside a container %s of memory will be left unallocated according to the setting '%s'"
+              + " not taking into account heap memory", OGlobalConfiguration.MEMORY_LEFT_TO_CONTAINER.getValueAsString(),
+          OGlobalConfiguration.MEMORY_LEFT_TO_CONTAINER.getKey());
+
+      diskCacheInMB = (calculateMemoryLeft(osMemory.memoryLimit, OGlobalConfiguration.MEMORY_LEFT_TO_CONTAINER.getKey(),
+          OGlobalConfiguration.MEMORY_LEFT_TO_CONTAINER.getValueAsString()) - jvmMaxMemory) / (1024 * 1024);
+    } else {
+      OLogManager.instance().infoNoDb(this, "Because OrientDB is running outside a container %s of memory will be left "
+              + "unallocated according to the setting '%s' not taking into account heap memory",
+          OGlobalConfiguration.MEMORY_LEFT_TO_OS.getValueAsString(), OGlobalConfiguration.MEMORY_LEFT_TO_OS.getKey());
+
+      diskCacheInMB = (calculateMemoryLeft(osMemory.memoryLimit, OGlobalConfiguration.MEMORY_LEFT_TO_OS.getKey(),
+          OGlobalConfiguration.MEMORY_LEFT_TO_OS.getValueAsString()) - jvmMaxMemory) / (1024 * 1024);
+    }
+
     if (diskCacheInMB > 0) {
       diskCacheInMB = Math.min(diskCacheInMB, maxDirectMemoryInMB);
-      OLogManager.instance().info(null, "OrientDB auto-config DISKCACHE=%,dMB (heap=%,dMB direct=%,dMB os=%,dMB)", diskCacheInMB,
-          jvmMaxMemory / 1024 / 1024, maxDirectMemoryInMB, osMemory / 1024 / 1024);
+      OLogManager.instance()
+          .infoNoDb(null, "OrientDB auto-config DISKCACHE=%,dMB (heap=%,dMB direct=%,dMB os=%,dMB)", diskCacheInMB,
+              jvmMaxMemory / 1024 / 1024, maxDirectMemoryInMB, osMemory.memoryLimit / 1024 / 1024);
 
       OGlobalConfiguration.DISK_CACHE_SIZE.setValue(diskCacheInMB);
       OGlobalConfiguration.MEMORY_CHUNK_SIZE
@@ -109,16 +136,124 @@ public class OMemoryAndLocalPaginatedEnginesInitializer {
     } else {
       // LOW MEMORY: SET IT TO 256MB ONLY
       diskCacheInMB = Math.min(O2QCache.MIN_CACHE_SIZE, maxDirectMemoryInMB);
-      OLogManager.instance().warn(null,
+      OLogManager.instance().warnNoDb(null,
           "Not enough physical memory available for DISKCACHE: %,dMB (heap=%,dMB direct=%,dMB). Set lower Maximum Heap (-Xmx "
-              + "setting on JVM) and restart OrientDB. Now running with DISKCACHE=" + diskCacheInMB + "MB", osMemory / 1024 / 1024,
-          jvmMaxMemory / 1024 / 1024, maxDirectMemoryInMB);
+              + "setting on JVM) and restart OrientDB. Now running with DISKCACHE=" + diskCacheInMB + "MB",
+          osMemory.memoryLimit / 1024 / 1024, jvmMaxMemory / 1024 / 1024, maxDirectMemoryInMB);
       OGlobalConfiguration.DISK_CACHE_SIZE.setValue(diskCacheInMB);
       OGlobalConfiguration.MEMORY_CHUNK_SIZE
           .setValue(Math.min(diskCacheInMB * 1024 * 1024, OGlobalConfiguration.MEMORY_CHUNK_SIZE.getValueAsLong()));
 
-      OLogManager.instance().info(null, "OrientDB config DISKCACHE=%,dMB (heap=%,dMB direct=%,dMB os=%,dMB)", diskCacheInMB,
-          jvmMaxMemory / 1024 / 1024, maxDirectMemoryInMB, osMemory / 1024 / 1024);
+      OLogManager.instance().infoNoDb(null, "OrientDB config DISKCACHE=%,dMB (heap=%,dMB direct=%,dMB os=%,dMB)", diskCacheInMB,
+          jvmMaxMemory / 1024 / 1024, maxDirectMemoryInMB, osMemory.memoryLimit / 1024 / 1024);
     }
+  }
+
+  private long calculateMemoryLeft(long memoryLimit, String parameter, String memoryLeft) {
+    if (memoryLeft == null) {
+      warningInvalidMemoryLeftValue(parameter, null);
+      return memoryLimit;
+    }
+
+    memoryLeft = memoryLeft.toLowerCase(Locale.ENGLISH);
+    if (memoryLeft.length() < 2) {
+      warningInvalidMemoryLeftValue(parameter, memoryLeft);
+      return memoryLimit;
+    }
+
+    final char lastChar = memoryLeft.charAt(memoryLeft.length() - 1);
+    if (lastChar == '%') {
+      final String percentValue = memoryLeft.substring(0, memoryLeft.length() - 1);
+
+      final int percent;
+      try {
+        percent = Integer.parseInt(percentValue);
+      } catch (NumberFormatException e) {
+        warningInvalidMemoryLeftValue(parameter, memoryLeft);
+        return memoryLimit;
+      }
+
+      if (percent < 0 || percent >= 100) {
+        warningInvalidMemoryLeftValue(parameter, memoryLeft);
+        return memoryLimit;
+      }
+
+      return (int) ((memoryLimit * (100.0 - percent)) / 100.0);
+    } else if (lastChar == 'b') {
+      final String bytesValue = memoryLeft.substring(0, memoryLeft.length() - 1);
+      final long bytes;
+      try {
+        bytes = Long.parseLong(bytesValue);
+      } catch (NumberFormatException e) {
+        warningInvalidMemoryLeftValue(parameter, memoryLeft);
+        return memoryLimit;
+      }
+
+      if (bytes < 0) {
+        warningInvalidMemoryLeftValue(parameter, memoryLeft);
+        return memoryLimit;
+      }
+
+      return memoryLimit - bytes;
+    } else if (lastChar == 'k') {
+      final String kbytesValue = memoryLeft.substring(0, memoryLeft.length() - 1);
+      final long kbytes;
+      try {
+        kbytes = Long.parseLong(kbytesValue);
+      } catch (NumberFormatException e) {
+        warningInvalidMemoryLeftValue(parameter, memoryLeft);
+        return memoryLimit;
+      }
+
+      final long bytes = kbytes * 1024;
+      if (bytes < 0) {
+        warningInvalidMemoryLeftValue(parameter, memoryLeft);
+        return memoryLimit;
+      }
+
+      return memoryLimit - bytes;
+    } else if (lastChar == 'm') {
+      final String mbytesValue = memoryLeft.substring(0, memoryLeft.length() - 1);
+      final long mbytes;
+      try {
+        mbytes = Long.parseLong(mbytesValue);
+      } catch (NumberFormatException e) {
+        warningInvalidMemoryLeftValue(parameter, memoryLeft);
+        return memoryLimit;
+      }
+
+      final long bytes = mbytes * 1024 * 1024;
+      if (bytes < 0) {
+        warningInvalidMemoryLeftValue(parameter, memoryLeft);
+        return memoryLimit;
+      }
+
+      return memoryLimit - bytes;
+    } else if (lastChar == 'g') {
+      final String gbytesValue = memoryLeft.substring(0, memoryLeft.length() - 1);
+      final long gbytes;
+      try {
+        gbytes = Long.parseLong(gbytesValue);
+      } catch (NumberFormatException e) {
+        warningInvalidMemoryLeftValue(parameter, memoryLeft);
+        return memoryLimit;
+      }
+
+      final long bytes = gbytes * 1024 * 1024 * 1024;
+      if (bytes < 0) {
+        warningInvalidMemoryLeftValue(parameter, memoryLeft);
+        return memoryLimit;
+      }
+
+      return memoryLimit - bytes;
+    } else {
+      warningInvalidMemoryLeftValue(parameter, memoryLeft);
+      return memoryLimit;
+    }
+  }
+
+  private void warningInvalidMemoryLeftValue(String parameter, String memoryLeft) {
+    OLogManager.instance()
+        .warnNoDb(this, "Invalid value of '%s' parameter ('%s') memory limit will not be decreased", memoryLeft, parameter);
   }
 }

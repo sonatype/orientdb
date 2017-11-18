@@ -23,6 +23,7 @@ import com.hazelcast.core.HazelcastInstanceNotActiveException;
 import com.hazelcast.spi.exception.DistributedObjectDestroyedException;
 import com.orientechnologies.common.concur.OTimeoutException;
 import com.orientechnologies.common.concur.lock.OModificationOperationProhibitedException;
+import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
@@ -60,7 +61,7 @@ public class ODistributedWorker extends Thread {
   private final   boolean                                 acceptsWhileNotOnline;
 
   protected volatile ODatabaseDocumentInternal database;
-  protected volatile OUser               lastUser;
+  protected volatile OUser                     lastUser;
   protected volatile boolean running = true;
 
   private AtomicLong    processedRequests     = new AtomicLong(0);
@@ -133,7 +134,7 @@ public class ODistributedWorker extends Thread {
       } catch (HazelcastInstanceNotActiveException e) {
         Thread.currentThread().interrupt();
         break;
-      } catch (Throwable e) {
+      } catch (Exception e) {
         try {
           if (e.getCause() instanceof InterruptedException)
             Thread.currentThread().interrupt();
@@ -141,7 +142,7 @@ public class ODistributedWorker extends Thread {
             ODistributedServerLog.error(this, localNodeName, reqId != null ? manager.getNodeNameById(reqId.getNodeId()) : "?",
                 ODistributedServerLog.DIRECTION.IN, "Error on executing distributed request %s: (%s) worker=%d", e,
                 message != null ? message.getId() : -1, message != null ? message.getTask() : "-", id);
-        } catch (Throwable t) {
+        } catch (Exception t) {
           ODistributedServerLog.error(this, localNodeName, "?", ODistributedServerLog.DIRECTION.IN,
               "Error on executing distributed request %s: (%s) worker=%d", e, message != null ? message.getId() : -1,
               message != null ? message.getTask() : "-", id);
@@ -289,7 +290,8 @@ public class ODistributedWorker extends Thread {
         Thread.sleep(200);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
-        throw new ODistributedException("Execution has been interrupted");
+
+        throw OException.wrapException(new ODistributedException("Execution has been interrupted"), e);
       }
     }
 
@@ -336,8 +338,8 @@ public class ODistributedWorker extends Thread {
           } else
             origin = null;
 
-        } catch (Throwable ex) {
-          OLogManager.instance().error(this, "Failed on user switching database. " + ex.getMessage());
+        } catch (Exception ex) {
+          OLogManager.instance().error(this, "Failed on user switching database. ", ex);
         }
       }
 
@@ -445,7 +447,8 @@ public class ODistributedWorker extends Thread {
               "Node is not online yet (status=%s), blocking the command until it is online (retry=%d, queue=%d worker=%d)",
               mgr.getNodeStatus(), retry + 1, localQueue.size(), id);
 
-          if (localQueue.size() >= manager.getServerInstance().getContextConfiguration().getValueAsInteger(OGlobalConfiguration.DISTRIBUTED_LOCAL_QUEUESIZE)) {
+          if (localQueue.size() >= manager.getServerInstance().getContextConfiguration()
+              .getValueAsInteger(OGlobalConfiguration.DISTRIBUTED_LOCAL_QUEUESIZE)) {
             // QUEUE FULL, EMPTY THE QUEUE, IGNORE ALL THE NEXT MESSAGES UNTIL A DELTA SYNC IS EXECUTED
             ODistributedServerLog.warn(this, localNodeName, null, DIRECTION.NONE,
                 "Replication queue is full (retry=%d, queue=%d worker=%d), replication could be delayed", retry + 1,

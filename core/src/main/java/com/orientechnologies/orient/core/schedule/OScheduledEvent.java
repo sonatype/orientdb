@@ -68,12 +68,12 @@ public class OScheduledEvent extends ODocumentWrapper {
     @Override
     public void run() {
       if (isRunning) {
-        OLogManager.instance().error(this, "Error: The scheduled event '" + getName() + "' is already running");
+        OLogManager.instance().error(this, "Error: The scheduled event '" + getName() + "' is already running", null);
         return;
       }
 
       if (function == null) {
-        OLogManager.instance().error(this, "Error: The scheduled event '" + getName() + "' has no configured function");
+        OLogManager.instance().error(this, "Error: The scheduled event '" + getName() + "' has no configured function", null);
         return;
       }
 
@@ -82,7 +82,7 @@ public class OScheduledEvent extends ODocumentWrapper {
         executeFunction();
 
       } catch (Exception e) {
-        e.printStackTrace();
+        OLogManager.instance().error(this, "Error during execution of scheduled function", e);
       } finally {
         if (timer != null) {
           // RE-SCHEDULE THE NEXT EVENT
@@ -101,7 +101,7 @@ public class OScheduledEvent extends ODocumentWrapper {
     try {
       cron = new OCronExpression(getRule());
     } catch (ParseException e) {
-      OLogManager.instance().error(this, "Error on compiling cron expression " + getRule());
+      OLogManager.instance().error(this, "Error on compiling cron expression " + getRule(), e);
     }
   }
 
@@ -184,7 +184,7 @@ public class OScheduledEvent extends ODocumentWrapper {
     try {
       cron.buildExpression(getRule());
     } catch (ParseException e) {
-      OLogManager.instance().error(this, "Error on compiling cron expression " + getRule());
+      OLogManager.instance().error(this, "Error on compiling cron expression " + getRule(), e);
     }
   }
 
@@ -231,17 +231,18 @@ public class OScheduledEvent extends ODocumentWrapper {
             break;
 
           OLogManager.instance()
-              .info(this, "Cannot change the status of the scheduled event '%s' executionId=%d, retry %d", getName(),
+              .info(this, "Cannot change the status of the scheduled event '%s' executionId=%d, retry %d", e, getName(),
                   nextExecutionId, retry);
 
         } catch (ORecordNotFoundException e) {
           OLogManager.instance()
-              .info(this, "Scheduled event '%s' executionId=%d not found on database, removing event", getName(), nextExecutionId);
+              .info(this, "Scheduled event '%s' executionId=%d not found on database, removing event", e, getName(),
+                  nextExecutionId);
 
           timer = null;
           break;
 
-        } catch (Throwable e) {
+        } catch (Exception e) {
           // SUSPEND EXECUTION
           OLogManager.instance()
               .error(this, "Error during starting of scheduled event '%s' executionId=%d", e, getName(), nextExecutionId);
@@ -299,7 +300,7 @@ public class OScheduledEvent extends ODocumentWrapper {
   }
 
   private void bindDb() {
-    final ODatabaseDocumentInternal tlDb = ODatabaseRecordThreadLocal.INSTANCE.get();
+    final ODatabaseDocumentInternal tlDb = ODatabaseRecordThreadLocal.instance().get();
     if (tlDb != null && !tlDb.isClosed())
       this.db = tlDb.copy();
   }

@@ -23,6 +23,7 @@ import com.hazelcast.core.HazelcastInstanceNotActiveException;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.server.OSystemDatabase;
 import com.orientechnologies.orient.server.distributed.*;
 import com.orientechnologies.orient.server.distributed.impl.task.OGossipTask;
 import com.orientechnologies.orient.server.distributed.impl.task.ORequestDatabaseConfigurationTask;
@@ -62,7 +63,7 @@ public class OClusterHealthChecker extends TimerTask {
 
       } catch (HazelcastInstanceNotActiveException e) {
         // IGNORE IT
-      } catch (Throwable t) {
+      } catch (Exception t) {
         if (manager.getServerInstance().isActive())
           OLogManager.instance().error(this, "Error on checking cluster health", t);
         else
@@ -171,8 +172,15 @@ public class OClusterHealthChecker extends TimerTask {
       // ONLY ONLINE NODE CAN TRY TO RECOVER FOR SINGLE DB STATUS
       return;
 
+    if (!manager.getServerInstance().isActive())
+      return;
+
     for (String dbName : manager.getMessageService().getDatabases()) {
       final ODistributedServerManager.DB_STATUS localNodeStatus = manager.getDatabaseStatus(manager.getLocalNodeName(), dbName);
+      if (OSystemDatabase.SYSTEM_DB_NAME.equalsIgnoreCase(dbName))
+        // ONLY NOT_AVAILABLE NODE/DB CAN BE RECOVERED
+        continue;
+
       if (localNodeStatus != ODistributedServerManager.DB_STATUS.NOT_AVAILABLE)
         // ONLY NOT_AVAILABLE NODE/DB CAN BE RECOVERED
         continue;

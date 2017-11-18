@@ -70,6 +70,19 @@ public enum OGlobalConfiguration {
   MEMORY_CHUNK_SIZE("memory.chunk.size", "Size of single memory chunk (in bytes) which will be preallocated by OrientDB",
       Integer.class, Integer.MAX_VALUE),
 
+  MEMORY_LEFT_TO_OS("memory.leftToOS", "Amount of free memory which should be left unallocated in case of OrientDB is started outside of container. "
+      + "Value can be set as % of total memory provided to OrientDB or as absolute value in bytes, kilobytes, megabytes or gigabytes. "
+      + "If you set value as 10% it means that 10% of memory will not be allocated by OrientDB and will be left to use by the rest of "
+      + "applications, if 2g value is provided it means that 2 gigabytes of memory will be left to use by the rest of applications. "
+      + "Default value is 2g", String.class, "2g"),
+
+  MEMORY_LEFT_TO_CONTAINER("memory.leftToContainer", "Amount of free memory which should be left unallocated in case of OrientDB is started inside of container. "
+      + "Value can be set as % of total memory provided to OrientDB or as absolute value in bytes, kilobytes, megabytes or gigabytes. "
+      + "If you set value as 10% it means that 10% of memory will not be allocated by OrientDB and will be left to use by the rest of "
+      + "applications, if 2g value is provided it means that 2 gigabytes of memory will be left to use by the rest of applications. "
+      + "Default value is 256m", String.class, "256m"),
+
+
   DIRECT_MEMORY_SAFE_MODE("memory.directMemory.safeMode",
       "Indicates whether to perform a range check before each direct memory update. It is true by default, "
           + "but usually it can be safely set to false. It should only be to true after dramatic changes have been made in the storage structures",
@@ -78,7 +91,7 @@ public enum OGlobalConfiguration {
   DIRECT_MEMORY_TRACK_MODE("memory.directMemory.trackMode",
       "Activates the direct memory pool [leak detector](Leak-Detector.md). This detector causes a large overhead and should be used for debugging "
           + "purposes only. It's also a good idea to pass the "
-          + "-Djava.util.logging.manager=com.orientechnologies.common.log.OLogManager$DebugLogManager switch to the JVM, "
+          + "-Djava.util.logging.manager=com.orientechnologies.common.log.OLogManager$ShutdownLogManager switch to the JVM, "
           + "if you use this mode, this will enable the logging from JVM shutdown hooks.", Boolean.class, false),
 
   DIRECT_MEMORY_TRACE("memory.directMemory.trace",
@@ -209,6 +222,10 @@ public enum OGlobalConfiguration {
   STORAGE_TRACK_CHANGED_RECORDS_IN_WAL("storage.trackChangedRecordsInWAL",
       "If this flag is set metadata which contains rids of changed records is added at the end of each atomic operation",
       Boolean.class, false),
+
+  STORAGE_INTERNAL_JOURNALED_TX_STREAMING_PORT("storage.internal.journaled.tx.streaming.port", "Activates journaled tx streaming "
+      + "on the given TCP/IP port. Used for internal testing purposes only. Never touch it if you don't know what you doing.",
+      Integer.class, null),
 
   USE_WAL("storage.useWAL", "Whether WAL should be used in paginated storage", Boolean.class, true),
 
@@ -376,7 +393,7 @@ public enum OGlobalConfiguration {
       "Indicates the index durability level in TX mode. Can be ROLLBACK_ONLY or FULL (ROLLBACK_ONLY by default)", String.class,
       "FULL"),
 
-  INDEX_CURSOR_PREFETCH_SIZE("index.cursor.prefetchSize", "Default prefetch size of index cursor", Integer.class, 500000),
+  INDEX_CURSOR_PREFETCH_SIZE("index.cursor.prefetchSize", "Default prefetch size of index cursor", Integer.class, 10000),
 
   // SBTREE
   SBTREE_MAX_DEPTH("sbtree.maxDepth",
@@ -451,6 +468,10 @@ public enum OGlobalConfiguration {
 
   NETWORK_REQUEST_TIMEOUT("network.requestTimeout", "Request completion timeout (in ms)", Integer.class, 3600000 /* one hour */,
       true),
+
+
+  NETWORK_SOCKET_RETRY_STRATEGY("network.retry.strategy",
+      "Select the retry server selection strategy, possible values are auto,same-dc ", String.class, "auto", true),
 
   NETWORK_SOCKET_RETRY("network.retry", "Number of attempts to connect to the server on failure", Integer.class, 5, true),
 
@@ -536,6 +557,11 @@ public enum OGlobalConfiguration {
       Orient.instance().getProfiler().setAutoDump((Integer) iNewValue);
     }
   }),
+
+  /**
+   * @Since 2.2.27
+   */
+  PROFILER_AUTODUMP_TYPE("profiler.autoDump.type", "Type of profiler dump between 'full' or 'performance'", String.class, "full"),
 
   PROFILER_MAXVALUES("profiler.maxValues", "Maximum values to store. Values are managed in a LRU", Integer.class, 200),
 
@@ -682,7 +708,6 @@ public enum OGlobalConfiguration {
       "guarantee that the server use global context for search the database instance", Boolean.class, Boolean.TRUE, true, false),
 
   // DISTRIBUTED
-
   /**
    * @Since 2.2.18
    */
@@ -831,13 +856,13 @@ public enum OGlobalConfiguration {
    */
   @OApi(maturity = OApi.MATURITY.NEW) DISTRIBUTED_CONCURRENT_TX_MAX_AUTORETRY("distributed.concurrentTxMaxAutoRetry",
       "Maximum attempts the transaction coordinator should execute a transaction automatically, if records are locked. (Minimum is 1 = no attempts)",
-      Integer.class, 10, true),
+      Integer.class, 15, true),
 
   /**
    * @Since 2.2.7
    */
   @OApi(maturity = OApi.MATURITY.NEW) DISTRIBUTED_ATOMIC_LOCK_TIMEOUT("distributed.atomicLockTimeout",
-      "Timeout (in ms) to acquire a distributed lock on a record. (0=infinite)", Integer.class, 300, true),
+      "Timeout (in ms) to acquire a distributed lock on a record. (0=infinite)", Integer.class, 1000, true),
 
   /**
    * @Since 2.1
@@ -945,6 +970,11 @@ public enum OGlobalConfiguration {
     readConfiguration();
   }
 
+  /**
+   * Place holder for the "undefined" value of setting.
+   */
+  private final Object nullValue = new Object();
+
   private final String                       key;
   private final Object                       defValue;
   private final Class<?>                     type;
@@ -952,7 +982,8 @@ public enum OGlobalConfiguration {
   private final OConfigurationChangeCallback changeCallback;
   private final Boolean                      canChangeAtRuntime;
   private final boolean                      hidden;
-  private volatile Object value = null;
+
+  private volatile Object value = nullValue;
 
   OGlobalConfiguration(final String iKey, final String iDescription, final Class<?> iType, final Object iDefValue,
       final OConfigurationChangeCallback iChangeAction) {
@@ -1053,7 +1084,14 @@ public enum OGlobalConfiguration {
 
   public <T> T getValue() {
     //noinspection unchecked
-    return (T) (value != null ? value : defValue);
+    return (T) (value != null && value != nullValue ? value : defValue);
+  }
+
+  /**
+   * @return <code>true</code> if configuration was changed from default value and <code>false</code> otherwise.
+   */
+  public boolean isChanged() {
+    return value != nullValue;
   }
 
   public void setValue(final Object iValue) {
@@ -1095,34 +1133,34 @@ public enum OGlobalConfiguration {
 
     if (changeCallback != null) {
       try {
-        changeCallback.change(oldValue, value);
+        changeCallback.change(oldValue == nullValue ? null : oldValue, value == nullValue ? null : value);
       } catch (Exception e) {
-        e.printStackTrace();
+        OLogManager.instance().error(this, "Error during call of 'change callback'", e);
       }
     }
   }
 
   public boolean getValueAsBoolean() {
-    final Object v = value != null ? value : defValue;
+    final Object v = value != null && value != nullValue ? value : defValue;
     return v instanceof Boolean ? (Boolean) v : Boolean.parseBoolean(v.toString());
   }
 
   public String getValueAsString() {
-    return value != null ? value.toString() : defValue != null ? defValue.toString() : null;
+    return value != null && value != nullValue ? value.toString() : defValue != null ? defValue.toString() : null;
   }
 
   public int getValueAsInteger() {
-    final Object v = value != null ? value : defValue;
+    final Object v = value != null && value != nullValue ? value : defValue;
     return (int) (v instanceof Number ? ((Number) v).intValue() : OFileUtils.getSizeAsNumber(v.toString()));
   }
 
   public long getValueAsLong() {
-    final Object v = value != null ? value : defValue;
+    final Object v = value != null && value != nullValue ? value : defValue;
     return v instanceof Number ? ((Number) v).longValue() : OFileUtils.getSizeAsNumber(v.toString());
   }
 
   public float getValueAsFloat() {
-    final Object v = value != null ? value : defValue;
+    final Object v = value != null && value != nullValue ? value : defValue;
     return v instanceof Float ? (Float) v : Float.parseFloat(v.toString());
   }
 

@@ -49,7 +49,7 @@ public interface OWriteCache {
 
   void removeLowDiskSpaceListener(OLowDiskSpaceListener listener);
 
-  long bookFileId(String fileName) throws IOException;
+  long bookFileId(String fileName);
 
   /**
    * Registers new file in write cache and returns file id assigned to this file.
@@ -100,7 +100,7 @@ public interface OWriteCache {
 
   void flush();
 
-  long getFilledUpTo(long fileId) throws IOException;
+  long getFilledUpTo(long fileId);
 
   long getExclusiveWriteCachePagesSize();
 
@@ -120,7 +120,7 @@ public interface OWriteCache {
 
   long[] close() throws IOException;
 
-  void close(long fileId, boolean flush) throws IOException;
+  void close(long fileId, boolean flush);
 
   OPageDataVerificationError[] checkStoredPages(OCommandOutputListener commandOutputListener);
 
@@ -142,6 +142,21 @@ public interface OWriteCache {
   int getId();
 
   Map<String, Long> files();
+
+  /**
+   * DO NOT DELETE THIS METHOD IT IS USED IN ENTERPRISE STORAGE
+   *
+   * @return Size of page inside of cache.
+   */
+  int pageSize();
+
+  /**
+   * DO NOT DELETE THIS METHOD IT IS USED IN ENTERPRISE STORAGE
+   * <p>
+   * Takes two ids and checks whether they are equal from point of view of write cache. In other words
+   * methods checks whether two ids in reality contain the same internal ids.
+   */
+  boolean fileIdsAreEqual(long firsId, long secondId);
 
   /**
    * Finds if there was file in write cache with given id which is deleted right now.
@@ -199,7 +214,7 @@ public interface OWriteCache {
 
   OLogSequenceNumber getMinimalNotFlushedLSN();
 
-  void updateDirtyPagesTable(OCachePointer pointer) throws IOException;
+  void updateDirtyPagesTable(OCachePointer pointer);
 
   OPerformanceStatisticManager getPerformanceStatisticManager();
 }

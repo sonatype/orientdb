@@ -22,6 +22,7 @@ package com.orientechnologies.orient.core.serialization.serializer.record.string
 import com.orientechnologies.common.collection.OMultiValue;
 import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.io.OIOUtils;
+import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.parser.OStringParser;
 import com.orientechnologies.common.util.OCommonConst;
 import com.orientechnologies.orient.core.Orient;
@@ -203,7 +204,7 @@ public class ORecordSerializerJSON extends ORecordSerializerStringAbstract {
           }
         } else if (needReload && fieldName.equals(ODocumentHelper.ATTRIBUTE_RID) && iRecord instanceof ODocument) {
           if (fieldValue != null && fieldValue.length() > 0) {
-            ORecord localRecord = ODatabaseRecordThreadLocal.INSTANCE.get().load(new ORecordId(fieldValueAsString));
+            ORecord localRecord = ODatabaseRecordThreadLocal.instance().get().load(new ORecordId(fieldValueAsString));
             if (localRecord != null)
               iRecord = localRecord;
           }
@@ -515,8 +516,9 @@ public class ORecordSerializerJSON extends ORecordSerializerStringAbstract {
             // TRY TO PARSE AS DATE
             return ODateHelper.getDateFormatInstance().parseObject(iFieldValueAsString);
           } catch (ParseException ex) {
+            OLogManager.instance().error(this, "Exception is suppressed, original exception is ", e);
             throw OException.wrapException(new OSerializationException(
-                "Unable to unmarshall date (format=" + ODateHelper.getDateFormat() + ") : " + iFieldValueAsString), e);
+                "Unable to unmarshall date (format=" + ODateHelper.getDateFormat() + ") : " + iFieldValueAsString), ex);
           }
         }
 
@@ -531,11 +533,12 @@ public class ORecordSerializerJSON extends ORecordSerializerStringAbstract {
             // TRY TO PARSE AS DATETIME
             return ODateHelper.getDateTimeFormatInstance().parseObject(iFieldValueAsString);
           } catch (ParseException ex) {
+            OLogManager.instance().error(this, "Exception is suppressed, original exception is ", e);
             throw OException
                 .wrapException(
                     new OSerializationException(
                         "Unable to unmarshall datetime (format=" + ODateHelper.getDateTimeFormat() + ") : " + iFieldValueAsString),
-                    e);
+                    ex);
           }
         }
       case BINARY:
@@ -619,7 +622,7 @@ public class ORecordSerializerJSON extends ORecordSerializerStringAbstract {
     if (shouldBeDeserializedAsEmbedded(recordInternal, iType))
       ODocumentInternal.addOwner(recordInternal, iRecord);
     else {
-      ODatabaseDocument database = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
+      ODatabaseDocument database = ODatabaseRecordThreadLocal.instance().getIfDefined();
 
       if (rid.isPersistent() && database != null) {
         ODocument documentToMerge = database.load(rid);

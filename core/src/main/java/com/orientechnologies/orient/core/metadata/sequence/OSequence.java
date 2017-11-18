@@ -216,7 +216,7 @@ public abstract class OSequence {
   }
 
   protected synchronized ODatabaseDocumentInternal getDatabase() {
-    return ODatabaseRecordThreadLocal.INSTANCE.get();
+    return ODatabaseRecordThreadLocal.instance().get();
   }
 
   public static String getSequenceName(final ODocument iDocument) {
@@ -272,11 +272,11 @@ public abstract class OSequence {
       try {
         reloadSequence();
         return callable.call();
-      } catch (OConcurrentModificationException ex) {
+      } catch (OConcurrentModificationException ignore) {
         try {
           Thread.sleep(1 + new Random()
               .nextInt(getDatabase().getConfiguration().getValueAsInteger(OGlobalConfiguration.SEQUENCE_RETRY_DELAY)));
-        } catch (InterruptedException e) {
+        } catch (InterruptedException ignored) {
           Thread.currentThread().interrupt();
           break;
         }
@@ -288,7 +288,7 @@ public abstract class OSequence {
           throw OException
               .wrapException(new OSequenceException("Error in transactional processing of " + getName() + "." + method + "()"), e);
         }
-      } catch (OException ex) {
+      } catch (OException ignore) {
         reloadSequence();
       } catch (Exception e) {
         throw OException
@@ -300,6 +300,7 @@ public abstract class OSequence {
       return callable.call();
     } catch (Exception e) {
       if (e.getCause() instanceof OConcurrentModificationException) {
+        //noinspection ThrowInsideCatchBlockWhichIgnoresCaughtException
         throw ((OConcurrentModificationException) e.getCause());
       }
       throw OException

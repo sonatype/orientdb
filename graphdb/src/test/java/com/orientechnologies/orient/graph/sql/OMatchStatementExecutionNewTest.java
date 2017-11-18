@@ -3,6 +3,7 @@ package com.orientechnologies.orient.graph.sql;
 import com.orientechnologies.common.profiler.OProfiler;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
+import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.record.OElement;
 import com.orientechnologies.orient.core.record.OVertex;
 import com.orientechnologies.orient.core.record.impl.ODocument;
@@ -1283,7 +1284,7 @@ public class OMatchStatementExecutionNewTest {
     StringBuilder query = new StringBuilder();
     query.append("match ");
     query.append("{class:TriangleV, as: friend1, where: (uid = 0)}");
-    query.append("return friend1.out('TriangleE')[0-1] as foo");
+    query.append("return friend1.out('TriangleE')[0..1] as foo");
 
     OResultSet result = db.query(query.toString());
     Assert.assertTrue(result.hasNext());
@@ -1302,7 +1303,7 @@ public class OMatchStatementExecutionNewTest {
     StringBuilder query = new StringBuilder();
     query.append("match ");
     query.append("{class:TriangleV, as: friend1, where: (uid = 0)}");
-    query.append("return friend1.out('TriangleE')[0-2] as foo");
+    query.append("return friend1.out('TriangleE')[0..2] as foo");
 
     OResultSet result = db.query(query.toString());
     Assert.assertTrue(result.hasNext());
@@ -1321,7 +1322,7 @@ public class OMatchStatementExecutionNewTest {
     StringBuilder query = new StringBuilder();
     query.append("match ");
     query.append("{class:TriangleV, as: friend1, where: (uid = 0)}");
-    query.append("return friend1.out('TriangleE')[0-3] as foo");
+    query.append("return friend1.out('TriangleE')[0..3] as foo");
 
     OResultSet result = db.query(query.toString());
     Assert.assertTrue(result.hasNext());
@@ -1667,15 +1668,254 @@ public class OMatchStatementExecutionNewTest {
 
     db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'bbb', surname = 'ccc'")).execute();
 
-    String query = "MATCH { class: "+clazz+", as:a} RETURN a:{name}, 'x' ";
+    String query = "MATCH { class: " + clazz + ", as:a} RETURN a:{name}, 'x' ";
 
     OResultSet result = db.query(query);
     Assert.assertTrue(result.hasNext());
     OResult item = result.next();
     OResult a = item.getProperty("a");
     Assert.assertEquals("bbb", a.getProperty("name"));
-    Assert.assertNull( a.getProperty("surname"));
+    Assert.assertNull(a.getProperty("surname"));
     Assert.assertFalse(result.hasNext());
+    result.close();
+  }
+
+  @Test
+  public void testAggregate() {
+    String clazz = "testAggregate";
+    db.command(new OCommandSQL("CREATE CLASS " + clazz + " EXTENDS V")).execute();
+
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'aaa', num = 1")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'aaa', num = 2")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'aaa', num = 3")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'bbb', num = 4")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'bbb', num = 5")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'bbb', num = 6")).execute();
+
+    String query = "MATCH { class: " + clazz + ", as:a} RETURN a.name as a, max(a.num) as maxNum group by a.name order by a.name";
+
+    OResultSet result = db.query(query);
+    Assert.assertTrue(result.hasNext());
+    OResult item = result.next();
+    Assert.assertEquals("aaa", item.getProperty("a"));
+    Assert.assertEquals(3, (int) item.getProperty("maxNum"));
+
+    Assert.assertTrue(result.hasNext());
+    item = result.next();
+    Assert.assertEquals("bbb", item.getProperty("a"));
+    Assert.assertEquals(6, (int) item.getProperty("maxNum"));
+
+    Assert.assertFalse(result.hasNext());
+    result.close();
+  }
+
+  @Test
+  public void testOrderByOutOfProjAsc() {
+    String clazz = "testOrderByOutOfProjAsc";
+    db.command(new OCommandSQL("CREATE CLASS " + clazz + " EXTENDS V")).execute();
+
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'aaa', num = 0, num2 = 1")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'aaa', num = 1, num2 = 2")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'aaa', num = 2, num2 = 3")).execute();
+
+    String query = "MATCH { class: " + clazz + ", as:a} RETURN a.name as name, a.num as num order by a.num2 asc";
+
+    OResultSet result = db.query(query);
+    for (int i = 0; i < 3; i++) {
+      Assert.assertTrue(result.hasNext());
+      OResult item = result.next();
+      Assert.assertEquals("aaa", item.getProperty("name"));
+      Assert.assertEquals(i, (int) item.getProperty("num"));
+
+    }
+
+    Assert.assertFalse(result.hasNext());
+    result.close();
+  }
+
+  @Test
+  public void testOrderByOutOfProjDesc() {
+    String clazz = "testOrderByOutOfProjDesc";
+    db.command(new OCommandSQL("CREATE CLASS " + clazz + " EXTENDS V")).execute();
+
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'aaa', num = 0, num2 = 1")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'aaa', num = 1, num2 = 2")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'aaa', num = 2, num2 = 3")).execute();
+
+    String query = "MATCH { class: " + clazz + ", as:a} RETURN a.name as name, a.num as num order by a.num2 desc";
+
+    OResultSet result = db.query(query);
+    for (int i = 2; i >= 0; i--) {
+      Assert.assertTrue(result.hasNext());
+      OResult item = result.next();
+      Assert.assertEquals("aaa", item.getProperty("name"));
+      Assert.assertEquals(i, (int) item.getProperty("num"));
+
+    }
+
+    Assert.assertFalse(result.hasNext());
+    result.close();
+  }
+
+  @Test
+  public void testUnwind() {
+    String clazz = "testUnwind";
+    db.command(new OCommandSQL("CREATE CLASS " + clazz + " EXTENDS V")).execute();
+
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'aaa', coll = [1, 2]")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'bbb', coll = [3, 4]")).execute();
+
+    String query = "MATCH { class: " + clazz + ", as:a} RETURN a.name as name, a.coll as num unwind num";
+
+    int sum = 0;
+    OResultSet result = db.query(query);
+    for (int i = 0; i < 4; i++) {
+      Assert.assertTrue(result.hasNext());
+      OResult item = result.next();
+      sum += (int) item.getProperty("num");
+    }
+
+    Assert.assertFalse(result.hasNext());
+
+    result.close();
+    Assert.assertEquals(10, sum);
+  }
+
+  @Test
+  public void testSkip() {
+    String clazz = "testSkip";
+    db.command(new OCommandSQL("CREATE CLASS " + clazz + " EXTENDS V")).execute();
+
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'aaa'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'bbb'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'ccc'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'ddd'")).execute();
+
+    String query = "MATCH { class: " + clazz + ", as:a} RETURN a.name as name skip 1 limit 2";
+
+    OResultSet result = db.query(query);
+
+    Assert.assertTrue(result.hasNext());
+    OResult item = result.next();
+    Assert.assertEquals("bbb", item.getProperty("name"));
+
+    Assert.assertTrue(result.hasNext());
+    item = result.next();
+    Assert.assertEquals("ccc", item.getProperty("name"));
+
+    Assert.assertFalse(result.hasNext());
+
+    result.close();
+  }
+
+  @Test
+  public void testDepthAlias() {
+    String clazz = "testDepthAlias";
+    db.command(new OCommandSQL("CREATE CLASS " + clazz + " EXTENDS V")).execute();
+
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'aaa'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'bbb'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'ccc'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'ddd'")).execute();
+
+    db.command(new OCommandSQL(
+        "CREATE EDGE E FROM (SELECT FROM " + clazz + " WHERE name = 'aaa') TO (SELECT FROM " + clazz + " WHERE name = 'bbb')"))
+        .execute();
+    db.command(new OCommandSQL(
+        "CREATE EDGE E FROM (SELECT FROM " + clazz + " WHERE name = 'bbb') TO (SELECT FROM " + clazz + " WHERE name = 'ccc')"))
+        .execute();
+    db.command(new OCommandSQL(
+        "CREATE EDGE E FROM (SELECT FROM " + clazz + " WHERE name = 'ccc') TO (SELECT FROM " + clazz + " WHERE name = 'ddd')"))
+        .execute();
+
+    String query = "MATCH { class: " + clazz
+        + ", as:a, where:(name = 'aaa')} --> {as:b, while:($depth<10), depthAlias: xy} RETURN a.name as name, b.name as bname, xy";
+
+    OResultSet result = db.query(query);
+
+    int sum = 0;
+    for (int i = 0; i < 4; i++) {
+      Assert.assertTrue(result.hasNext());
+      OResult item = result.next();
+      Object depth = item.getProperty("xy");
+      Assert.assertTrue(depth instanceof Integer);
+      Assert.assertEquals("aaa", item.getProperty("name"));
+      switch ((int) depth) {
+      case 0:
+        Assert.assertEquals("aaa", item.getProperty("bname"));
+        break;
+      case 1:
+        Assert.assertEquals("bbb", item.getProperty("bname"));
+        break;
+      case 2:
+        Assert.assertEquals("ccc", item.getProperty("bname"));
+        break;
+      case 3:
+        Assert.assertEquals("ddd", item.getProperty("bname"));
+        break;
+      default:
+        Assert.fail();
+      }
+      sum += (int) depth;
+    }
+    Assert.assertEquals(sum, 6);
+    Assert.assertFalse(result.hasNext());
+
+    result.close();
+  }
+
+  @Test
+  public void testPathAlias() {
+    String clazz = "testPathAlias";
+    db.command(new OCommandSQL("CREATE CLASS " + clazz + " EXTENDS V")).execute();
+
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'aaa'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'bbb'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'ccc'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX " + clazz + " SET name = 'ddd'")).execute();
+
+    db.command(new OCommandSQL(
+        "CREATE EDGE E FROM (SELECT FROM " + clazz + " WHERE name = 'aaa') TO (SELECT FROM " + clazz + " WHERE name = 'bbb')"))
+        .execute();
+    db.command(new OCommandSQL(
+        "CREATE EDGE E FROM (SELECT FROM " + clazz + " WHERE name = 'bbb') TO (SELECT FROM " + clazz + " WHERE name = 'ccc')"))
+        .execute();
+    db.command(new OCommandSQL(
+        "CREATE EDGE E FROM (SELECT FROM " + clazz + " WHERE name = 'ccc') TO (SELECT FROM " + clazz + " WHERE name = 'ddd')"))
+        .execute();
+
+    String query = "MATCH { class: " + clazz
+        + ", as:a, where:(name = 'aaa')} --> {as:b, while:($depth<10), pathAlias: xy} RETURN a.name as name, b.name as bname, xy";
+
+    OResultSet result = db.query(query);
+
+    for (int i = 0; i < 4; i++) {
+      Assert.assertTrue(result.hasNext());
+      OResult item = result.next();
+      Object path = item.getProperty("xy");
+      Assert.assertTrue(path instanceof List);
+      List<OIdentifiable> thePath = (List<OIdentifiable>) path;
+
+      String bname = item.getProperty("bname");
+      if (bname.equals("aaa")) {
+        Assert.assertEquals(0, thePath.size());
+      } else if (bname.equals("aaa")) {
+        Assert.assertEquals(1, thePath.size());
+        Assert.assertEquals("bbb", ((OElement) thePath.get(0).getRecord()).getProperty("name"));
+      } else if (bname.equals("ccc")) {
+        Assert.assertEquals(2, thePath.size());
+        Assert.assertEquals("bbb", ((OElement) thePath.get(0).getRecord()).getProperty("name"));
+        Assert.assertEquals("ccc", ((OElement) thePath.get(1).getRecord()).getProperty("name"));
+      } else if (bname.equals("ddd")) {
+        Assert.assertEquals(3, thePath.size());
+        Assert.assertEquals("bbb", ((OElement) thePath.get(0).getRecord()).getProperty("name"));
+        Assert.assertEquals("ccc", ((OElement) thePath.get(1).getRecord()).getProperty("name"));
+        Assert.assertEquals("ddd", ((OElement) thePath.get(2).getRecord()).getProperty("name"));
+      }
+
+    }
+    Assert.assertFalse(result.hasNext());
+
     result.close();
   }
 

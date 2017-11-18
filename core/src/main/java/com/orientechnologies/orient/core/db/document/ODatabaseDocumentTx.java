@@ -1,7 +1,7 @@
 package com.orientechnologies.orient.core.db.document;
 
 import com.orientechnologies.common.concur.ONeedRetryException;
-import com.orientechnologies.common.exception.OException;
+import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.cache.OLocalRecordCache;
 import com.orientechnologies.orient.core.command.OCommandOutputListener;
@@ -14,7 +14,6 @@ import com.orientechnologies.orient.core.db.*;
 import com.orientechnologies.orient.core.db.record.OCurrentStorageComponentsFactory;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.db.record.ORecordOperation;
-import com.orientechnologies.orient.core.db.record.ridbag.sbtree.OSBTreeCollectionManager;
 import com.orientechnologies.orient.core.dictionary.ODictionary;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
 import com.orientechnologies.orient.core.exception.ODatabaseException;
@@ -29,7 +28,6 @@ import com.orientechnologies.orient.core.iterator.ORecordIteratorCluster;
 import com.orientechnologies.orient.core.metadata.OMetadataInternal;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
 import com.orientechnologies.orient.core.metadata.schema.OSchema;
-import com.orientechnologies.orient.core.metadata.security.ORole;
 import com.orientechnologies.orient.core.metadata.security.ORule;
 import com.orientechnologies.orient.core.metadata.security.OSecurityUser;
 import com.orientechnologies.orient.core.metadata.security.OToken;
@@ -42,8 +40,14 @@ import com.orientechnologies.orient.core.serialization.serializer.record.ORecord
 import com.orientechnologies.orient.core.shutdown.OShutdownHandler;
 import com.orientechnologies.orient.core.sql.OCommandSQLParsingException;
 import com.orientechnologies.orient.core.sql.executor.OResultSet;
-import com.orientechnologies.orient.core.storage.*;
+import com.orientechnologies.orient.core.storage.OBasicTransaction;
+import com.orientechnologies.orient.core.storage.ORecordCallback;
+import com.orientechnologies.orient.core.storage.ORecordMetadata;
+import com.orientechnologies.orient.core.storage.OStorage;
+import com.orientechnologies.orient.core.storage.ridbag.sbtree.OSBTreeCollectionManager;
 import com.orientechnologies.orient.core.tx.OTransaction;
+import com.orientechnologies.orient.core.tx.OTransactionInternal;
+import com.orientechnologies.orient.core.tx.OTransactionOptimistic;
 import com.orientechnologies.orient.core.util.OURLConnection;
 import com.orientechnologies.orient.core.util.OURLHelper;
 
@@ -137,12 +141,12 @@ public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
       baseUrl += "/";
     OrientDBInternal factory;
     synchronized (embedded) {
-      factory = (OrientDBEmbedded) embedded.get(baseUrl);
+      factory = embedded.get(baseUrl);
       if (factory == null || !factory.isOpen()) {
         try {
-          factory= OrientDBInternal.distributed(baseUrl, config);
-        } catch (ODatabaseException ex) {
-          factory = (OrientDBEmbedded) OrientDBInternal.embedded(baseUrl, config);
+          factory = OrientDBInternal.distributed(baseUrl, config);
+        } catch (ODatabaseException ignore) {
+          factory = OrientDBInternal.embedded(baseUrl, config);
         }
         embedded.put(baseUrl, factory);
       }
@@ -151,8 +155,6 @@ public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
   }
 
   /**
-   * @param url
-   *
    * @Deprecated use {{@link OrientDB}} instead.
    */
   @Deprecated
@@ -643,7 +645,7 @@ public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
         // OK
         break;
 
-      } catch (ONeedRetryException e) {
+      } catch (ONeedRetryException ignore) {
         // RETRY
         if (!outDocumentModified)
           outDocument.reload();
@@ -654,13 +656,15 @@ public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
         try {
           edge.delete();
         } catch (Exception ex) {
+          OLogManager.instance().error(this, "Error during edge deletion", ex);
         }
         throw e;
-      } catch (Throwable e) {
+      } catch (Exception e) {
         // REVERT CHANGES. EDGE.REMOVE() TAKES CARE TO UPDATE ALSO BOTH VERTICES IN CASE
         try {
           edge.delete();
         } catch (Exception ex) {
+          OLogManager.instance().error(this, "Error during edge deletion", ex);
         }
         throw new IllegalStateException("Error on addEdge in non tx environment", e);
       }
@@ -1184,7 +1188,7 @@ public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
   public void drop() {
     checkOpenness();
     internal.callOnDropListeners();
-    ODatabaseRecordThreadLocal.INSTANCE.remove();
+    ODatabaseRecordThreadLocal.instance().remove();
     factory.drop(this.getName(), null, null);
     this.internal = null;
     clearOwner();
@@ -1631,5 +1635,10 @@ public class ODatabaseDocumentTx implements ODatabaseDocumentInternal {
   public void recycle(ORecord record) {
     checkOpenness();
     internal.recycle(record);
+  }
+
+  @Override
+  public void internalCommit(OTransactionInternal transaction) {
+    internal.internalCommit(transaction);
   }
 }
