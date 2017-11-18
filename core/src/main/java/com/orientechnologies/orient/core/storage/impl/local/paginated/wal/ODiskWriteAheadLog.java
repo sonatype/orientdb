@@ -22,11 +22,14 @@ package com.orientechnologies.orient.core.storage.impl.local.paginated.wal;
 
 import com.orientechnologies.common.concur.executors.SubScheduledExecutorService;
 import com.orientechnologies.common.concur.lock.OInterruptedException;
+import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.io.OFileUtils;
 import com.orientechnologies.common.io.OIOUtils;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.serialization.types.OIntegerSerializer;
 import com.orientechnologies.common.serialization.types.OLongSerializer;
+import com.orientechnologies.common.thread.OScheduledThreadPoolExecutorWithLogging;
+import com.orientechnologies.common.util.OUncaughtExceptionHandler;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.exception.OStorageException;
 import com.orientechnologies.orient.core.storage.OStorageAbstract;
@@ -44,10 +47,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.locks.Condition;
 import java.util.zip.CRC32;
 
@@ -90,7 +90,7 @@ public class ODiskWriteAheadLog extends OAbstractWriteAheadLog {
 
   private volatile OLogSequenceNumber flushedLsn;
 
-  private volatile OLogSequenceNumber preventCutTill;
+  private final ConcurrentSkipListMap<OLogSequenceNumber, Integer> cutTillLimits = new ConcurrentSkipListMap<OLogSequenceNumber, Integer>();
 
   private volatile long cacheOverflowCount = 0;
 
@@ -114,24 +114,26 @@ public class ODiskWriteAheadLog extends OAbstractWriteAheadLog {
     }
   }
 
-  private final ScheduledThreadPoolExecutor autoFileCloser = new ScheduledThreadPoolExecutor(1, new ThreadFactory() {
+  private final ScheduledThreadPoolExecutor autoFileCloser = new OScheduledThreadPoolExecutorWithLogging(1, new ThreadFactory() {
     @SuppressWarnings("NullableProblems")
     @Override
     public Thread newThread(Runnable r) {
       final Thread thread = new Thread(OStorageAbstract.storageThreadGroup, r);
       thread.setDaemon(true);
       thread.setName("WAL Closer Task (" + getStorage().getName() + ")");
+      thread.setUncaughtExceptionHandler(new OUncaughtExceptionHandler());
       return thread;
     }
   });
 
-  private final ScheduledThreadPoolExecutor commitExecutor = new ScheduledThreadPoolExecutor(1, new ThreadFactory() {
+  private final ScheduledThreadPoolExecutor commitExecutor = new OScheduledThreadPoolExecutorWithLogging(1, new ThreadFactory() {
     @SuppressWarnings("NullableProblems")
     @Override
     public Thread newThread(Runnable r) {
       final Thread thread = new Thread(OStorageAbstract.storageThreadGroup, r);
       thread.setDaemon(true);
       thread.setName("OrientDB WAL Flush Task (" + getStorage().getName() + ")");
+      thread.setUncaughtExceptionHandler(new OUncaughtExceptionHandler());
       return thread;
     }
   });
@@ -374,7 +376,7 @@ public class ODiskWriteAheadLog extends OAbstractWriteAheadLog {
     try {
       //noinspection ResultOfMethodCallIgnored
       Integer.parseInt(walOrder);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException ignore) {
       return false;
     }
 
@@ -396,7 +398,7 @@ public class ODiskWriteAheadLog extends OAbstractWriteAheadLog {
     try {
       //noinspection ResultOfMethodCallIgnored
       Integer.parseInt(walOrder);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException ignore) {
       return false;
     }
 
@@ -555,7 +557,7 @@ public class ODiskWriteAheadLog extends OAbstractWriteAheadLog {
           try {
             segmentCreationComplete.await();
           } catch (InterruptedException e) {
-            throw new OInterruptedException("Segment creation was interrupted");
+            throw OException.wrapException(new OInterruptedException("Segment creation was interrupted"), e);
           }
         }
       }
@@ -787,6 +789,8 @@ public class ODiskWriteAheadLog extends OAbstractWriteAheadLog {
 
       closed = true;
 
+      cutTillLimits.clear();
+
       for (OLogSegment logSegment : logSegments)
         logSegment.close(flush);
 
@@ -798,7 +802,7 @@ public class ODiskWriteAheadLog extends OAbstractWriteAheadLog {
             throw new OStorageException("WAL flush task for '" + getStorage().getName() + "' storage cannot be stopped");
 
         } catch (InterruptedException e) {
-          OLogManager.instance().error(this, "Cannot shutdown background WAL commit thread");
+          OLogManager.instance().error(this, "Cannot shutdown background WAL commit thread", e);
         }
       }
 
@@ -810,7 +814,7 @@ public class ODiskWriteAheadLog extends OAbstractWriteAheadLog {
             throw new OStorageException("WAL file auto close tasks '" + getStorage().getName() + "' storage cannot be stopped");
 
         } catch (InterruptedException e) {
-          OLogManager.instance().error(this, "Shutdown of file auto close tasks was interrupted");
+          OLogManager.instance().error(this, "Shutdown of file auto close tasks was interrupted", e);
         }
       }
 
@@ -916,17 +920,17 @@ public class ODiskWriteAheadLog extends OAbstractWriteAheadLog {
   }
 
   @Override
-  public void cutTill(OLogSequenceNumber lsn) throws IOException {
+  public boolean cutTill(OLogSequenceNumber lsn) throws IOException {
     syncObject.lock();
     try {
       checkForClose();
 
       flush();
 
-      final OLogSequenceNumber maxLsn = preventCutTill;
+      final Map.Entry<OLogSequenceNumber, Integer> firsEntry = cutTillLimits.firstEntry();
 
-      if (maxLsn != null && lsn.compareTo(maxLsn) > 0)
-        lsn = maxLsn;
+      if (firsEntry != null && lsn.compareTo(firsEntry.getKey()) > 0)
+        lsn = firsEntry.getKey();
 
       int lastTruncateIndex = -1;
 
@@ -947,14 +951,56 @@ public class ODiskWriteAheadLog extends OAbstractWriteAheadLog {
 
       recalculateLogSize();
       fixMasterRecords();
+
+      return lastTruncateIndex != -1;
     } finally {
       syncObject.unlock();
     }
   }
 
   @Override
-  public void preventCutTill(OLogSequenceNumber lsn) throws IOException {
-    preventCutTill = lsn;
+  public void addCutTillLimit(OLogSequenceNumber lsn) {
+    if (lsn == null)
+      throw new NullPointerException();
+
+    while (true) {
+      final Integer oldCounter = cutTillLimits.get(lsn);
+
+      final Integer newCounter;
+
+      if (oldCounter == null) {
+        if (cutTillLimits.putIfAbsent(lsn, 1) == null)
+          break;
+      } else {
+        newCounter = oldCounter + 1;
+
+        if (cutTillLimits.replace(lsn, oldCounter, newCounter)) {
+          break;
+        }
+      }
+    }
+  }
+
+  @Override
+  public void removeCutTillLimit(OLogSequenceNumber lsn) {
+    if (lsn == null)
+      throw new NullPointerException();
+
+    while (true) {
+      final Integer oldCounter = cutTillLimits.get(lsn);
+
+      if (oldCounter == null)
+        throw new IllegalArgumentException(String.format("Limit %s is going to be removed but it was not added", lsn));
+
+      final Integer newCounter = oldCounter - 1;
+      if (cutTillLimits.replace(lsn, oldCounter, newCounter)) {
+        if (newCounter == 0) {
+          cutTillLimits.remove(lsn, newCounter);
+        }
+
+        break;
+      }
+    }
   }
 
   @Override
@@ -1035,13 +1081,13 @@ public class ODiskWriteAheadLog extends OAbstractWriteAheadLog {
 
       if (firstCRC != ((int) crc32.getValue())) {
         OLogManager.instance()
-            .error(this, "Cannot restore %d WAL master record for storage %s crc check is failed", index, storageName);
+            .error(this, "Cannot restore %d WAL master record for storage %s crc check is failed", null, index, storageName);
         return null;
       }
 
       return new OLogSequenceNumber(segment, position);
     } catch (EOFException eofException) {
-      OLogManager.instance().debug(this, "Cannot restore %d WAL master record for storage %s", index, storageName);
+      OLogManager.instance().debug(this, "Cannot restore %d WAL master record for storage %s", eofException, index, storageName);
       return null;
     }
   }

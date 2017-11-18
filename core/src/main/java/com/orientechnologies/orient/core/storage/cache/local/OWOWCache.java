@@ -28,7 +28,10 @@ import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.serialization.types.OBinarySerializer;
 import com.orientechnologies.common.serialization.types.OIntegerSerializer;
 import com.orientechnologies.common.serialization.types.OLongSerializer;
+import com.orientechnologies.common.thread.OScheduledThreadPoolExecutorWithLogging;
+import com.orientechnologies.common.thread.OThreadPoolExecutorWithLogging;
 import com.orientechnologies.common.types.OModifiableBoolean;
+import com.orientechnologies.common.util.OUncaughtExceptionHandler;
 import com.orientechnologies.orient.core.command.OCommandOutputListener;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.exception.OStorageException;
@@ -212,8 +215,9 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
         logCrc32ArraysWarningAndSwitchToArrays(e);
       }
 
-      commitExecutor = Executors.newSingleThreadScheduledExecutor(new FlushThreadFactory(storageLocal.getName()));
-      cacheEventsPublisher = Executors.newCachedThreadPool(new CacheEventsPublisherFactory(storageLocal.getName()));
+      commitExecutor = new OScheduledThreadPoolExecutorWithLogging(1, new FlushThreadFactory(storageLocal.getName()));
+      cacheEventsPublisher = new OThreadPoolExecutorWithLogging(0, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS,
+          new SynchronousQueue<Runnable>(), new CacheEventsPublisherFactory(storageLocal.getName()));
 
       MAX_PAGES_PER_FLUSH = (int) (4000 / (1000.0 / pageFlushInterval));
 
@@ -567,9 +571,25 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
         if (existingFileId == intId)
           throw new OStorageException(
               "File with name '" + fileName + "' already exists in storage '" + storageLocal.getName() + "'");
-        else
-          throw new OStorageException(
-              "File with given name already exists but has different id " + existingFileId + " vs. proposed " + fileId);
+        else {
+          final OClosableEntry<Long, OFileClassic> entry = files.acquire(externalFileId(existingFileId));
+
+          try {
+            if (entry != null) {
+              fileClassic = entry.get();
+
+              if (fileClassic.exists()) {
+                throw new OStorageException(
+                    "File with given name '" + fileName + "' already exists but has different id " + existingFileId
+                        + " vs. proposed " + intId);
+              }
+            }
+          } finally {
+            files.release(entry);
+          }
+
+          deleteFile(fileId);
+        }
       }
 
       fileId = composeFileId(id, intId);
@@ -892,7 +912,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
     try {
       future.get();
     } catch (InterruptedException e) {
-      throw new OInterruptedException("File flush was interrupted");
+      throw OException.wrapException(new OInterruptedException("File flush was interrupted"), e);
     } catch (Exception e) {
       throw OException.wrapException(new OWriteCacheException("File flush was abnormally terminated"), e);
     }
@@ -1016,7 +1036,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
         if (!commitExecutor.awaitTermination(5, TimeUnit.MINUTES))
           throw new OWriteCacheException("Background data flush task cannot be stopped.");
       } catch (InterruptedException e) {
-        OLogManager.instance().error(this, "Data flush thread was interrupted");
+        OLogManager.instance().error(this, "Data flush thread was interrupted", e);
 
         Thread.currentThread().interrupt();
         throw OException.wrapException(new OWriteCacheException("Data flush thread was interrupted"), e);
@@ -1234,8 +1254,9 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
         if (!commitExecutor.awaitTermination(5, TimeUnit.MINUTES))
           throw new OWriteCacheException("Background data flush task cannot be stopped.");
       } catch (InterruptedException e) {
-        OLogManager.instance().error(this, "Data flush thread was interrupted");
-        throw new OInterruptedException("Data flush thread was interrupted");
+        OLogManager.instance().error(this, "Data flush thread was interrupted", e);
+
+        throw OException.wrapException(new OInterruptedException("Data flush thread was interrupted"), e);
       }
     }
 
@@ -1422,7 +1443,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
       final int fileId = (int) nameIdMapHolder.readLong();
 
       return new NameFileIdEntry(name, fileId);
-    } catch (EOFException eof) {
+    } catch (EOFException ignore) {
       return null;
     }
   }
@@ -1471,7 +1492,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
     try {
       future.get();
     } catch (InterruptedException e) {
-      throw new OInterruptedException("File data removal was interrupted");
+      throw OException.wrapException(new OInterruptedException("File data removal was interrupted"), e);
     } catch (Exception e) {
       throw OException.wrapException(new OWriteCacheException("File data removal was abnormally terminated"), e);
     }
@@ -1579,7 +1600,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
     if (magicNumber != MAGIC_NUMBER_WITH_CHECKSUM) {
       if (magicNumber != MAGIC_NUMBER_WITHOUT_CHECKSUM) {
         final String message = "Magic number verification failed for page '" + pageIndex + "' of '" + fileNameById(fileId) + "'.";
-        OLogManager.instance().error(this, "%s", message);
+        OLogManager.instance().error(this, "%s", null, message);
         if (checksumMode == OChecksumMode.StoreAndThrow) {
 
           if (buffersToRelease == null)
@@ -1592,9 +1613,9 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
         } else if (checksumMode == OChecksumMode.StoreAndSwitchReadOnlyMode) {
           callPageIsBrokenListeners(fileNameById(fileId), pageIndex);
         }
-
-        return;
       }
+
+      return;
     }
 
     buffer.position(CHECKSUM_OFFSET);
@@ -1627,7 +1648,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
 
     if (computedChecksum != storedChecksum) {
       final String message = "Checksum verification failed for page '" + pageIndex + "' of '" + fileNameById(fileId) + "'.";
-      OLogManager.instance().error(this, "%s", message);
+      OLogManager.instance().error(this, "%s", null, message);
       if (checksumMode == OChecksumMode.StoreAndThrow) {
 
         if (buffersToRelease == null)
@@ -1841,7 +1862,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
             }
           }
         }
-      } catch (Throwable e) {
+      } catch (Exception e) {
         OLogManager.instance().error(this, "Exception during data flush", e);
         OWOWCache.this.fireBackgroundDataProcessingExceptionEvent(e);
       } finally {
@@ -2130,7 +2151,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
           writeAheadLog.cutTill(minLsn);
 
         OLogManager.instance().debug(this, "End fuzzy checkpoint");
-      } catch (Throwable e) {
+      } catch (Exception e) {
         OLogManager.instance().error(this, "Error during fuzzy checkpoint", e);
         fireBackgroundDataProcessingExceptionEvent(e);
       } finally {
@@ -2298,6 +2319,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
       thread.setDaemon(true);
       thread.setPriority(Thread.MAX_PRIORITY);
       thread.setName("OrientDB Write Cache Flush Task (" + storageName + ")");
+      thread.setUncaughtExceptionHandler(new OUncaughtExceptionHandler());
       return thread;
     }
   }
@@ -2314,6 +2336,8 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
       Thread thread = new Thread(OStorageAbstract.storageThreadGroup, r);
       thread.setDaemon(true);
       thread.setName("OrientDB Write Cache Event Publisher  (" + storageName + ")");
+      thread.setUncaughtExceptionHandler(new OUncaughtExceptionHandler());
+
       return thread;
     }
   }

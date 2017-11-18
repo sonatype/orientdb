@@ -86,7 +86,7 @@ public class OBinarySerializerFactory {
   }
 
   public static OBinarySerializerFactory getInstance() {
-    final ODatabaseDocumentInternal database = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
+    final ODatabaseDocumentInternal database = ODatabaseRecordThreadLocal.instance().getIfDefined();
     if (database != null)
       return database.getSerializerFactory();
     else
@@ -125,7 +125,7 @@ public class OBinarySerializerFactory {
         try {
           impl = cls.newInstance();
         } catch (Exception e) {
-          OLogManager.instance().error(this, "Cannot create an instance of class %s invoking the empty constructor", cls);
+          OLogManager.instance().error(this, "Cannot create an instance of class %s invoking the empty constructor", e, cls);
         }
     }
     return impl;

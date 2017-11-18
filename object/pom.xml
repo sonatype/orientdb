@@ -119,8 +119,7 @@
         <import.package>*</import.package>
         <export.package>com.orientechnologies.orient.object.*</export.package>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <argLine>-ea -Xmx2048m -XX:MaxDirectMemorySize=512g
-            -Dstorage.diskCache.bufferSize=4096
+        <argLine>-ea -Xmx${heapSize} -XX:MaxDirectMemorySize=512g
             -Dmemory.directMemory.trackMode=true
             -Dstorage.makeFullCheckpointAfterCreate=false
             -Dstorage.makeFullCheckpointAfterOpen=false
@@ -129,7 +128,7 @@
             -Dstorage.configuration.syncOnUpdate=false
             -Ddb.makeFullCheckpointOnIndexChange=false
             -Ddb.makeFullCheckpointOnSchemaChange=false
-            -Djava.util.logging.manager=com.orientechnologies.common.log.OLogManager$DebugLogManager
+            -Djava.util.logging.manager=com.orientechnologies.common.log.OLogManager$ShutdownLogManager
             -Dstorage.diskCache.checksumMode=storeAndThrow
         </argLine>
     </properties>

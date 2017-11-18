@@ -27,6 +27,8 @@ import com.orientechnologies.common.io.OFileUtils;
 import com.orientechnologies.common.io.OIOUtils;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.parser.OSystemVariableResolver;
+import com.orientechnologies.common.util.OCallable;
+import com.orientechnologies.common.util.OUncaughtExceptionHandler;
 import com.orientechnologies.orient.core.command.OCommandOutputListener;
 import com.orientechnologies.orient.core.compression.impl.OZIPCompressionUtil;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
@@ -52,6 +54,8 @@ import com.orientechnologies.orient.core.storage.impl.local.paginated.wal.OLogSe
 import com.orientechnologies.orient.core.storage.impl.local.paginated.wal.OWriteAheadLog;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -253,14 +257,16 @@ public class OLocalPaginatedStorage extends OAbstractPaginatedStorage implements
 
       File dbDir = new File(OIOUtils.getPathFromDatabaseName(OSystemVariableResolver.resolveSystemVariables(url)));
       final File[] storageFiles = dbDir.listFiles();
-      // TRY TO DELETE ALL THE FILES
-      for (File f : storageFiles) {
-        // DELETE ONLY THE SUPPORTED FILES
-        for (String ext : ALL_FILE_EXTENSIONS)
-          if (f.getPath().endsWith(ext)) {
-            f.delete();
-            break;
-          }
+      if(storageFiles != null) {
+        // TRY TO DELETE ALL THE FILES
+        for (File f : storageFiles) {
+          // DELETE ONLY THE SUPPORTED FILES
+          for (String ext : ALL_FILE_EXTENSIONS)
+            if (f.getPath().endsWith(ext)) {
+              f.delete();
+              break;
+            }
+        }
       }
 
       OZIPCompressionUtil.uncompressDirectory(in, getStoragePath(), iListener);
@@ -285,7 +291,7 @@ public class OLocalPaginatedStorage extends OAbstractPaginatedStorage implements
         try {
           callable.call();
         } catch (Exception e) {
-          OLogManager.instance().error(this, "Error on calling callback on database restore");
+          OLogManager.instance().error(this, "Error on calling callback on database restore", e);
         }
 
       open(null, null, null);
@@ -497,7 +503,7 @@ public class OLocalPaginatedStorage extends OAbstractPaginatedStorage implements
           if (!dbDir.delete())
             OLogManager.instance().error(this,
                 "Cannot delete storage directory with path " + dbDir.getAbsolutePath() + " because directory is not empty. Files: "
-                    + Arrays.toString(dbDir.listFiles()));
+                    + Arrays.toString(dbDir.listFiles()), null);
           return;
         }
       } else
@@ -608,11 +614,22 @@ public class OLocalPaginatedStorage extends OAbstractPaginatedStorage implements
     return new File(path + "/" + OMetadataDefault.CLUSTER_INTERNAL_NAME + OPaginatedCluster.DEF_EXTENSION).exists();
   }
 
+  public void closeAndMove(OCallable<Void, String> mover) {
+    stateLock.acquireWriteLock();
+    try {
+      this.close(true, false);
+      mover.call(this.storagePath);
+    } finally {
+      stateLock.releaseWriteLock();
+    }
+  }
+
   private static class FullCheckpointThreadFactory implements ThreadFactory {
     @Override
     public Thread newThread(Runnable r) {
       Thread thread = new Thread(r);
       thread.setDaemon(true);
+      thread.setUncaughtExceptionHandler(new OUncaughtExceptionHandler());
       return thread;
     }
   }

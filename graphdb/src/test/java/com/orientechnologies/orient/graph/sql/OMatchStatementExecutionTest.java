@@ -1729,6 +1729,110 @@ public class OMatchStatementExecutionTest {
 
   }
 
+  @Test
+  public void testReverseEdgeTraversal() {
+    //issue #7823
+
+    db.command(new OCommandSQL("CREATE CLASS testReverseEdgeTraversalFoo EXTENDS V")).execute();
+    db.command(new OCommandSQL("CREATE CLASS testReverseEdgeTraversalAbstractBar EXTENDS V")).execute();
+    db.command(new OCommandSQL("CREATE CLASS testReverseEdgeTraversalBar EXTENDS testReverseEdgeTraversalAbstractBar")).execute();
+    db.command(new OCommandSQL("CREATE CLASS testReverseEdgeTraversalBaz EXTENDS V")).execute();
+    db.command(new OCommandSQL("CREATE PROPERTY testReverseEdgeTraversalFoo.name STRING")).execute();
+    db.command(new OCommandSQL("CREATE PROPERTY testReverseEdgeTraversalAbstractBar.name STRING")).execute();
+    db.command(new OCommandSQL("CREATE PROPERTY testReverseEdgeTraversalBaz.name STRING")).execute();
+
+    db.command(new OCommandSQL("CREATE CLASS testReverseEdgeTraversalFoo_Bar EXTENDS E")).execute();
+    db.command(new OCommandSQL("CREATE CLASS testReverseEdgeTraversalBar_ParentBar EXTENDS E")).execute();
+    db.command(new OCommandSQL("CREATE CLASS testReverseEdgeTraversalBaz_Foo EXTENDS E")).execute();
+
+    db.command(new OCommandSQL("CREATE VERTEX testReverseEdgeTraversalBar SET name = 'bar-1-tier-1'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX testReverseEdgeTraversalBar SET name = 'bar-2-tier-1'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX testReverseEdgeTraversalBar SET name = 'bar-1-tier-2'")).execute();
+
+    db.command(new OCommandSQL("CREATE EDGE testReverseEdgeTraversalBar_ParentBar FROM (SELECT * FROM testReverseEdgeTraversalBar WHERE name != 'bar-1-tier-2') TO (SELECT * FROM testReverseEdgeTraversalBar WHERE name = 'bar-1-tier-2')")).execute();
+
+    db.command(new OCommandSQL("CREATE VERTEX testReverseEdgeTraversalFoo SET name = 'foobaz1'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX testReverseEdgeTraversalFoo SET name = 'foobaz2'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX testReverseEdgeTraversalFoo SET name = 'foobaz3'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX testReverseEdgeTraversalFoo SET name = 'foobaz4'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX testReverseEdgeTraversalFoo SET name = 'foobaz5'")).execute();
+
+    db.command(new OCommandSQL("CREATE EDGE testReverseEdgeTraversalFoo_Bar FROM (SELECT * FROM testReverseEdgeTraversalFoo WHERE name <= 'foobaz3') TO (SELECT * FROM testReverseEdgeTraversalBar WHERE name = 'bar-1-tier-1')")).execute();
+    db.command(new OCommandSQL("CREATE EDGE testReverseEdgeTraversalFoo_Bar FROM (SELECT * FROM testReverseEdgeTraversalFoo WHERE name > 'foobaz3') TO (SELECT * FROM testReverseEdgeTraversalBar WHERE name = 'bar-2-tier-1')")).execute();
+
+    db.command(new OCommandSQL("CREATE VERTEX testReverseEdgeTraversalBaz SET name = 'foobaz1'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX testReverseEdgeTraversalBaz SET name = 'foobaz2'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX testReverseEdgeTraversalBaz SET name = 'foobaz3'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX testReverseEdgeTraversalBaz SET name = 'foobaz4'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX testReverseEdgeTraversalBaz SET name = 'foobaz5'")).execute();
+
+    db.command(new OCommandSQL("CREATE EDGE testReverseEdgeTraversalBaz_Foo FROM (SELECT * FROM testReverseEdgeTraversalBaz WHERE name = 'foobaz1') TO (SELECT * FROM testReverseEdgeTraversalFoo WHERE name = 'foobaz1')")).execute();
+    db.command(new OCommandSQL("CREATE EDGE testReverseEdgeTraversalBaz_Foo FROM (SELECT * FROM testReverseEdgeTraversalBaz WHERE name = 'foobaz2') TO (SELECT * FROM testReverseEdgeTraversalFoo WHERE name = 'foobaz2')")).execute();
+    db.command(new OCommandSQL("CREATE EDGE testReverseEdgeTraversalBaz_Foo FROM (SELECT * FROM testReverseEdgeTraversalBaz WHERE name = 'foobaz3') TO (SELECT * FROM testReverseEdgeTraversalFoo WHERE name = 'foobaz3')")).execute();
+    db.command(new OCommandSQL("CREATE EDGE testReverseEdgeTraversalBaz_Foo FROM (SELECT * FROM testReverseEdgeTraversalBaz WHERE name = 'foobaz4') TO (SELECT * FROM testReverseEdgeTraversalFoo WHERE name = 'foobaz4')")).execute();
+    db.command(new OCommandSQL("CREATE EDGE testReverseEdgeTraversalBaz_Foo FROM (SELECT * FROM testReverseEdgeTraversalBaz WHERE name = 'foobaz5') TO (SELECT * FROM testReverseEdgeTraversalFoo WHERE name = 'foobaz5')")).execute();
+    
+
+    OSQLSynchQuery query = new OSQLSynchQuery(
+        "MATCH {\n" + "    class: testReverseEdgeTraversalFoo,\n" + "    as: my_starting_foo\n" + "}.out('testReverseEdgeTraversalFoo_Bar') {\n"
+            + "    where: (@this INSTANCEOF 'testReverseEdgeTraversalBar'),\n" + "    as: my_starting_bar\n" + "}.in('testReverseEdgeTraversalBar_ParentBar') {\n"
+            + "    while: ($depth < 10),\n" + "    as: my_recursing_bar\n" + "}.in('testReverseEdgeTraversalFoo_Bar') {\n" + "    class: testReverseEdgeTraversalFoo,\n"
+            + "    where: ((name <> $matched.my_starting_foo.name)),\n" + "    as: my_final_foo\n" + "}.in('testReverseEdgeTraversalBaz_Foo') {\n"
+            + "    class: testReverseEdgeTraversalBaz,\n" + "    as: my_baz\n" + "} RETURN $matches\n");
+
+    List<ODocument> result = db.query(query);
+
+    assertEquals(8, result.size());
+
+
+    query = new OSQLSynchQuery(
+        "MATCH {\n" + "    class: testReverseEdgeTraversalFoo,\n" + "    as: my_starting_foo\n" + "}.out('testReverseEdgeTraversalFoo_Bar') {\n" + "    class: testReverseEdgeTraversalBar,\n"
+            + "    as: my_starting_bar\n" + "}.in('testReverseEdgeTraversalBar_ParentBar') {\n" + "    while: ($depth < 10),\n"
+            + "    as: my_recursing_bar\n" + "}.in('testReverseEdgeTraversalFoo_Bar') {\n" + "    class: testReverseEdgeTraversalFoo,\n"
+            + "    where: ((name <> $matched.my_starting_foo.name)),\n" + "    as: my_final_foo\n" + "}.in('testReverseEdgeTraversalBaz_Foo') {\n"
+            + "    class: testReverseEdgeTraversalBaz,\n" + "    as: my_baz\n" + "} RETURN $matches");
+
+    result = db.query(query);
+
+    assertEquals(8, result.size());
+
+  }
+
+
+  @Test
+  public void testWhileAndNotReverse() {
+
+    db.command(new OCommandSQL("CREATE CLASS testWhileAndNotReverseFoo EXTENDS V")).execute();
+    db.command(new OCommandSQL("CREATE CLASS testWhileAndNotReverseBar EXTENDS V")).execute();
+    db.command(new OCommandSQL("CREATE CLASS testWhileAndNotReverseBaz EXTENDS V")).execute();
+
+    db.command(new OCommandSQL("CREATE CLASS testWhileAndNotReverseE EXTENDS E")).execute();
+
+    db.command(new OCommandSQL("CREATE VERTEX testWhileAndNotReverseFoo SET name = 'a'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX testWhileAndNotReverseFoo SET name = 'b'")).execute();
+
+    db.command(new OCommandSQL("CREATE VERTEX testWhileAndNotReverseBar SET name = 'x'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX testWhileAndNotReverseBar SET name = 'y'")).execute();
+    db.command(new OCommandSQL("CREATE VERTEX testWhileAndNotReverseBar SET name = 'z'")).execute();
+
+    db.command(new OCommandSQL("CREATE VERTEX testWhileAndNotReverseBaz SET name = 'k'")).execute();
+
+
+    db.command(new OCommandSQL("CREATE EDGE testWhileAndNotReverseE FROM (SELECT * FROM testWhileAndNotReverseFoo) TO (SELECT * FROM testWhileAndNotReverseBar WHERE name = 'x')")).execute();
+    db.command(new OCommandSQL("CREATE EDGE testWhileAndNotReverseE FROM (SELECT * FROM testWhileAndNotReverseBar WHERE name = 'x') TO (SELECT * FROM testWhileAndNotReverseBar WHERE name = 'y')")).execute();
+    db.command(new OCommandSQL("CREATE EDGE testWhileAndNotReverseE FROM (SELECT * FROM testWhileAndNotReverseBar WHERE name = 'y') TO (SELECT * FROM testWhileAndNotReverseBar WHERE name = 'z')")).execute();
+    db.command(new OCommandSQL("CREATE EDGE testWhileAndNotReverseE FROM (SELECT * FROM testWhileAndNotReverseBar WHERE name = 'z') TO (SELECT * FROM testWhileAndNotReverseBaz)")).execute();
+
+
+    OSQLSynchQuery query = new OSQLSynchQuery(
+        "MATCH {class:testWhileAndNotReverseFoo, as: foo} --> {class: testWhileAndNotReverseBaz, as:bar, while: ($depth < 10)}\n" + "RETURN foo, bar");
+
+    List<ODocument> result = db.query(query);
+
+    assertEquals(2, result.size());
+
+  }
+
   private List<OIdentifiable> getManagedPathElements(String managerName) {
     StringBuilder query = new StringBuilder();
     query.append("  match {class:Employee, as:boss, where: (name = '" + managerName + "')}");

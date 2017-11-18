@@ -70,12 +70,12 @@ public class OLuceneStorage extends OSharedResourceAdaptiveExternal implements O
   protected     OLuceneFacetManager facetManager;
   protected     TimerTask           commitTask;
   protected AtomicBoolean closed = new AtomicBoolean(true);
-  protected TrackingIndexWriter                   mgrWriter;
-  protected SearcherManager                       searcherManager;
-  protected ControlledRealTimeReopenThread        nrt;
-  private   OLuceneDocumentBuilder                builder;
-  private   OLuceneQueryBuilder                   queryBuilder;
-  private   long                                  reopenToken;
+  protected TrackingIndexWriter            mgrWriter;
+  protected SearcherManager                searcherManager;
+  protected ControlledRealTimeReopenThread nrt;
+  private   OLuceneDocumentBuilder         builder;
+  private   OLuceneQueryBuilder            queryBuilder;
+  private   long                           reopenToken;
 
   private Analyzer indexAnalyzer;
   private Analyzer queryAnalyzer;
@@ -122,7 +122,7 @@ public class OLuceneStorage extends OSharedResourceAdaptiveExternal implements O
 
       return;
     }
-    ODatabaseDocumentInternal database = ODatabaseRecordThreadLocal.INSTANCE.get();
+    ODatabaseDocumentInternal database = ODatabaseRecordThreadLocal.instance().get();
 
     final OAbstractPaginatedStorage storageLocalAbstract = (OAbstractPaginatedStorage) database.getStorage().getUnderlying();
     Directory dir = null;
@@ -221,7 +221,7 @@ public class OLuceneStorage extends OSharedResourceAdaptiveExternal implements O
     try {
       return searcher().getIndexReader().numDocs();
     } catch (IOException e) {
-      e.printStackTrace();
+      OLogManager.instance().error(this, "Can not calculate amount of documents", e);
     }
     return mgrWriter.getIndexWriter().maxDoc();
   }
@@ -284,7 +284,7 @@ public class OLuceneStorage extends OSharedResourceAdaptiveExternal implements O
     OLogManager.instance().info(this, "CLOSING  engine");
     try {
       closeIndex();
-    } catch (Throwable e) {
+    } catch (Exception e) {
       OLogManager.instance().error(this, "Error on closing Lucene index", e);
     }
 

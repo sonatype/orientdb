@@ -20,6 +20,7 @@
 package com.orientechnologies.orient.core.metadata.function;
 
 import com.orientechnologies.common.exception.OException;
+import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.util.OCallable;
 import com.orientechnologies.orient.core.command.OCommandManager;
 import com.orientechnologies.orient.core.command.script.OCommandExecutorFunction;
@@ -67,7 +68,7 @@ public class OFunctionLibraryImpl implements OFunctionLibrary {
     functions.clear();
 
     // LOAD ALL THE FUNCTIONS IN MEMORY
-    final ODatabaseDocument db = ODatabaseRecordThreadLocal.INSTANCE.get();
+    final ODatabaseDocument db = ODatabaseRecordThreadLocal.instance().get();
     if (((OMetadataInternal) db.getMetadata()).getImmutableSchemaSnapshot().existsClass("OFunction")) {
       List<ODocument> result = db.query(new OSQLSynchQuery<ODocument>("select from OFunction order by name"));
       for (ODocument d : result) {
@@ -102,6 +103,8 @@ public class OFunctionLibraryImpl implements OFunctionLibrary {
     try {
       f.save();
     } catch (ORecordDuplicatedException ex) {
+      OLogManager.instance().error(this, "Exception was suppressed, original exception is", ex);
+      //noinspection ThrowInsideCatchBlockWhichIgnoresCaughtException
       throw OException.wrapException(new OFunctionDuplicatedException("Function with name '" + iName + "' already exist"), null);
     }
     functions.put(iName.toUpperCase(Locale.ENGLISH), f);
@@ -114,7 +117,7 @@ public class OFunctionLibraryImpl implements OFunctionLibrary {
   }
 
   protected void init() {
-    final ODatabaseDocument db = ODatabaseRecordThreadLocal.INSTANCE.get();
+    final ODatabaseDocument db = ODatabaseRecordThreadLocal.instance().get();
     if (db.getMetadata().getSchema().existsClass("OFunction")) {
       final OClass f = db.getMetadata().getSchema().getClass("OFunction");
       OProperty prop = f.getProperty("name");

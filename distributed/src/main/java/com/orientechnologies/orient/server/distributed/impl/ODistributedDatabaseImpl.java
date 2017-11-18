@@ -463,7 +463,7 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
 
           remoteServer.sendRequest(iRequest);
 
-        } catch (Throwable e) {
+        } catch (Exception e) {
           currentResponseMgr.removeServerBecauseUnreachable(node);
 
           String reason = e.getMessage();
@@ -480,7 +480,7 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
               remoteServer.sendRequest(iRequest);
               continue;
 
-            } catch (Throwable ex) {
+            } catch (Exception ex) {
               // IGNORE IT BECAUSE MANAGED BELOW
             }
           }
@@ -621,7 +621,7 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
         // USE THE EXISTENT
         lock.record = currentRecord;
       else if (rid.isPersistent()) {
-        final ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
+        final ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.instance().getIfDefined();
         if (db != null)
           lock.record = db.getStorage().getUnderlying().readRecord((ORecordId) rid, null, false, false, null).getResult();
       }
@@ -640,11 +640,6 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
     if (currentLock != null)
       throw new ODistributedRecordLockedException(manager.getLocalNodeName(), rid, currentLock.reqId, timeout);
 
-    // DUMP STACK TRACE
-    // OException.dumpStackTrace(String.format("Distributed transaction: %s locked record %s in database '%s' (thread=%d)",
-    // requestId,
-    // iRecord, databaseName, Thread.currentThread().getId()));
-
     return newLock;
   }
 
@@ -661,11 +656,6 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
             databaseName, owner.reqId, requestId, Thread.currentThread().getId());
         return;
       }
-
-      // DUMP STACK TRACE
-      // OException
-      // .dumpStackTrace(String.format("Distributed transaction: %s unlocked record %s in database '%s' (owner=%s, thread=%d)",
-      // requestId, iRecord, databaseName, owner != null ? owner.reqId : "null", Thread.currentThread().getId()));
 
       lockManager.remove(iRecord.getIdentity());
 
@@ -714,7 +704,7 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
         if (lockedCtx != null) {
           // CANCEL THE ENTIRE TX/CONTEXT/REQ-ID
 
-          lockedCtx.cancel(manager, ODatabaseRecordThreadLocal.INSTANCE.get());
+          lockedCtx.cancel(manager, ODatabaseRecordThreadLocal.instance().get());
 
         } else {
           // ABORT SINGLE REQUEST
@@ -733,7 +723,7 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
         lock.record = currentRecord;
       else if (rid.isPersistent()) {
         // RELOAD IT
-        final ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
+        final ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.instance().getIfDefined();
         if (db != null)
           lock.record = db.getStorage().getUnderlying().readRecord((ORecordId) rid, null, false, false, null).getResult();
       }
@@ -770,7 +760,7 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
         try {
           rids2Repair.addAll(pReq.rollback(database));
           rollbacks++;
-        } catch (Throwable t) {
+        } catch (Exception e) {
           // IGNORE IT
           ODistributedServerLog.error(this, manager.getLocalNodeName(), null, DIRECTION.NONE,
               "Distributed transaction: error on rolling back transaction (req=%s)", pReq.getReqId());
@@ -847,7 +837,8 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
       try {
         syncConfiguration = new ODistributedSyncConfiguration(manager, databaseName, cfgFile);
       } catch (IOException e) {
-        throw new ODistributedException("Cannot open database distributed sync configuration file: " + cfgFile);
+        throw OException
+            .wrapException(new ODistributedException("Cannot open database distributed sync configuration file: " + cfgFile), e);
       }
     }
 
@@ -977,7 +968,7 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
           || serverStatus == ODistributedServerManager.DB_STATUS.SYNCHRONIZING) {
         try {
           manager.setDatabaseStatus(manager.getLocalNodeName(), databaseName, ODistributedServerManager.DB_STATUS.NOT_AVAILABLE);
-        } catch (Throwable e) {
+        } catch (Exception e) {
           // IGNORE IT
         }
       }
@@ -1199,10 +1190,10 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
                     // REQUEST WAS ORIGINATED FROM CURRENT SERVER
                     msgService.timeoutRequest(ctx.getReqId().getMessageId());
 
-                } catch (Throwable t) {
+                } catch (Exception e) {
                   ODistributedServerLog.info(this, localNodeName, null, DIRECTION.NONE,
                       "Error on rolling back distributed transaction %s on database '%s' (err=%s)", ctx.getReqId(), databaseName,
-                      t);
+                      e);
                 } finally {
                   it.remove();
                 }
@@ -1229,7 +1220,7 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
 
           getDatabaseRepairer().enqueueRepairRecords(rids2Repair);
 
-        } catch (Throwable t) {
+        } catch (Exception e) {
           // CATCH EVERYTHING TO AVOID THE TIMER IS CANCELED
           ODistributedServerLog.info(this, localNodeName, null, DIRECTION.NONE,
               "Error on checking for expired distributed transaction on database '%s'", databaseName);

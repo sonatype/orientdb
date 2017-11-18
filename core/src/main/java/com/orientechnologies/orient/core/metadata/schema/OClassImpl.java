@@ -137,7 +137,7 @@ public class OClassImpl extends ODocumentWrapperNoClass implements OClass {
         final String clusterName = iDatabase.getClusterNameById(clusterId);
         iDatabase.checkSecurity(ORule.ResourceGeneric.CLUSTER, ORole.PERMISSION_READ, clusterName);
         listOfReadableIds.add(clusterId);
-      } catch (OSecurityAccessException securityException) {
+      } catch (OSecurityAccessException ignore) {
         all = false;
         // if the cluster is inaccessible it's simply not processed in the list.add
       }
@@ -1517,8 +1517,6 @@ public class OClassImpl extends ODocumentWrapperNoClass implements OClass {
 
   /**
    * Truncates all the clusters the class uses.
-   *
-   * @throws IOException
    */
   public void truncate() throws IOException {
 
@@ -1795,6 +1793,7 @@ public class OClassImpl extends ODocumentWrapperNoClass implements OClass {
         try {
           c.set(OCluster.ATTRIBUTES.ENCRYPTION, iValue);
         } catch (IOException e) {
+          OLogManager.instance().warn(this, "Can not set encryption '%s' for cluster '%s'", e, iValue, name);
         }
     }
   }
@@ -1993,7 +1992,7 @@ public class OClassImpl extends ODocumentWrapperNoClass implements OClass {
 
   @Override
   public OIndex<?> getAutoShardingIndex() {
-    final ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
+    final ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.instance().getIfDefined();
     return db != null ? db.getMetadata().getIndexManager().getClassAutoShardingIndex(name) : null;
   }
 
@@ -2164,6 +2163,9 @@ public class OClassImpl extends ODocumentWrapperNoClass implements OClass {
   }
 
   public void checkPersistentPropertyType(final ODatabaseInternal<ORecord> database, final String propertyName, final OType type) {
+    if (OType.ANY.equals(type)) {
+      return;
+    }
     final boolean strictSQL = database.getStorage().getConfiguration().isStrictSql();
 
     final StringBuilder builder = new StringBuilder(256);
@@ -2615,20 +2617,6 @@ public class OClassImpl extends ODocumentWrapperNoClass implements OClass {
   private void validatePropertyName(final String propertyName) {
   }
 
-  private int getClusterId(final String stringValue) {
-    int clId;
-    if (!stringValue.isEmpty() && Character.isDigit(stringValue.charAt(0)))
-      try {
-        clId = Integer.parseInt(stringValue);
-      } catch (NumberFormatException e) {
-        clId = getDatabase().getClusterIdByName(stringValue);
-      }
-    else
-      clId = getDatabase().getClusterIdByName(stringValue);
-
-    return clId;
-  }
-
   private void addClusterIdToIndexes(int iId) {
     if (getDatabase().getStorage().getUnderlying() instanceof OAbstractPaginatedStorage) {
       final String clusterName = getDatabase().getClusterNameById(iId);
@@ -2753,7 +2741,7 @@ public class OClassImpl extends ODocumentWrapperNoClass implements OClass {
   }
 
   private ODatabaseDocumentInternal getDatabase() {
-    return ODatabaseRecordThreadLocal.INSTANCE.get();
+    return ODatabaseRecordThreadLocal.instance().get();
   }
 
   /**
@@ -2795,7 +2783,8 @@ public class OClassImpl extends ODocumentWrapperNoClass implements OClass {
 
     for (String fieldName : fieldNames) {
       if (!fieldName.equals("@rid"))
-        types.add(getProperty(decodeClassName(OIndexDefinitionFactory.extractFieldName(fieldName)).toLowerCase(Locale.ENGLISH)).getType());
+        types.add(getProperty(decodeClassName(OIndexDefinitionFactory.extractFieldName(fieldName)).toLowerCase(Locale.ENGLISH))
+            .getType());
       else
         types.add(OType.LINK);
     }

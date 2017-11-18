@@ -308,7 +308,7 @@ public class OSQLFilterCondition {
       return null;
     }
 
-    final OStorageConfiguration config = ODatabaseRecordThreadLocal.INSTANCE.get().getStorage().getConfiguration();
+    final OStorageConfiguration config = ODatabaseRecordThreadLocal.instance().get().getStorage().getConfiguration();
 
     if (value instanceof Long) {
       Calendar calendar = Calendar.getInstance(config.getTimeZone());
@@ -340,7 +340,7 @@ public class OSQLFilterCondition {
 
     try {
       return formatter.parse(stringValue);
-    } catch (ParseException pe) {
+    } catch (ParseException ignore) {
       try {
         return new Date(new Double(stringValue).longValue());
       } catch (Exception pe2) {
@@ -363,7 +363,7 @@ public class OSQLFilterCondition {
       if (iCurrentRecord != null && ((ORecord) iCurrentRecord).getInternalStatus() == ORecordElement.STATUS.NOT_LOADED) {
         try {
           iCurrentRecord = iCurrentRecord.getRecord().load();
-        } catch (ORecordNotFoundException e) {
+        } catch (ORecordNotFoundException ignore) {
           return null;
         }
       }
@@ -390,7 +390,7 @@ public class OSQLFilterCondition {
       return f.execute(iCurrentRecord, iCurrentRecord, iCurrentResult, iContext);
     }
 
-    if (OMultiValue.isMultiValue(iValue)) {
+    if (OMultiValue.isMultiValue(iValue) && !Map.class.isAssignableFrom(iValue.getClass())) {
       final Iterable<?> multiValue = OMultiValue.getMultiValueIterable(iValue, false);
 
       // MULTI VALUE: RETURN A COPY
@@ -483,7 +483,7 @@ public class OSQLFilterCondition {
           result = new Object[] { l, new ORecordId((String) r) };
         }
       }
-    } catch (Exception e) {
+    } catch (Exception ignore) {
       // JUST IGNORE CONVERSION ERRORS
     }
 

@@ -28,10 +28,10 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <argLine>
-            -Xmx3072m
+            -Xmx${heapSize}
             -XX:MaxDirectMemorySize=512g
             -Dmemory.directMemory.trackMode=true
-            -Djava.util.logging.manager=com.orientechnologies.common.log.OLogManager$DebugLogManager
+            -Djava.util.logging.manager=com.orientechnologies.common.log.OLogManager$ShutdownLogManager
             -Dstorage.diskCache.checksumMode=storeAndThrow
         </argLine>
     </properties>

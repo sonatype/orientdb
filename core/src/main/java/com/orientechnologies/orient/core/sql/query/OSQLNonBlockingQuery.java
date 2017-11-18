@@ -29,6 +29,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import com.orientechnologies.common.log.OLogManager;
+import com.orientechnologies.common.util.OUncaughtExceptionHandler;
 import com.orientechnologies.orient.core.command.OCommandRequestAsynch;
 import com.orientechnologies.orient.core.command.OCommandResultListener;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
@@ -40,7 +42,6 @@ import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
  * item found in the query. OSQLAsynchQuery has been built on top of this. NOTE: if you're working with remote databases don't
  * execute any remote call inside the callback function because the network channel is locked until the query command has finished.
  *
- * @param <T>
  * @author Luca Garulli
  * @see com.orientechnologies.orient.core.sql.query.OSQLSynchQuery
  */
@@ -257,17 +258,17 @@ public class OSQLNonBlockingQuery<T extends Object> extends OSQLQuery<T> impleme
 
   @Override
   public <RET> RET execute(final Object... iArgs) {
-    final ODatabaseDocumentInternal database = ODatabaseRecordThreadLocal.INSTANCE.get();
+    final ODatabaseDocumentInternal database = ODatabaseRecordThreadLocal.instance().get();
 
     final ONonBlockingQueryFuture future = new ONonBlockingQueryFuture();
 
     if (database instanceof ODatabaseDocumentTx) {
-      ODatabaseDocumentInternal currentThreadLocal = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
+      ODatabaseDocumentInternal currentThreadLocal = ODatabaseRecordThreadLocal.instance().getIfDefined();
       final ODatabaseDocumentInternal db = ((ODatabaseDocumentTx) database).copy();
       if (currentThreadLocal != null) {
         currentThreadLocal.activateOnCurrentThread();
       } else {
-        ODatabaseRecordThreadLocal.INSTANCE.set(null);
+        ODatabaseRecordThreadLocal.instance().set(null);
       }
 
       Thread t = new Thread(new Runnable() {
@@ -290,7 +291,7 @@ public class OSQLNonBlockingQuery<T extends Object> extends OSQLQuery<T> impleme
               try {
                 db.close();
               } catch (Exception e) {
-                e.printStackTrace();
+                OLogManager.instance().error(this, "Error during database close", e);
               }
             }
             try {
@@ -299,13 +300,14 @@ public class OSQLNonBlockingQuery<T extends Object> extends OSQLQuery<T> impleme
                 future.notifyAll();
               }
             } catch (Exception e) {
-              e.printStackTrace();
+              OLogManager.instance().error(this, "", e);
             }
           }
         }
       });
 
       t.start();
+      t.setUncaughtExceptionHandler(new OUncaughtExceptionHandler());
       return (RET) future;
     } else {
       throw new RuntimeException("cannot run non blocking query with non tx db");// TODO

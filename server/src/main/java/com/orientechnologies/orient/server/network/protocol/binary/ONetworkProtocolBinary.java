@@ -133,9 +133,6 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
 
   /**
    * Internal varialbe injection useful for testing.
-   *
-   * @param server
-   * @param channel
    */
   public void initVariables(final OServer server, OChannelBinaryServer channel) {
     this.server = server;
@@ -276,8 +273,8 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
       sendErrorOrDropConnection(connection, clientTxId, e);
     } catch (RuntimeException e) {
       sendErrorOrDropConnection(connection, clientTxId, e);
-    } catch (Throwable t) {
-      sendErrorOrDropConnection(connection, clientTxId, t);
+    } catch (Exception e) {
+      sendErrorOrDropConnection(connection, clientTxId, e);
     } finally {
       Orient.instance().getProfiler()
           .stopChrono("server.network.requests", "Total received requests", timer, "server.network.requests");
@@ -346,10 +343,10 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
         afterOperationRequest(connection);
       }
 
-    } catch (Throwable t) {
+    } catch (Exception e) {
       // IN CASE OF DISTRIBUTED ANY EXCEPTION AT THIS POINT CAUSE THIS CONNECTION TO CLOSE
       OLogManager.instance()
-          .warn(this, "I/O Error on distributed channel (clientId=%d reqType=%d error=%s)", clientTxId, requestType, t);
+          .warn(this, "I/O Error on distributed channel (clientId=%d reqType=%d error=%s)", clientTxId, requestType, e);
       sendShutdown();
     } finally {
       Orient.instance().getProfiler()
@@ -378,7 +375,11 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
           } finally {
             // IF IT IS THE CASE OF A DOS, FORCE A LITTLE WAIT
             Thread.sleep(100);
-
+            try {
+              channel.drain();
+            } catch (IOException e1) {
+              // IGNORE IT
+            }
             try {
               channel.close();
             } catch (Exception exx) {
@@ -395,7 +396,7 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
 
       try {
         if (!executeRequest(connection)) {
-          OLogManager.instance().error(this, "Request not supported. Code: " + requestType);
+          OLogManager.instance().error(this, "Request not supported. Code: " + requestType, null);
           channel.clearInput();
           sendErrorOrDropConnection(connection, clientTxId,
               new ONetworkProtocolException("Request not supported. Code: " + requestType));
@@ -416,8 +417,8 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
       sendErrorOrDropConnection(connection, clientTxId, e);
     } catch (RuntimeException e) {
       sendErrorOrDropConnection(connection, clientTxId, e);
-    } catch (Throwable t) {
-      sendErrorOrDropConnection(connection, clientTxId, t);
+    } catch (Exception e) {
+      sendErrorOrDropConnection(connection, clientTxId, e);
     } finally {
       Orient.instance().getProfiler()
           .stopChrono("server.network.requests", "Total received requests", timer, "server.network.requests");
@@ -457,12 +458,12 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
     } catch (RuntimeException e) {
       if (connection != null)
         server.getClientConnectionManager().disconnect(connection);
-      ODatabaseRecordThreadLocal.INSTANCE.remove();
+      ODatabaseRecordThreadLocal.instance().remove();
       throw e;
     } catch (IOException e) {
       if (connection != null)
         server.getClientConnectionManager().disconnect(connection);
-      ODatabaseRecordThreadLocal.INSTANCE.remove();
+      ODatabaseRecordThreadLocal.instance().remove();
       throw e;
     }
 
@@ -511,12 +512,12 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
     } catch (RuntimeException e) {
       if (connection != null)
         server.getClientConnectionManager().disconnect(connection);
-      ODatabaseRecordThreadLocal.INSTANCE.remove();
+      ODatabaseRecordThreadLocal.instance().remove();
       throw e;
     } catch (IOException e) {
       if (connection != null)
         server.getClientConnectionManager().disconnect(connection);
-      ODatabaseRecordThreadLocal.INSTANCE.remove();
+      ODatabaseRecordThreadLocal.instance().remove();
       throw e;
     }
     return connection;
@@ -535,7 +536,7 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
 
         } catch (InterruptedException e) {
           Thread.currentThread().interrupt();
-          throw new OInterruptedException("Request interrupted");
+          throw OException.wrapException(new OInterruptedException("Request interrupted"), e);
         }
     }
   }
@@ -1132,10 +1133,10 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
 
       if (OLogManager.instance().isLevelEnabled(logClientExceptions)) {
         if (logClientFullStackTrace)
-          OLogManager.instance().log(this, logClientExceptions, "Sent run-time exception to the client %s: %s", t,
+          OLogManager.instance().log(this, logClientExceptions, "Sent run-time exception to the client %s: %s", t, true,
               channel.socket.getRemoteSocketAddress(), t.toString());
         else
-          OLogManager.instance().log(this, logClientExceptions, "Sent run-time exception to the client %s: %s", null,
+          OLogManager.instance().log(this, logClientExceptions, "Sent run-time exception to the client %s: %s", null, true,
               channel.socket.getRemoteSocketAddress(), t.toString());
       }
     } catch (Exception e) {
@@ -1175,7 +1176,7 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
     }
 
     OLogManager.instance()
-        .error(this, "Authentication error of remote client %s:%d: shutdown is aborted.", channel.socket.getInetAddress(),
+        .error(this, "Authentication error of remote client %s:%d: shutdown is aborted.", null, channel.socket.getInetAddress(),
             channel.socket.getPort());
 
     sendErrorOrDropConnection(connection, clientTxId, new OSecurityAccessException("Invalid user/password to shutdown the server"));
@@ -1424,62 +1425,60 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
       try {
         connection.getDatabase().begin(tx);
       } catch (final ORecordNotFoundException e) {
+        if (connection.getDatabase().getTransaction().isActive())
+          connection.getDatabase().rollback(true);
         sendShutdown();
         throw e.getCause() instanceof OOfflineClusterException ? (OOfflineClusterException) e.getCause() : e;
       }
+      try {
+        connection.getDatabase().commit();
+      } catch (final ORecordNotFoundException e) {
+        throw e.getCause() instanceof OOfflineClusterException ? (OOfflineClusterException) e.getCause() : e;
+      } catch (RuntimeException e) {
+        if (connection.getDatabase().getTransaction().isActive())
+          connection.getDatabase().rollback(true);
+        
+        final OSBTreeCollectionManager collectionManager = connection.getDatabase().getSbTreeCollectionManager();
+        if (collectionManager != null)
+          collectionManager.clearChangedIds();
+        throw e;
+      }
 
       try {
-        try {
-          connection.getDatabase().commit();
-        } catch (final ORecordNotFoundException e) {
-          throw e.getCause() instanceof OOfflineClusterException ? (OOfflineClusterException) e.getCause() : e;
-        }
+
         beginResponse();
-        try {
-          sendOk(connection, clientTxId);
+        sendOk(connection, clientTxId);
 
-          // SEND BACK ALL THE RECORD IDS FOR THE CREATED RECORDS
-          channel.writeInt(tx.getCreatedRecords().size());
-          for (Entry<ORecordId, ORecord> entry : tx.getCreatedRecords().entrySet()) {
-            channel.writeRID(entry.getKey());
-            channel.writeRID(entry.getValue().getIdentity());
+        // SEND BACK ALL THE RECORD IDS FOR THE CREATED RECORDS
+        channel.writeInt(tx.getCreatedRecords().size());
+        for (Entry<ORecordId, ORecord> entry : tx.getCreatedRecords().entrySet()) {
+          channel.writeRID(entry.getKey());
+          channel.writeRID(entry.getValue().getIdentity());
 
-            // IF THE NEW OBJECT HAS VERSION > 0 MEANS THAT HAS BEEN UPDATED IN THE SAME TX. THIS HAPPENS FOR GRAPHS
-            if (entry.getValue().getVersion() > 0)
-              tx.getUpdatedRecords().put((ORecordId) entry.getValue().getIdentity(), entry.getValue());
-          }
-
-          // SEND BACK ALL THE NEW VERSIONS FOR THE UPDATED RECORDS
-          channel.writeInt(tx.getUpdatedRecords().size());
-          for (Entry<ORecordId, ORecord> entry : tx.getUpdatedRecords().entrySet()) {
-            channel.writeRID(entry.getKey());
-            channel.writeVersion(entry.getValue().getVersion());
-          }
-
-          if (connection.getData().protocolVersion >= 20)
-            sendCollectionChanges(connection);
-        } finally {
-          endResponse(connection);
-        }
-      } catch (Exception e) {
-        if (connection != null && connection.getDatabase() != null) {
-          if (connection.getDatabase().getTransaction().isActive())
-            connection.getDatabase().rollback(true);
-
-          final OSBTreeCollectionManager collectionManager = connection.getDatabase().getSbTreeCollectionManager();
-          if (collectionManager != null)
-            collectionManager.clearChangedIds();
+          // IF THE NEW OBJECT HAS VERSION > 0 MEANS THAT HAS BEEN UPDATED IN THE SAME TX. THIS HAPPENS FOR GRAPHS
+          if (entry.getValue().getVersion() > 0)
+            tx.getUpdatedRecords().put((ORecordId) entry.getValue().getIdentity(), entry.getValue());
         }
 
-        sendErrorOrDropConnection(connection, clientTxId, e);
+        // SEND BACK ALL THE NEW VERSIONS FOR THE UPDATED RECORDS
+        channel.writeInt(tx.getUpdatedRecords().size());
+        for (Entry<ORecordId, ORecord> entry : tx.getUpdatedRecords().entrySet()) {
+          channel.writeRID(entry.getKey());
+          channel.writeVersion(entry.getValue().getVersion());
+        }
+
+        if (connection.getData().protocolVersion >= 20)
+          sendCollectionChanges(connection);
+      } finally {
+        final OSBTreeCollectionManager collectionManager = connection.getDatabase().getSbTreeCollectionManager();
+        if (collectionManager != null)
+          collectionManager.clearChangedIds();
+
+        endResponse(connection);
       }
     } catch (OTransactionAbortedException e) {
       // TX ABORTED BY THE CLIENT
     } catch (Exception e) {
-      // Error during TX initialization, possibly index constraints violation.
-      if (tx.isActive())
-        tx.rollback(true, -1);
-
       sendErrorOrDropConnection(connection, clientTxId, e);
     }
   }
@@ -1783,10 +1782,6 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
    * VERSION MANAGEMENT:<br> -1 : DOCUMENT UPDATE, NO VERSION CONTROL<br> -2 : DOCUMENT UPDATE, NO VERSION CONTROL, NO VERSION
    * INCREMENT<br> -3 : DOCUMENT ROLLBACK, DECREMENT VERSION<br> >-1 : MVCC CONTROL, RECORD UPDATE AND VERSION INCREMENT<br> <-3 :
    * WRONG VERSION VALUE
-   *
-   * @param connection
-   *
-   * @throws IOException
    */
   protected void updateRecord(OClientConnection connection) throws IOException {
     setDataCommandInfo(connection, "Update record");
@@ -2693,11 +2688,6 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
    * Write a OIdentifiable instance using this format:<br> - 2 bytes: class id [-2=no record, -3=rid, -1=no class id, > -1 = valid]
    * <br> - 1 byte: record type [d,b,f] <br> - 2 bytes: cluster id <br> - 8 bytes: position in cluster <br> - 4 bytes: record
    * version <br> - x bytes: record content <br>
-   *
-   * @param connection
-   * @param o
-   *
-   * @throws IOException
    */
   public void writeIdentifiable(OClientConnection connection, final OIdentifiable o) throws IOException {
     if (o == null)
@@ -2784,11 +2774,7 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
   /**
    * Returns a database instance giving the database name, the database type and storage type.
    *
-   * @param dbName
-   * @param dbType
    * @param storageType Storage type between "plocal" or "memory".
-   *
-   * @return
    */
   protected ODatabaseDocumentInternal getDatabaseInstance(final String dbName, final String dbType, final String storageType) {
     String path;
@@ -2822,6 +2808,7 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
     } catch (ORecordNotFoundException e) {
       // MAINTAIN COHERENT THE BEHAVIOR FOR ALL THE STORAGE TYPES
       if (e.getCause() instanceof OOfflineClusterException)
+        //noinspection ThrowInsideCatchBlockWhichIgnoresCaughtException
         throw (OOfflineClusterException) e.getCause();
     } catch (OOfflineClusterException e) {
       throw e;
@@ -2871,6 +2858,7 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
       } catch (ORecordNotFoundException e) {
         // MAINTAIN COHERENT THE BEHAVIOR FOR ALL THE STORAGE TYPES
         if (e.getCause() instanceof OOfflineClusterException)
+          //noinspection ThrowInsideCatchBlockWhichIgnoresCaughtException
           throw (OOfflineClusterException) e.getCause();
       }
 
@@ -2898,7 +2886,7 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
 
     final byte[] stream;
     String dbSerializerName = null;
-    if (ODatabaseRecordThreadLocal.INSTANCE.getIfDefined() != null)
+    if (ODatabaseRecordThreadLocal.instance().getIfDefined() != null)
       dbSerializerName = ((ODatabaseDocumentInternal) iRecord.getDatabase()).getSerializer().toString();
     String name = getRecordSerializerName(connection);
     if (ORecordInternal.getRecordType(iRecord) == ODocument.RECORD_TYPE && (dbSerializerName == null || !dbSerializerName
@@ -2935,7 +2923,7 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
 
   protected int trimCsvSerializedContent(OClientConnection connection, final byte[] stream) {
     int realLength = stream.length;
-    final ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
+    final ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.instance().getIfDefined();
     if (db != null && db instanceof ODatabaseDocument) {
       if (ORecordSerializerSchemaAware2CSV.NAME.equals(getRecordSerializerName(connection))) {
         // TRIM TAILING SPACES (DUE TO OVERSIZE)

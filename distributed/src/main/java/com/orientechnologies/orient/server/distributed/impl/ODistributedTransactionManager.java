@@ -208,7 +208,7 @@ public class ODistributedTransactionManager {
 
             executeAsyncTx(nodes, localResult, involvedClusters, txTask, requestId.getMessageId(), localNodeName, unlockCallback);
           }
-        } catch (Throwable e) {
+        } catch (Exception e) {
           ODistributedServerLog.debug(this, dManager.getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
               "Error on executing transaction on database '%s', rollback... (reqId=%s err='%s')", storage.getName(), requestId, e);
 
@@ -230,6 +230,7 @@ public class ODistributedTransactionManager {
           else if (e instanceof InterruptedException)
             throw OException.wrapException(new ODistributedOperationException("Cannot commit transaction"), e);
           else if (e.getCause() instanceof InterruptedException)
+            //noinspection ThrowInsideCatchBlockWhichIgnoresCaughtException
             throw OException.wrapException(new ODistributedOperationException("Cannot commit transaction"), e.getCause());
           else
             throw OException.wrapException(new ODistributedException("Cannot commit transaction"), e);
@@ -288,7 +289,7 @@ public class ODistributedTransactionManager {
         if (rid.getClusterId() < 1) {
           final String clusterName = ((OTransactionAbstract) iTx).getClusterName(op.getRecord());
           if (clusterName != null) {
-            newRid.setClusterId(ODatabaseRecordThreadLocal.INSTANCE.get().getClusterIdByName(clusterName));
+            newRid.setClusterId(ODatabaseRecordThreadLocal.instance().get().getClusterIdByName(clusterName));
             iTx.updateIdentityAfterCommit(rid, newRid);
           }
         }
@@ -574,10 +575,10 @@ public class ODistributedTransactionManager {
           for (ORecordId rid : recordsToLock)
             try {
               eventListener.onAfterRecordLock(rid);
-            } catch (Throwable t) {
+            } catch (Exception e) {
               // IGNORE IT
               ODistributedServerLog.error(iThis, dManager.getLocalNodeName(), null, ODistributedServerLog.DIRECTION.NONE,
-                  "Caught exception during ODistributedStorageEventListener.onAfterRecordLock", t);
+                  "Caught exception during ODistributedStorageEventListener.onAfterRecordLock", e);
             }
 
         // LOCKED: EXIT FROM RETRY LOOP
@@ -624,7 +625,7 @@ public class ODistributedTransactionManager {
         OScenarioThreadLocal.executeAsDefault(new Callable<Object>() {
           @Override
           public Object call() throws Exception {
-            final ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.INSTANCE.get();
+            final ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.instance().get();
             final ORecordOperation txEntry = db.getTransaction().getRecordEntry(rid);
 
             final ORecord record;
@@ -868,7 +869,7 @@ public class ODistributedTransactionManager {
                 try {
                   sendTxCompleted(localNodeName, involvedClusters, OMultiValue.getSingletonList(s), (OCompleted2pcTask) fixTask);
                   return true;
-                } catch (Throwable t) {
+                } catch (Exception e) {
                   // GO FOR ROLLBACK + REPAIR
                 }
               }

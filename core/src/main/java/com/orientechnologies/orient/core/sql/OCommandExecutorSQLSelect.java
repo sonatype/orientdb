@@ -616,7 +616,7 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
           try {
             applyGroupBy(record, iContext);
             resultQueue.put(new AsyncResult(record, iContext));
-          } catch (InterruptedException e) {
+          } catch (InterruptedException ignore) {
             Thread.currentThread().interrupt();
             return false;
           }
@@ -652,8 +652,7 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
   /**
    * Handles the record in result.
    *
-   * @param iRecord  Record to handle
-   * @param iContext
+   * @param iRecord Record to handle
    *
    * @return false if limit has been reached, otherwise true
    */
@@ -682,8 +681,6 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
 
   /**
    * Returns the temporary RID counter assuring it's unique per query tree.
-   *
-   * @param iContext
    *
    * @return Serial as integer
    */
@@ -881,8 +878,6 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
 
   /**
    * Report the tip to the profiler and collect it in context to be reported by tools like Studio
-   *
-   * @param iMessage
    */
   protected void reportTip(final String iMessage) {
     Orient.instance().getProfiler().reportTip(iMessage);
@@ -1089,6 +1084,9 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
           // EXTRACT THE FIELD NAME WITHOUT FUNCTIONS AND/OR LINKS
           projection = words.get(0);
           fieldName = projection;
+          if (fieldName.startsWith("`") && fieldName.endsWith("`")) {
+            fieldName = fieldName.substring(1, fieldName.length() - 1);
+          }
 
           lastRealPositionProjection = projectionString.indexOf(fieldName) + fieldName.length() + 1;
 
@@ -1724,7 +1722,8 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
             if (exceptions[current] == null) {
               exceptions[current] = new RuntimeException(e);
             }
-            e.printStackTrace();
+
+            OLogManager.instance().error(this, "Error during cluster scan", e);
           }
         }
       };
@@ -1761,7 +1760,7 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
           }
         }
 
-      } catch (InterruptedException e) {
+      } catch (InterruptedException ignore) {
         Thread.currentThread().interrupt();
         cancelQuery = true;
         break;
@@ -1781,7 +1780,7 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
         try {
           jobs.get(i).get();
           context.merge(contexts[i]);
-        } catch (InterruptedException e) {
+        } catch (InterruptedException ignore) {
           Thread.currentThread().interrupt();
           break;
         } catch (final ExecutionException e) {

@@ -33,12 +33,12 @@ import com.orientechnologies.orient.core.metadata.schema.OSchema;
 import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.record.ORecord;
 import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.serialization.OBase64Utils;
 import com.orientechnologies.orient.core.sql.query.OSQLSynchQuery;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-import sun.misc.BASE64Encoder;
 
 import java.util.*;
 import java.util.regex.Pattern;
@@ -1416,7 +1416,7 @@ public class OCommandExecutorSQLSelectTest {
     doc.field("binaryField", "foobar");
     doc.save();
 
-    String base64Value = new BASE64Encoder().encode(array);
+    String base64Value = OBase64Utils.encodeBytes(array);
 
     List<ODocument> results = db
         .query(new OSQLSynchQuery<ODocument>("select from TestBinaryField where binaryField = decode(?, 'base64')"), base64Value);
@@ -1702,6 +1702,54 @@ public class OCommandExecutorSQLSelectTest {
     params.put("status", enums);
     List<ODocument> results = db
         .query(new OSQLSynchQuery<ODocument>("select from " + className + " where status in :status"), params);
+    Assert.assertEquals(results.size(), 2);
+
+  }
+
+  @Test
+  public void testEmbeddedMapOfMapsContainsValue() {
+    //issue #7793
+    String className = "testEmbeddedMapOfMapsContainsValue";
+
+    db.command(new OCommandSQL("create class " + className)).execute();
+    db.command(new OCommandSQL("create property " + className + ".embedded_map EMBEDDEDMAP")).execute();
+    db.command(new OCommandSQL("create property " + className + ".id INTEGER")).execute();
+    db.command(new OCommandSQL(
+        "INSERT INTO " + className + " SET id = 0, embedded_map = {\"key_2\" : {\"name\" : \"key_2\", \"id\" : \"0\"}}")).execute();
+    db.command(new OCommandSQL(
+        "INSERT INTO " + className + " SET id = 1, embedded_map = {\"key_1\" : {\"name\" : \"key_1\", \"id\" : \"1\" }}"))
+        .execute();
+
+    List<ODocument> results = db.query(new OSQLSynchQuery<ODocument>(
+        "select from " + className + " where embedded_map CONTAINSVALUE {\"name\":\"key_2\", \"id\":\"0\"}"));
+    Assert.assertEquals(results.size(), 1);
+  }
+
+  @Test
+  public void testInvertedIndexedCondition() {
+    //issue #7820
+    String className = "testInvertedIndexedCondition";
+
+    db.command(new OCommandSQL("create class " + className)).execute();
+    db.command(new OCommandSQL("create property " + className + ".name STRING")).execute();
+    db.command(new OCommandSQL("insert into " + className + " SET name = \"1\"")).execute();
+    db.command(new OCommandSQL("insert into " + className + " SET name = \"2\"")).execute();
+
+    List<ODocument> results = db.query(new OSQLSynchQuery<ODocument>("SELECT * FROM " + className + " WHERE name >= \"0\""));
+    Assert.assertEquals(results.size(), 2);
+
+    results = db.query(new OSQLSynchQuery<ODocument>("SELECT * FROM " + className + " WHERE \"0\" <= name"));
+    Assert.assertEquals(results.size(), 2);
+
+    db.command(new OCommandSQL("CREATE INDEX " + className + ".name on " + className + " (name) UNIQUE")).execute();
+
+    results = db.query(new OSQLSynchQuery<ODocument>("SELECT * FROM " + className + " WHERE \"0\" <= name"));
+    Assert.assertEquals(results.size(), 2);
+
+    results = db.query(new OSQLSynchQuery<ODocument>("SELECT * FROM " + className + " WHERE \"2\" <= name"));
+    Assert.assertEquals(results.size(), 1);
+
+    results = db.query(new OSQLSynchQuery<ODocument>("SELECT * FROM " + className + " WHERE name >= \"0\""));
     Assert.assertEquals(results.size(), 2);
 
   }

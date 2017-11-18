@@ -123,14 +123,20 @@ public abstract class OAbstractProfiler extends OSharedResourceAbstract
             }
           }
         }
-      } catch (Throwable e) {
+      } catch (Exception e) {
         OLogManager.instance().debug(this, "Error on memory checker task", e);
       }
     }
   }
 
   public OAbstractProfiler() {
-    Orient.instance().registerWeakOrientStartupListener(this);
+    this(true);
+  }
+
+  public OAbstractProfiler(boolean registerListener) {
+    if (registerListener) {
+      Orient.instance().registerWeakOrientStartupListener(this);
+    }
   }
 
   public OAbstractProfiler(final OAbstractProfiler profiler) {
@@ -180,7 +186,7 @@ public abstract class OAbstractProfiler extends OSharedResourceAbstract
                 OFileUtils.getSizeAsString(osTotalMem), OFileUtils.getSizeAsString(freeSpaceInMB),
                 OFileUtils.getSizeAsString(totalSpaceInMB)));
       }
-    } catch (Exception e) {
+    } catch (Exception ignore) {
       // JMX NOT AVAILABLE, AVOID OS DATA
       buffer.append(String.format("OrientDB Memory profiler: HEAP=%s of %s - DISKCACHE (%s dbs)=%s of %s - FS=%s of %s",
           OFileUtils.getSizeAsString(runtime.totalMemory() - runtime.freeMemory()), OFileUtils.getSizeAsString(runtime.maxMemory()),
@@ -260,7 +266,7 @@ public abstract class OAbstractProfiler extends OSharedResourceAbstract
         statsTxCommit = lastTxCommit;
         statsTxRollback = lastTxRollback;
 
-      } catch (Throwable t) {
+      } catch (Exception ignore) {
         // IGNORE IT
       }
     }

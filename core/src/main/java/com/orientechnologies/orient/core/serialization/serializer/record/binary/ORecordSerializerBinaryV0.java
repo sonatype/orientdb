@@ -164,7 +164,7 @@ public class ORecordSerializerBinaryV0 implements ODocumentSerializer {
 
     final byte[] field = iFieldName.getBytes();
 
-    final OMetadataInternal metadata = (OMetadataInternal) ODatabaseRecordThreadLocal.INSTANCE.get().getMetadata();
+    final OMetadataInternal metadata = (OMetadataInternal) ODatabaseRecordThreadLocal.instance().get().getMetadata();
     final OImmutableSchema _schema = metadata.getImmutableSchemaSnapshot();
 
     while (true) {
@@ -859,7 +859,7 @@ public class ORecordSerializerBinaryV0 implements ODocumentSerializer {
         final ORecord real = link.getRecord();
         if (real != null)
           link = real;
-      } catch (ORecordNotFoundException ex) {
+      } catch (ORecordNotFoundException ignore) {
         // IGNORE IT WILL FAIL THE ASSERT IN CASE
       }
     }

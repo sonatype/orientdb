@@ -19,9 +19,11 @@
  */
 package com.orientechnologies.orient.core.index;
 
+import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.listener.OProgressListener;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.util.OMultiKey;
+import com.orientechnologies.common.util.OUncaughtExceptionHandler;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.db.ODatabase;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
@@ -238,9 +240,11 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
     int[] clusterIdsToIndex = null;
 
     acquireExclusiveLock();
+    Locale locale = null;
+    OIndex<?> idx = null;
     try {
-      final Locale locale = getServerLocale();
-      final OIndex<?> idx = indexes.remove(iIndexName.toLowerCase(locale));
+      locale = getServerLocale();
+      idx = indexes.remove(iIndexName.toLowerCase(locale));
       if (idx != null) {
         final Set<String> clusters = idx.getClusters();
         if (clusters != null && !clusters.isEmpty()) {
@@ -260,7 +264,10 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
 
         notifyInvolvedClasses(clusterIdsToIndex);
       }
-
+    } catch (OException e) {
+      indexes.put(iIndexName.toLowerCase(locale), idx);
+      reload();
+      throw e;
     } finally {
       releaseExclusiveLock();
     }
@@ -312,6 +319,7 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
       final Runnable recreateIndexesTask = new RecreateIndexesTask(db.getURL());
       recreateIndexesThread = new Thread(recreateIndexesTask, "OrientDB rebuild indexes");
       recreateIndexesThread.start();
+      recreateIndexesThread.setUncaughtExceptionHandler(new OUncaughtExceptionHandler());
     } finally {
       releaseExclusiveLock();
     }
@@ -333,7 +341,7 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
         try {
           recreateIndexesThread.join();
           OLogManager.instance().info(this, "Indexes restore after crash was finished.");
-        } catch (InterruptedException e) {
+        } catch (InterruptedException ignore) {
           Thread.currentThread().interrupt();
           OLogManager.instance().info(this, "Index rebuild task was interrupted.");
         }
@@ -344,7 +352,7 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
     if (rebuildCompleted)
       return false;
 
-    final ODatabaseDocumentInternal database = ODatabaseRecordThreadLocal.INSTANCE.get();
+    final ODatabaseDocumentInternal database = ODatabaseRecordThreadLocal.instance().get();
     final OStorage storage = database.getStorage().getUnderlying();
     if (storage instanceof OAbstractPaginatedStorage) {
       OAbstractPaginatedStorage paginatedStorage = (OAbstractPaginatedStorage) storage;
@@ -559,8 +567,7 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
           index.delete();
         } catch (Exception e) {
           OLogManager.instance()
-              .error(this, "Error on removing index '%s' on rebuilding. Trying removing index files (Cause: %s)", index.getName(),
-                  e);
+              .error(this, "Error on removing index '%s' on rebuilding. Trying removing index files", e, index.getName());
 
           // TRY DELETING ALL THE FILES RELATIVE TO THE INDEX
           for (Iterator<OIndexFactory> it = OIndexes.getAllFactories(); it.hasNext(); ) {
@@ -571,6 +578,7 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
 
               engine.deleteWithoutLoad(index.getName());
             } catch (Exception e2) {
+              OLogManager.instance().error(this, "Error during deletion of index", e2);
             }
           }
         }
@@ -607,7 +615,7 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
       } else {
         errors++;
         OLogManager.instance().error(this, "Information about index was restored incorrectly, following data were loaded : "
-            + "index name '%s', index definition '%s', clusters %s, type %s", indexName, indexDefinition, clusters, type);
+            + "index name '%s', index definition '%s', clusters %s, type %s", null, indexName, indexDefinition, clusters, type);
       }
     }
 
@@ -634,7 +642,7 @@ public class OIndexManagerShared extends OIndexManagerAbstract {
 
       ODocument metadata = idx.field(OIndexInternal.METADATA);
       if (indexType == null) {
-        OLogManager.instance().error(this, "Index type is null, will process other record");
+        OLogManager.instance().error(this, "Index type is null, will process other record", null);
         throw new OIndexException("Index type is null, will process other record. Index configuration: " + idx.toString());
       }
 

@@ -77,7 +77,7 @@ public enum OGlobalConfiguration {
   DIRECT_MEMORY_TRACK_MODE("memory.directMemory.trackMode",
       "Activates the direct memory pool [leak detector](Leak-Detector.md). This detector causes a large overhead and should be used for debugging "
           + "purposes only. It's also a good idea to pass the "
-          + "-Djava.util.logging.manager=com.orientechnologies.common.log.OLogManager$DebugLogManager switch to the JVM, "
+          + "-Djava.util.logging.manager=com.orientechnologies.common.log.OLogManager$ShutdownLogManager switch to the JVM, "
           + "if you use this mode, this will enable the logging from JVM shutdown hooks.", Boolean.class, false),
 
   DIRECT_MEMORY_ONLY_ALIGNED_ACCESS("memory.directMemory.onlyAlignedMemoryAccess",
@@ -340,7 +340,7 @@ public enum OGlobalConfiguration {
       "Indicates the index durability level in TX mode. Can be ROLLBACK_ONLY or FULL (ROLLBACK_ONLY by default)", String.class,
       "FULL"),
 
-  INDEX_CURSOR_PREFETCH_SIZE("index.cursor.prefetchSize", "Default prefetch size of index cursor", Integer.class, 500000),
+  INDEX_CURSOR_PREFETCH_SIZE("index.cursor.prefetchSize", "Default prefetch size of index cursor", Integer.class, 10000),
 
   // SBTREE
   SBTREE_MAX_DEPTH("sbtree.maxDepth",
@@ -818,13 +818,13 @@ public enum OGlobalConfiguration {
    */
   @OApi(maturity = OApi.MATURITY.NEW) DISTRIBUTED_CONCURRENT_TX_MAX_AUTORETRY("distributed.concurrentTxMaxAutoRetry",
       "Maximum attempts the transaction coordinator should execute a transaction automatically, if records are locked. (Minimum is 1 = no attempts)",
-      Integer.class, 10, true),
+      Integer.class, 15, true),
 
   /**
    * @Since 2.2.7
    */
   @OApi(maturity = OApi.MATURITY.NEW) DISTRIBUTED_ATOMIC_LOCK_TIMEOUT("distributed.atomicLockTimeout",
-      "Timeout (in ms) to acquire a distributed lock on a record. (0=infinite)", Integer.class, 50, true),
+      "Timeout (in ms) to acquire a distributed lock on a record. (0=infinite)", Integer.class, 1000, true),
 
   /**
    * @Since 2.1
@@ -971,10 +971,15 @@ public enum OGlobalConfiguration {
   @Deprecated CACHE_LOCAL_ENABLED("cache.local.enabled", "Deprecated, Level1 cache cannot be disabled anymore", Boolean.class,
       true);
 
+  /**
+   * Place holder for the "undefined" value of setting.
+   */
+  private final Object nullValue = new Object();
+
   private final String   key;
   private final Object   defValue;
   private final Class<?> type;
-  private volatile Object value = null;
+  private volatile Object value = nullValue;
   private final String                       description;
   private final OConfigurationChangeCallback changeCallback;
   private final Boolean                      canChangeAtRuntime;
@@ -1083,7 +1088,14 @@ public enum OGlobalConfiguration {
 
   public <T> T getValue() {
     //noinspection unchecked
-    return (T) (value != null ? value : defValue);
+    return (T) (value != nullValue && value != null ? value : defValue);
+  }
+
+  /**
+   * @return <code>true</code> if configuration was changed from default value and <code>false</code> otherwise.
+   */
+  public boolean isChanged() {
+    return value != nullValue;
   }
 
   /**
@@ -1148,34 +1160,34 @@ public enum OGlobalConfiguration {
 
     if (changeCallback != null) {
       try {
-        changeCallback.change(oldValue, value);
+        changeCallback.change(oldValue == nullValue ? null : oldValue, value == nullValue ? null : value);
       } catch (Exception e) {
-        e.printStackTrace();
+        OLogManager.instance().error(this, "Error during call of 'change callback'", e);
       }
     }
   }
 
   public boolean getValueAsBoolean() {
-    final Object v = value != null ? value : defValue;
+    final Object v = value != nullValue && value != null ? value : defValue;
     return v instanceof Boolean ? (Boolean) v : Boolean.parseBoolean(v.toString());
   }
 
   public String getValueAsString() {
-    return value != null ? value.toString() : defValue != null ? defValue.toString() : null;
+    return value != nullValue && value != null ? value.toString() : defValue != null ? defValue.toString() : null;
   }
 
   public int getValueAsInteger() {
-    final Object v = value != null ? value : defValue;
+    final Object v = value != nullValue && value != null ? value : defValue;
     return (int) (v instanceof Number ? ((Number) v).intValue() : OFileUtils.getSizeAsNumber(v.toString()));
   }
 
   public long getValueAsLong() {
-    final Object v = value != null ? value : defValue;
+    final Object v = value != nullValue && value != null ? value : defValue;
     return v instanceof Number ? ((Number) v).longValue() : OFileUtils.getSizeAsNumber(v.toString());
   }
 
   public float getValueAsFloat() {
-    final Object v = value != null ? value : defValue;
+    final Object v = value != nullValue && value != null ? value : defValue;
     return v instanceof Float ? (Float) v : Float.parseFloat(v.toString());
   }
 

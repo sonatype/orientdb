@@ -475,7 +475,7 @@ public class O2QCache implements OReadCache {
       try {
         flushFuture.get();
       } catch (InterruptedException e) {
-        throw new OInterruptedException("File flush was interrupted");
+        throw OException.wrapException(new OInterruptedException("File flush was interrupted"), e);
       } catch (Exception e) {
         throw OException.wrapException(new OReadCacheException("File flush was abnormally terminated"), e);
       }
@@ -688,7 +688,8 @@ public class O2QCache implements OReadCache {
 
       }
     } catch (OLoadCacheStateException lcse) {
-      OLogManager.instance().warn(this, "Cannot restore state of cache for storage placed under " + writeCache.getRootDirectory());
+      OLogManager.instance()
+          .warn(this, "Cannot restore state of cache for storage placed under " + writeCache.getRootDirectory(), lcse);
     } catch (Exception e) {
       throw OException.wrapException(
           new OStorageException("Cannot restore state of cache for storage placed under " + writeCache.getRootDirectory()), e);
@@ -944,7 +945,7 @@ public class O2QCache implements OReadCache {
       }
     } catch (Exception e) {
       OLogManager.instance()
-          .error(this, "Cannot store state of cache for storage placed under %s (error: %s)", writeCache.getRootDirectory(), e);
+          .error(this, "Cannot store state of cache for storage placed under %s", e, writeCache.getRootDirectory());
     } finally {
       cacheLock.releaseWriteLock();
     }
@@ -998,7 +999,7 @@ public class O2QCache implements OReadCache {
       final File stateFile = new File(rootDirectory, CACHE_STATE_FILE);
       if (stateFile.exists()) {
         if (!stateFile.delete()) {
-          OLogManager.instance().error(this, "Cache state file %s cannot be deleted", stateFile);
+          OLogManager.instance().error(this, "Cache state file %s cannot be deleted", null, stateFile);
         }
       }
 

@@ -124,7 +124,7 @@ public abstract class OIndexManagerAbstract extends ODocumentWrapperNoClass impl
             }
 
           if (!saved)
-            OLogManager.instance().error(this, "failed to save the index manager configuration after 10 retries");
+            OLogManager.instance().error(this, "failed to save the index manager configuration after 10 retries", null);
 
           return null;
 
@@ -143,6 +143,8 @@ public abstract class OIndexManagerAbstract extends ODocumentWrapperNoClass impl
       try {
         save(OMetadataDefault.CLUSTER_INTERNAL_NAME);
       } catch (Exception e) {
+        OLogManager.instance().error(this, "Can not save index metadata will try to allocate new one", e);
+
         // RESET RID TO ALLOCATE A NEW ONE
         if (ORecordId.isPersistent(document.getIdentity().getClusterPosition())) {
           document.getIdentity().reset();
@@ -420,11 +422,11 @@ public abstract class OIndexManagerAbstract extends ODocumentWrapperNoClass impl
   }
 
   protected static ODatabaseDocumentInternal getDatabase() {
-    return ODatabaseRecordThreadLocal.INSTANCE.get();
+    return ODatabaseRecordThreadLocal.instance().get();
   }
 
   protected ODatabaseDocumentInternal getDatabaseIfDefined() {
-    return ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
+    return ODatabaseRecordThreadLocal.instance().getIfDefined();
   }
 
   protected void addIndexInternal(final OIndex<?> index) {
@@ -514,7 +516,6 @@ public abstract class OIndexManagerAbstract extends ODocumentWrapperNoClass impl
     OStorageConfiguration configuration = storage.getConfiguration();
     return configuration.getLocaleInstance();
   }
-
 
   private Map<OMultiKey, Set<OIndex<?>>> getIndexOnProperty(final String className) {
     final Locale locale = getServerLocale();

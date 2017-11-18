@@ -62,9 +62,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author Luca Garulli
  * @see OCommandScript
  */
-public class OCommandExecutorScript extends OCommandExecutorAbstract implements OCommandDistributedReplicateRequest, OTemporaryRidGenerator {
-  private static final int             MAX_DELAY     = 100;
-  protected OCommandScript             request;
+public class OCommandExecutorScript extends OCommandExecutorAbstract
+    implements OCommandDistributedReplicateRequest, OTemporaryRidGenerator {
+  private static final int MAX_DELAY = 100;
+  protected OCommandScript request;
   protected DISTRIBUTED_EXECUTION_MODE executionMode = DISTRIBUTED_EXECUTION_MODE.LOCAL;
   protected AtomicInteger              serialTempRID = new AtomicInteger(0);
 
@@ -99,7 +100,7 @@ public class OCommandExecutorScript extends OCommandExecutorAbstract implements 
       try {
         parserText = preParse(parserText, iArgs);
       } catch (ParseException e) {
-        throw new OCommandExecutionException("Invalid script:" + e.getMessage());
+        throw OException.wrapException(new OCommandExecutionException("Invalid script:" + e.getMessage()), e);
       }
       return executeSQL();
     } else {
@@ -111,8 +112,38 @@ public class OCommandExecutorScript extends OCommandExecutorAbstract implements 
     final boolean strict = getDatabase().getStorage().getConfiguration().isStrictSql();
     if (strict) {
       parserText = addSemicolons(parserText);
-      InputStream is = new ByteArrayInputStream(parserText.getBytes());
-      OrientSql osql = new OrientSql(is);
+
+      ODatabaseDocumentInternal db = getDatabase();
+
+      byte[] bytes;
+      try {
+        if (db == null) {
+          bytes = parserText.getBytes();
+        } else {
+          bytes = parserText.getBytes(getDatabase().getStorage().getConfiguration().getCharset());
+        }
+      } catch (UnsupportedEncodingException e) {
+        OLogManager.instance().warn(this,
+            "Invalid charset for database " + getDatabase() + " " + getDatabase().getStorage().getConfiguration().getCharset());
+
+        bytes = parserText.getBytes();
+      }
+
+      InputStream is = new ByteArrayInputStream(bytes);
+
+      OrientSql osql = null;
+      try {
+
+        if (db == null) {
+          osql = new OrientSql(is);
+        } else {
+          osql = new OrientSql(is, db.getStorage().getConfiguration().getCharset());
+        }
+      } catch (UnsupportedEncodingException e) {
+        OLogManager.instance().warn(this,
+            "Invalid charset for database " + getDatabase() + " " + getDatabase().getStorage().getConfiguration().getCharset());
+        osql = new OrientSql(is);
+      }
       List<OStatement> statements = osql.parseScript();
       StringBuilder result = new StringBuilder();
       for (OStatement stm : statements) {
@@ -147,7 +178,7 @@ public class OCommandExecutorScript extends OCommandExecutorAbstract implements 
   }
 
   protected Object executeJsr223Script(final String language, final OCommandContext iContext, final Map<Object, Object> iArgs) {
-    ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.INSTANCE.get();
+    ODatabaseDocumentInternal db = ODatabaseRecordThreadLocal.instance().get();
 
     final OScriptManager scriptManager = Orient.instance().getScriptManager();
     CompiledScript compiledScript = request.getCompiledScript();
@@ -170,16 +201,17 @@ public class OCommandExecutorScript extends OCommandExecutorAbstract implements 
         request.setCompiledScript(compiledScript);
       }
 
-      final Bindings binding = scriptManager.bind(compiledScript.getEngine().getBindings(ScriptContext.ENGINE_SCOPE),
-          (ODatabaseDocumentTx) db, iContext, iArgs);
+      final Bindings binding = scriptManager
+          .bind(compiledScript.getEngine().getBindings(ScriptContext.ENGINE_SCOPE), (ODatabaseDocumentTx) db, iContext, iArgs);
 
       try {
         final Object ob = compiledScript.eval(binding);
 
         return OCommandExecutorUtility.transformResult(ob);
       } catch (ScriptException e) {
-        throw OException.wrapException(
-            new OCommandScriptException("Error on execution of the script", request.getText(), e.getColumnNumber()), e);
+        throw OException
+            .wrapException(new OCommandScriptException("Error on execution of the script", request.getText(), e.getColumnNumber()),
+                e);
 
       } finally {
         scriptManager.unbind(binding, iContext, iArgs);
@@ -191,7 +223,7 @@ public class OCommandExecutorScript extends OCommandExecutorAbstract implements 
 
   // TODO: CREATE A REGULAR JSR223 SCRIPT IMPL
   protected Object executeSQL() {
-    ODatabaseDocument db = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
+    ODatabaseDocument db = ODatabaseRecordThreadLocal.instance().getIfDefined();
     try {
 
       return executeSQLScript(parserText, db);
@@ -443,7 +475,8 @@ public class OCommandExecutorScript extends OCommandExecutorAbstract implements 
     try {
       result = condition.evaluate(null, null, getContext());
     } catch (Exception e) {
-      throw new OCommandExecutionException("Could not evaluate IF condition: " + cmd + " - " + e.getMessage());
+      throw OException
+          .wrapException(new OCommandExecutionException("Could not evaluate IF condition: " + cmd + " - " + e.getMessage()), e);
     }
 
     if (Boolean.TRUE.equals(result)) {
@@ -572,7 +605,7 @@ public class OCommandExecutorScript extends OCommandExecutorAbstract implements 
     if (!(result instanceof OIdentifiable) && !(result instanceof OResultSet)) {
       if (!OMultiValue.isMultiValue(result)) {
         request.setRecordResultSet(false);
-      } else  {
+      } else {
         for (Object val : OMultiValue.getMultiValueIterable(result)) {
           if (!(val instanceof OIdentifiable))
             request.setRecordResultSet(false);
@@ -585,7 +618,7 @@ public class OCommandExecutorScript extends OCommandExecutorAbstract implements 
     final String sleepTimeInMs = lastCommand.substring("sleep ".length()).trim();
     try {
       Thread.sleep(Integer.parseInt(sleepTimeInMs));
-    } catch (InterruptedException e) {
+    } catch (InterruptedException ignore) {
       Thread.currentThread().interrupt();
       OLogManager.instance().debug(this, "Sleep was interrupted in SQL batch");
     }
@@ -615,10 +648,9 @@ public class OCommandExecutorScript extends OCommandExecutorAbstract implements 
 
     Object lastResult = null;
 
-    if (cmd.equalsIgnoreCase("NULL") || cmd.startsWith("$") || (cmd.startsWith("[") && cmd.endsWith("]"))
-        || (cmd.startsWith("{") && cmd.endsWith("}"))
-        || (cmd.startsWith("\"") && cmd.endsWith("\"") || cmd.startsWith("'") && cmd.endsWith("'"))
-        || (cmd.startsWith("(") && cmd.endsWith(")")))
+    if (cmd.equalsIgnoreCase("NULL") || cmd.startsWith("$") || (cmd.startsWith("[") && cmd.endsWith("]")) || (cmd.startsWith("{")
+        && cmd.endsWith("}")) || (cmd.startsWith("\"") && cmd.endsWith("\"") || cmd.startsWith("'") && cmd.endsWith("'")) || (
+        cmd.startsWith("(") && cmd.endsWith(")")) || cmd.startsWith("#"))
       lastResult = getValue(cmd, db);
     else
       lastResult = executeCommand(cmd, db);

@@ -22,6 +22,7 @@ package com.orientechnologies.orient.core.record.impl;
 import com.orientechnologies.common.collection.OMultiValue;
 import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.io.OIOUtils;
+import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.util.OPair;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.command.OCommandContext;
@@ -189,8 +190,8 @@ public class ODocumentHelper {
         throw new IllegalArgumentException(
             "Property '" + iFieldName + "' of type '" + iFieldType + "' cannot accept value of type: " + iValue.getClass());
     } else if (Date.class.isAssignableFrom(iFieldType)) {
-      if (iValue instanceof String && ODatabaseRecordThreadLocal.INSTANCE.isDefined()) {
-        final OStorageConfiguration config = ODatabaseRecordThreadLocal.INSTANCE.get().getStorage().getConfiguration();
+      if (iValue instanceof String && ODatabaseRecordThreadLocal.instance().isDefined()) {
+        final OStorageConfiguration config = ODatabaseRecordThreadLocal.instance().get().getStorage().getConfiguration();
 
         DateFormat formatter = config.getDateFormatInstance();
 
@@ -596,7 +597,7 @@ public class ODocumentHelper {
     for (String s : indexRanges) {
       try {
         Integer.parseInt(s);
-      } catch (Exception e) {
+      } catch (NumberFormatException ignore) {
         return false;
       }
     }
@@ -672,7 +673,7 @@ public class ODocumentHelper {
     for (String s : list) {
       try {
         Integer.parseInt(s);
-      } catch (NumberFormatException e) {
+      } catch (NumberFormatException ignore) {
         return false;
       }
     }
@@ -867,9 +868,10 @@ public class ODocumentHelper {
         result = new Date(((Number) currentValue).longValue());
       else
         try {
-          result = ODatabaseRecordThreadLocal.INSTANCE.get().getStorage().getConfiguration().getDateFormatInstance()
+          result = ODatabaseRecordThreadLocal.instance().get().getStorage().getConfiguration().getDateFormatInstance()
               .parse(currentValue.toString());
         } catch (ParseException e) {
+          OLogManager.instance().warn(ODocumentHelper.class, "Error during function evaluation", e);
         }
     else if (function.startsWith("ASDATETIME("))
       if (currentValue instanceof Date)
@@ -878,9 +880,10 @@ public class ODocumentHelper {
         result = new Date(((Number) currentValue).longValue());
       else
         try {
-          result = ODatabaseRecordThreadLocal.INSTANCE.get().getStorage().getConfiguration().getDateTimeFormatInstance()
+          result = ODatabaseRecordThreadLocal.instance().get().getStorage().getConfiguration().getDateTimeFormatInstance()
               .parse(currentValue.toString());
         } catch (ParseException e) {
+          OLogManager.instance().warn(ODocumentHelper.class, "Error during function evaluation", e);
         }
     else {
       // EXTRACT ARGUMENTS
@@ -1401,7 +1404,7 @@ public class ODocumentHelper {
     final ORidBag myBag = myFieldValue;
     final ORidBag otherBag = otherFieldValue;
 
-    final ODatabaseDocumentInternal originalDb = ODatabaseRecordThreadLocal.INSTANCE.getIfDefined();
+    final ODatabaseDocumentInternal originalDb = ODatabaseRecordThreadLocal.instance().getIfDefined();
     try {
 
       final int mySize = makeDbCall(iMyDb, new ODbRelatedCall<Integer>() {

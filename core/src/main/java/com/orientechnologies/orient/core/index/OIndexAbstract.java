@@ -96,7 +96,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T>, OOrientSta
       final ODocument metadata, final int version, final OStorage storage) {
     acquireExclusiveLock();
     try {
-      databaseName = ODatabaseRecordThreadLocal.INSTANCE.get().getName();
+      databaseName = ODatabaseRecordThreadLocal.instance().get().getName();
 
       this.version = version;
       this.name = name;
@@ -198,7 +198,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T>, OOrientSta
       while (true)
         try {
           return storage.hasIndexRangeQuerySupport(indexId);
-        } catch (OInvalidIndexEngineIdException e) {
+        } catch (OInvalidIndexEngineIdException ignore) {
           doReloadIndexEngine();
         }
     } finally {
@@ -234,7 +234,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T>, OOrientSta
       try {
         removeValuesContainer();
       } catch (Exception e) {
-        OLogManager.instance().error(this, "Error during deletion of index '%s'", name);
+        OLogManager.instance().error(this, "Error during deletion of index '%s'", e, name);
       }
 
       final Boolean durableInNonTxMode = isDurableInNonTxMode();
@@ -258,7 +258,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T>, OOrientSta
           if (indexId >= 0)
             storage.deleteIndexEngine(indexId);
           break;
-        } catch (OInvalidIndexEngineIdException ex) {
+        } catch (OInvalidIndexEngineIdException ignored) {
           doReloadIndexEngine();
         } catch (Exception ex) {
           OLogManager.instance().error(this, "Exception during index '%s' deletion", ex, name);
@@ -343,9 +343,9 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T>, OOrientSta
           OLogManager.instance().warn(this, "Cannot load index '%s' rebuilt it from scratch", getName());
           try {
             rebuild();
-          } catch (Throwable t) {
+          } catch (Exception e1) {
             OLogManager.instance()
-                .error(this, "Cannot rebuild index '%s' because '" + t + "'. The index will be removed in configuration", e,
+                .error(this, "Cannot rebuild index '%s' because '" + e1 + "'. The index will be removed in configuration", e1,
                     getName());
             // REMOVE IT
             return false;
@@ -384,7 +384,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T>, OOrientSta
         while (true)
           try {
             return storage.indexContainsKey(indexId, key);
-          } catch (OInvalidIndexEngineIdException e) {
+          } catch (OInvalidIndexEngineIdException ignore) {
             doReloadIndexEngine();
           }
       } finally {
@@ -420,7 +420,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T>, OOrientSta
       while (true)
         try {
           return storage.getIndexFirstKey(indexId);
-        } catch (OInvalidIndexEngineIdException e) {
+        } catch (OInvalidIndexEngineIdException ignore) {
           doReloadIndexEngine();
         }
     } finally {
@@ -435,7 +435,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T>, OOrientSta
       while (true)
         try {
           return storage.getIndexLastKey(indexId);
-        } catch (OInvalidIndexEngineIdException e) {
+        } catch (OInvalidIndexEngineIdException ignore) {
           doReloadIndexEngine();
         }
     } finally {
@@ -470,7 +470,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T>, OOrientSta
         if (indexId >= 0)
           storage.deleteIndexEngine(indexId);
       } catch (Exception e) {
-        OLogManager.instance().error(this, "Error during index '%s' delete", name);
+        OLogManager.instance().error(this, "Error during index '%s' delete", e, name);
       }
 
       removeValuesContainer();
@@ -569,7 +569,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T>, OOrientSta
         while (true)
           try {
             return storage.removeKeyFromIndex(indexId, key);
-          } catch (OInvalidIndexEngineIdException e) {
+          } catch (OInvalidIndexEngineIdException ignore) {
             doReloadIndexEngine();
           }
       } finally {
@@ -622,7 +622,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T>, OOrientSta
           try {
             storage.clearIndex(indexId);
             break;
-          } catch (OInvalidIndexEngineIdException e) {
+          } catch (OInvalidIndexEngineIdException ignore) {
             doReloadIndexEngine();
           }
         return this;
@@ -644,7 +644,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T>, OOrientSta
         try {
           storage.deleteIndexEngine(indexId);
           break;
-        } catch (OInvalidIndexEngineIdException e) {
+        } catch (OInvalidIndexEngineIdException ignore) {
           doReloadIndexEngine();
         }
 
@@ -871,7 +871,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T>, OOrientSta
       while (true)
         try {
           return storage.getIndexKeyCursor(indexId);
-        } catch (OInvalidIndexEngineIdException e) {
+        } catch (OInvalidIndexEngineIdException ignore) {
           doReloadIndexEngine();
         }
     } finally {
@@ -995,7 +995,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T>, OOrientSta
       try {
         engine = storage.getIndexEngine(indexId);
         break;
-      } catch (OInvalidIndexEngineIdException e) {
+      } catch (OInvalidIndexEngineIdException ignore) {
         doReloadIndexEngine();
       }
     return engine.getIndexNameByKey(key);
@@ -1008,7 +1008,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T>, OOrientSta
       try {
         engine = storage.getIndexEngine(indexId);
         break;
-      } catch (OInvalidIndexEngineIdException e) {
+      } catch (OInvalidIndexEngineIdException ignore) {
         doReloadIndexEngine();
       }
 
@@ -1016,7 +1016,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T>, OOrientSta
   }
 
   protected ODatabaseDocumentInternal getDatabase() {
-    return ODatabaseRecordThreadLocal.INSTANCE.get();
+    return ODatabaseRecordThreadLocal.instance().get();
   }
 
   protected long[] indexCluster(final String clusterName, final OProgressListener iProgressListener, long documentNum,
@@ -1056,7 +1056,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T>, OOrientSta
         if (iProgressListener != null)
           iProgressListener.onProgress(this, documentNum, (float) (documentNum * 100.0 / documentTotal));
       }
-    } catch (NoSuchElementException e) {
+    } catch (NoSuchElementException ignore) {
       // END OF CLUSTER REACHED, IGNORE IT
     }
 
@@ -1123,7 +1123,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T>, OOrientSta
           }
         });
         break;
-      } catch (OInvalidIndexEngineIdException e) {
+      } catch (OInvalidIndexEngineIdException ignore) {
         doReloadIndexEngine();
       }
   }

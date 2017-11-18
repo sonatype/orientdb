@@ -233,6 +233,7 @@
         -->
         <!--<sonatypeOssDistMgmtSnapshotsUrl>https://oss.sonatype.org/content/repositories/snapshots/-->
         <!--</sonatypeOssDistMgmtSnapshotsUrl>-->
+        <heapSize>2048m</heapSize>
 
         <!--
         SONATYPE: Additional configuration for Zion, since we are not inheriting from buildsupport.

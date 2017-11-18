@@ -87,8 +87,10 @@ public class OLuceneAnalyzerFactory {
         classAnalyzer = Class.forName(analyzerFQN);
         return (Analyzer) classAnalyzer.newInstance();
 
-      } catch (Throwable e1) {
-        throw OException.wrapException(new OIndexException("Couldn't instantiate analyzer:  public constructor  not found"), e);
+      } catch (Exception e1) {
+        OLogManager.instance().error(this, "Exception has to be suppressed, original exception is ", e);
+
+        throw OException.wrapException(new OIndexException("Couldn't instantiate analyzer:  public constructor  not found"), e1);
       }
 
     } catch (Exception e) {
