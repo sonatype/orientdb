@@ -44,8 +44,9 @@
         </osgi.export>
 
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <argLine>-ea -Xmx${heapSize} -XX:MaxDirectMemorySize=512g
+        <argLine>-ea -Xmx${heapSize}  -Xms${heapSize} -XX:MaxDirectMemorySize=512g
             -Dindex.flushAfterCreate=false
+            -Dstorage.diskCache.bufferSize=4096
             -Dmemory.directMemory.trackMode=true
             -Dstorage.makeFullCheckpointAfterCreate=false
             -Dstorage.makeFullCheckpointAfterOpen=false
@@ -170,6 +171,11 @@
                         <version>${surefire.version}</version>
                     </dependency>
                 </dependencies>
+                <configuration>
+                    <systemPropertyVariables>
+                        <buildDirectory>${project.build.directory}</buildDirectory>
+                    </systemPropertyVariables>
+                </configuration>
             </plugin>
         </plugins>
     </build>

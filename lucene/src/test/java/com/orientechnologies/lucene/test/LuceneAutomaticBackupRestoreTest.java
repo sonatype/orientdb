@@ -18,6 +18,7 @@
 
 package com.orientechnologies.lucene.test;
 
+import com.orientechnologies.common.io.OFileUtils;
 import com.orientechnologies.common.io.OIOUtils;
 import com.orientechnologies.orient.core.command.OCommandOutputListener;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
@@ -31,7 +32,7 @@ import com.orientechnologies.orient.server.OServer;
 import com.orientechnologies.orient.server.config.OServerParameterConfiguration;
 import com.orientechnologies.orient.server.handler.OAutomaticBackup;
 import org.junit.*;
-import org.junit.rules.TemporaryFolder;
+import org.junit.rules.TestName;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
@@ -51,9 +52,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 @RunWith(JUnit4.class)
 public class LuceneAutomaticBackupRestoreTest {
 
-  @Rule
-  public TemporaryFolder tempFolder = new TemporaryFolder();
-
   private final static String DBNAME    = "LuceneAutomaticBackupRestoreTest";
   private              String URL       = null;
   private              String BACKUPDIR = null;
@@ -62,22 +60,35 @@ public class LuceneAutomaticBackupRestoreTest {
   private OServer             server;
   private ODatabaseDocumentTx databaseDocumentTx;
 
+  private File tempFolder;
+
+  @Rule
+  public TestName name = new TestName();
+
   @Before
   public void setUp() throws Exception {
     final String os = System.getProperty("os.name").toLowerCase(Locale.ENGLISH);
+    final String buildDirectory = System.getProperty("buildDirectory", "target");
+    final File buildDirectoryFile = new File(buildDirectory);
+
+    tempFolder = new File(buildDirectoryFile, name.getMethodName());
+    OFileUtils.deleteRecursively(tempFolder);
+    Assert.assertTrue(tempFolder.mkdirs());
+
     Assume.assumeFalse(os.contains("win"));
 
-    System.setProperty("ORIENTDB_HOME", tempFolder.getRoot().getAbsolutePath());
+    System.setProperty("ORIENTDB_HOME", tempFolder.getCanonicalPath());
 
-    URL = "plocal:" + tempFolder.getRoot().getAbsolutePath() + File.separator + "databases" + File.separator + DBNAME;
+    URL = "plocal:" + tempFolder.getCanonicalPath() + File.separator + "databases" + File.separator + DBNAME;
 
-    BACKUPDIR = tempFolder.getRoot().getAbsolutePath() + File.separator + "backups";
+    BACKUPDIR = tempFolder.getCanonicalPath() + File.separator + "backups";
 
     BACKUFILE = BACKUPDIR + File.separator + DBNAME;
 
-    tempFolder.newFolder("config");
+    File config = new File(tempFolder, "config");
+    Assert.assertTrue(config.mkdirs());
 
-    server = new OServer() {
+    server = new OServer(false) {
       @Override
       public Map<String, String> getAvailableStorageNames() {
         HashMap<String, String> result = new HashMap<String, String>();
@@ -87,8 +98,6 @@ public class LuceneAutomaticBackupRestoreTest {
     };
 
     databaseDocumentTx = new ODatabaseDocumentTx(URL);
-
-    dropIfExists();
 
     databaseDocumentTx.create();
 
@@ -102,6 +111,8 @@ public class LuceneAutomaticBackupRestoreTest {
   }
 
   private void dropIfExists() {
+    server.shutdown();
+
     if (databaseDocumentTx.exists()) {
       if (databaseDocumentTx.isClosed())
         databaseDocumentTx.open("admin", "admin");
@@ -115,10 +126,7 @@ public class LuceneAutomaticBackupRestoreTest {
 
     if (!os.contains("win")) {
       dropIfExists();
-
-      tempFolder.delete();
     }
-
   }
 
   @Test
@@ -141,7 +149,7 @@ public class LuceneAutomaticBackupRestoreTest {
 
     doc.field("firstTime", new SimpleDateFormat("HH:mm:ss").format(new Date(System.currentTimeMillis() + 2000)));
 
-    OIOUtils.writeFile(new File(tempFolder.getRoot().getAbsolutePath() + "/config/automatic-backup.json"), doc.toJSON());
+    OIOUtils.writeFile(new File(tempFolder.getCanonicalPath() + "/config/automatic-backup.json"), doc.toJSON());
 
     final OAutomaticBackup aBackup = new OAutomaticBackup();
 
@@ -207,7 +215,7 @@ public class LuceneAutomaticBackupRestoreTest {
 
     doc.field("firstTime", new SimpleDateFormat("HH:mm:ss").format(new Date(System.currentTimeMillis() + 2000)));
 
-    OIOUtils.writeFile(new File(tempFolder.getRoot().getAbsolutePath() + "/config/automatic-backup.json"), doc.toJSON());
+    OIOUtils.writeFile(new File(tempFolder.getCanonicalPath() + "/config/automatic-backup.json"), doc.toJSON());
 
     final OAutomaticBackup aBackup = new OAutomaticBackup();
 

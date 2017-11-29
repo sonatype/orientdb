@@ -102,7 +102,7 @@
                     <properties>
                         <property>
                             <name>listener</name>
-                            <value>com.orientechnologies.OTestNGTestLeaksListener</value>
+                            <value>com.orientechnologies.OTestNGTestListener</value>
                         </property>
                     </properties>
                 </configuration>
@@ -119,7 +119,8 @@
         <import.package>*</import.package>
         <export.package>com.orientechnologies.orient.object.*</export.package>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <argLine>-ea -Xmx${heapSize} -XX:MaxDirectMemorySize=512g
+        <argLine>-ea -Xmx${heapSize}  -Xms${heapSize} -XX:MaxDirectMemorySize=512g
+            -Dstorage.diskCache.bufferSize=4096
             -Dmemory.directMemory.trackMode=true
             -Dstorage.makeFullCheckpointAfterCreate=false
             -Dstorage.makeFullCheckpointAfterOpen=false
