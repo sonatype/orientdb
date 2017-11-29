@@ -53,6 +53,7 @@
             -ea
             -Xmx${heapSize}
             -XX:MaxDirectMemorySize=512g
+            -Dstorage.diskCache.bufferSize=4096
             -Dindex.flushAfterCreate=false
             -Dmemory.directMemory.trackMode=true
             -Dstorage.makeFullCheckpointAfterCreate=false
@@ -165,6 +166,12 @@
                     <systemPropertyVariables>
                         <buildDirectory>${project.build.directory}</buildDirectory>
                     </systemPropertyVariables>
+                    <properties>
+                        <property>
+                            <name>listener</name>
+                            <value>com.orientechnologies.OJUnitTestListener</value>
+                        </property>
+                    </properties>
                 </configuration>
             </plugin>
             <plugin>

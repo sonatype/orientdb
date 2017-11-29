@@ -127,7 +127,9 @@ public class OServer {
     if (OGlobalConfiguration.PROFILER_ENABLED.getValueAsBoolean() && !Orient.instance().getProfiler().isRecording())
       Orient.instance().getProfiler().startRecording();
 
-    shutdownHook = new OServerShutdownHook(this);
+    if (shutdownEngineOnExit) {
+      shutdownHook = new OServerShutdownHook(this);
+    }
   }
 
   public static OServer getInstance(final String iServerId) {
@@ -464,7 +466,9 @@ public class OServer {
         shutdownLatch = null;
       }
 
-      OLogManager.instance().shutdown();
+      if (shutdownEngineOnExit) {
+        OLogManager.instance().shutdown();
+      }
     }
   }
 

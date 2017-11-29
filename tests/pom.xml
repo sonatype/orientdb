@@ -29,6 +29,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <argLine>
             -Xmx${heapSize}
+            -Dstorage.diskCache.bufferSize=4096
             -XX:MaxDirectMemorySize=512g
             -Dmemory.directMemory.trackMode=true
             -Djava.util.logging.manager=com.orientechnologies.common.log.OLogManager$ShutdownLogManager
@@ -150,7 +151,7 @@
                     <properties>
                         <property>
                             <name>listener</name>
-                            <value>com.orientechnologies.OTestNGTestLeaksListener</value>
+                            <value>com.orientechnologies.OTestNGTestListener</value>
                         </property>
                     </properties>
                 </configuration>
@@ -217,7 +218,7 @@
                     <properties>
                         <property>
                             <name>listener</name>
-                            <value>com.orientechnologies.OTestNGTestLeaksListener</value>
+                            <value>com.orientechnologies.OTestNGTestListener</value>
                         </property>
                     </properties>
                 </configuration>
