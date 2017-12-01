@@ -63,7 +63,11 @@ public class Orient extends OListenerManger<OOrientListener> {
   public static final String URL_SYNTAX    = "<engine>:<db-type>:<db-name>[?<db-param>=<db-value>[&]]*";
 
   private static volatile Orient instance;
-  private static final Lock initLock = new ReentrantLock();
+  private static final Lock    initLock       = new ReentrantLock();
+  /**
+   * Prevents duplications because of recursive initialization.
+   */
+  private static       boolean initInProgress = false;
 
   private static volatile boolean registerDatabaseByPath = false;
 
@@ -113,6 +117,10 @@ public class Orient extends OListenerManger<OOrientListener> {
   private          OSignalHandler     signalHandler;
   private volatile OSecuritySystem    security;
   private boolean runningDistributed = false;
+  /**
+   * Indicates that engine is initialized inside of web application container.
+   */
+  private volatile boolean insideWebContainer;
 
   private static class WeakHashSetValueHolder<T> extends WeakReference<T> {
     private final int hashCode;
@@ -152,27 +160,43 @@ public class Orient extends OListenerManger<OOrientListener> {
     }
   }
 
-  Orient() {
+  Orient(boolean insideWebContainer) {
     super(true);
+
+    this.insideWebContainer = insideWebContainer;
     this.os = System.getProperty("os.name").toLowerCase(Locale.ENGLISH);
     threadGroup = new ThreadGroup("OrientDB");
     threadGroup.setDaemon(false);
+  }
+
+  public boolean isInsideWebContainer() {
+    return insideWebContainer;
   }
 
   public static Orient instance() {
     if (instance != null)
       return instance;
 
+    return startUp(false);
+  }
+
+  public static Orient startUp(boolean insideWebContainer) {
     initLock.lock();
     try {
+      if (initInProgress) {
+        return null;
+      }
+
+      initInProgress = true;
       if (instance != null)
         return instance;
 
-      final Orient orient = new Orient();
+      final Orient orient = new Orient(false);
       orient.startup();
 
       instance = orient;
     } finally {
+      initInProgress = false;
       initLock.unlock();
     }
 
