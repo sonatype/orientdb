@@ -243,6 +243,11 @@
         <!--<license.location>https://github.com/orientechnologies/orientdb/raw/develop/ODB-ASL-LICENSE.txt</license.location>-->
         <heapSize>2048m</heapSize>
         <javaassist.version>3.22.0-GA</javaassist.version>
+
+        <!--
+        SONATYPE: used by our patched orientdb.properties to record+log the upstream version
+        -->
+        <upstream.version>3.0.7-SNAPSHOT</upstream.version>
     </properties>
 
     <build>
