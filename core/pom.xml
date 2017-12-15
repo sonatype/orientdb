@@ -63,7 +63,7 @@
             -Ddb.makeFullCheckpointOnSchemaChange=false
             -Dsecurity.userPasswordSaltIterations=10
             -Dmemory.directMemory.trackMode=true
-            -Djava.util.logging.manager=com.orientechnologies.common.log.OLogManager$ShutdownLogManager
+            -Djava.util.logging.manager=com.orientechnologies.common.log.ShutdownLogManager
             -Dstorage.diskCache.checksumMode=storeAndThrow
         </argLine>
     </properties>
@@ -249,6 +249,11 @@
                         <groupId>com.orientechnologies</groupId>
                         <artifactId>orientdb-javassist</artifactId>
                         <version>${version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.javassist</groupId>
+                        <artifactId>javassist</artifactId>
+                        <version>${javaassist.version}</version>
                     </dependency>
                 </dependencies>
             </plugin>
