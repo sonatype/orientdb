@@ -194,6 +194,13 @@ public enum OGlobalConfiguration {
       + " 'storeAndSwitchReadOnlyMode' (default) - Same as 'storeAndVerify' with addition that storage will be switched in read only mode "
       + "till it will not be repaired.", OChecksumMode.class, OChecksumMode.StoreAndSwitchReadOnlyMode, false),
 
+  STORAGE_EXCLUSIVE_FILE_ACCESS("storage.exclusiveFileAccess","Limit access to the datafiles to the single API user, set to "
+      + "true to prevent concurrent modification files by different instances of storage", Boolean.class, true),
+
+  STORAGE_TRACK_FILE_ACCESS("storage.trackFileAccess","Works only if storage.exclusiveFileAccess is set to true. "
+      + "Tracks stack trace of thread which initially opened a file", Boolean.class, true),
+
+
   @Deprecated STORAGE_CONFIGURATION_SYNC_ON_UPDATE("storage.configuration.syncOnUpdate",
       "Indicates a force sync should be performed for each update on the storage configuration", Boolean.class, true),
 
@@ -722,7 +729,7 @@ public enum OGlobalConfiguration {
    * @Since 2.2.18
    */
   DISTRIBUTED_DUMP_STATS_EVERY("distributed.dumpStatsEvery", "Time in ms to dump the cluster stats. Set to 0 to disable such dump",
-      Long.class, 60000l, true),
+      Long.class, 0l, true),
 
   DISTRIBUTED_CRUD_TASK_SYNCH_TIMEOUT("distributed.crudTaskTimeout", "Maximum timeout (in ms) to wait for CRUD remote tasks",
       Long.class, 3000l, true),
