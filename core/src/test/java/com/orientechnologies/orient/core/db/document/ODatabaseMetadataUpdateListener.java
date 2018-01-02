@@ -1,17 +1,17 @@
 package com.orientechnologies.orient.core.db.document;
 
+import com.orientechnologies.orient.core.config.OStorageConfiguration;
 import com.orientechnologies.orient.core.db.*;
 import com.orientechnologies.orient.core.index.OIndexManager;
-import com.orientechnologies.orient.core.index.OPropertyIndexDefinition;
-import com.orientechnologies.orient.core.metadata.function.OFunctionLibrary;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
-import com.orientechnologies.orient.core.metadata.schema.OSchema;
+import com.orientechnologies.orient.core.metadata.schema.OSchemaShared;
 import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.metadata.sequence.OSequence;
-import com.orientechnologies.orient.core.metadata.sequence.OSequenceLibraryImpl;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+
+import java.util.Locale;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -31,27 +31,32 @@ public class ODatabaseMetadataUpdateListener {
     OMetadataUpdateListener listener = new OMetadataUpdateListener() {
 
       @Override
-      public void onSchemaUpdate(OSchema schema) {
+      public void onSchemaUpdate(String database, OSchemaShared schema) {
         count++;
         assertNotNull(schema);
       }
 
       @Override
-      public void onIndexManagerUpdate(OIndexManager indexManager) {
+      public void onIndexManagerUpdate(String database, OIndexManager indexManager) {
         count++;
         assertNotNull(indexManager);
       }
 
       @Override
-      public void onFunctionLibraryUpdate(OFunctionLibrary oFunctionLibrary) {
+      public void onFunctionLibraryUpdate(String database) {
         count++;
-        assertNotNull(oFunctionLibrary);
       }
 
       @Override
-      public void onSequenceLibraryUpdate(OSequenceLibraryImpl oSequenceLibrary) {
+      public void onSequenceLibraryUpdate(String database) {
         count++;
-        assertNotNull(oSequenceLibrary);
+      }
+
+      @Override
+      public void onStorageConfigurationUpdate(String database, OStorageConfiguration update) {
+        count++;
+        assertNotNull(update);
+
       }
     };
 
@@ -81,6 +86,12 @@ public class ODatabaseMetadataUpdateListener {
   public void testIndexUpdate() {
     session.createClass("Some").createProperty("test", OType.STRING).createIndex(OClass.INDEX_TYPE.NOTUNIQUE);
     assertEquals(count, 3);
+  }
+
+  @Test
+  public void testIndexConfigurationUpdate() {
+    session.set(ODatabase.ATTRIBUTES.LOCALECOUNTRY, Locale.GERMAN);
+    assertEquals(count, 1);
   }
 
   @After

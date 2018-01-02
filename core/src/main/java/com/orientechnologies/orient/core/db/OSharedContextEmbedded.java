@@ -13,6 +13,7 @@ import com.orientechnologies.orient.core.security.OSecurityManager;
 import com.orientechnologies.orient.core.sql.executor.OQueryStats;
 import com.orientechnologies.orient.core.sql.parser.OStatementCache;
 import com.orientechnologies.orient.core.storage.OStorage;
+import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -22,12 +23,12 @@ import java.util.Map;
  */
 public class OSharedContextEmbedded extends OSharedContext {
 
-  Map<String, DistributedQueryContext> activeDistributedQueries;
+  private Map<String, DistributedQueryContext> activeDistributedQueries;
 
   public OSharedContextEmbedded(OStorage storage) {
     schema = new OSchemaEmbedded();
     security = OSecurityManager.instance().newSecurity();
-    indexManager = new OIndexManagerShared();
+    indexManager = new OIndexManagerShared(storage);
     functionLibrary = new OFunctionLibraryImpl();
     scheduler = new OSchedulerImpl();
     sequenceLibrary = new OSequenceLibraryImpl();
@@ -38,6 +39,11 @@ public class OSharedContextEmbedded extends OSharedContext {
         storage.getConfiguration().getContextConfiguration().getValueAsInteger(OGlobalConfiguration.STATEMENT_CACHE_SIZE));
     queryStats = new OQueryStats();
     activeDistributedQueries = new HashMap<>();
+    (((OAbstractPaginatedStorage) storage).getConfiguration()).setConfigurationUpdateListener(update -> {
+      for (OMetadataUpdateListener listener : browseListeners()) {
+        listener.onStorageConfigurationUpdate(storage.getName(), update);
+      }
+    });
   }
 
   public synchronized void load(ODatabaseDocumentInternal database) {
@@ -104,4 +110,5 @@ public class OSharedContextEmbedded extends OSharedContext {
   public Map<String, DistributedQueryContext> getActiveDistributedQueries() {
     return activeDistributedQueries;
   }
+
 }

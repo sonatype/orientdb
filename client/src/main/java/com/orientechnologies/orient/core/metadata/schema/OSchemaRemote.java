@@ -5,16 +5,21 @@ import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.db.ODatabaseLifecycleListener;
 import com.orientechnologies.orient.core.db.ODatabaseListener;
 import com.orientechnologies.orient.core.exception.OSchemaException;
+import com.orientechnologies.orient.core.id.ORecordId;
 import com.orientechnologies.orient.core.metadata.security.ORole;
 import com.orientechnologies.orient.core.metadata.security.ORule;
+import com.orientechnologies.orient.core.record.ORecordInternal;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Created by tglman on 13/06/17.
  */
 public class OSchemaRemote extends OSchemaShared {
+  private AtomicBoolean skipPush = new AtomicBoolean(false);
+
   public OSchemaRemote() {
     super();
   }
@@ -251,7 +256,33 @@ public class OSchemaRemote extends OSchemaShared {
   }
 
   @Override
+  public void acquireSchemaWriteLock(ODatabaseDocumentInternal database) {
+    skipPush.set(true);
+  }
+
+  @Override
+  public void releaseSchemaWriteLock(ODatabaseDocumentInternal database, final boolean iSave) {
+    skipPush.set(false);
+  }
+
+  @Override
   public void checkEmbedded() {
     throw new OSchemaException("'Internal' schema modification methods can be used only inside of embedded database");
+  }
+
+  public void update(ODocument schema) {
+    if (!skipPush.get()) {
+      super.fromStream(schema);
+    }
+  }
+
+  @Override
+  public int addBlobCluster(ODatabaseDocumentInternal database, int clusterId) {
+    throw new OSchemaException("Not supported operation use instead ODatabaseSession.addBlobCluster");
+  }
+
+  @Override
+  public void removeBlobCluster(ODatabaseDocumentInternal database, String clusterName) {
+    throw new OSchemaException("Not supported operation use instead ODatabaseSession.dropCluster");
   }
 }

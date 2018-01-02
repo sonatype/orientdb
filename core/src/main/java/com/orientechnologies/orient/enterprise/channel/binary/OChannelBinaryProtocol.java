@@ -60,7 +60,7 @@ public class OChannelBinaryProtocol {
   public static final byte REQUEST_RECORD_UPDATE    = 32;
   public static final byte REQUEST_RECORD_DELETE    = 33;
   public static final byte REQUEST_RECORD_COPY      = 34;                 // NOT USED ANYMORE
-  public static final byte REQUEST_BATCH_OPERATIONS  = 35;                // since 3.0
+  public static final byte REQUEST_BATCH_OPERATIONS = 35;                // since 3.0
   public static final byte REQUEST_POSITIONS_HIGHER = 36;                 // since 1.3.0
   public static final byte REQUEST_POSITIONS_LOWER  = 37;                 // since 1.3.0
   public static final byte REQUEST_RECORD_CLEAN_OUT = 38;                 // since 1.3.0
@@ -100,8 +100,9 @@ public class OChannelBinaryProtocol {
   // IMPORT
   public static final byte REQUEST_DB_IMPORT = 98;
 
-  public static final byte SUBSCRIBE_PUSH = 100;
+  public static final byte SUBSCRIBE_PUSH   = 100;
   public static final byte UNSUBSCRIBE_PUSH = 101;
+  public static final byte EXPERIMENTAL     = 102;
 
   // REMOTE SB-TREE COLLECTIONS
   public static final byte REQUEST_CREATE_SBTREE_BONSAI            = 110;
@@ -125,10 +126,6 @@ public class OChannelBinaryProtocol {
   public static final short RECORD_RID  = -3;
 
   // FOR MORE INFO: https://github.com/orientechnologies/orientdb/wiki/Network-Binary-Protocol#wiki-Compatibility
-  public static final int PROTOCOL_VERSION_21 = 21;
-
-  public static final int PROTOCOL_VERSION_24 = 24;
-  public static final int PROTOCOL_VERSION_25 = 25;
   public static final int PROTOCOL_VERSION_26 = 26;
   public static final int PROTOCOL_VERSION_27 = 27;
   public static final int PROTOCOL_VERSION_28 = 28;                 // SENT AS SHORT AS FIRST PACKET AFTER
@@ -148,7 +145,8 @@ public class OChannelBinaryProtocol {
   public static final int PROTOCOL_VERSION_36 = 36;                 //ABILITY TO CREATE DATABASE FROM INCREMENTAL BACKUP
   public static final int PROTOCOL_VERSION_37 = 37;
 
-  public static final int CURRENT_PROTOCOL_VERSION = PROTOCOL_VERSION_37;
+  public static final int CURRENT_PROTOCOL_VERSION          = PROTOCOL_VERSION_37;
+  public static final int OLDEST_SUPPORTED_PROTOCOL_VERSION = PROTOCOL_VERSION_26;
 
   //This are specific messages inside the subscribe message
   public static final byte SUBSCRIBE_PUSH_DISTRIB_CONFIG = 1;
@@ -156,19 +154,27 @@ public class OChannelBinaryProtocol {
   public static final byte SUBSCRIBE_PUSH_LIVE_QUERY   = 2;
   public static final byte UNSUBSCRIBE_PUSH_LIVE_QUERY = 2;
 
+  public static final byte SUBSCRIBE_PUSH_STORAGE_CONFIG = 3;
+  public static final byte SUBSCRIBE_PUSH_SCHEMA         = 4;
+  public static final byte SUBSCRIBE_PUSH_INDEX_MANAGER  = 5;
+  public static final byte SUBSCRIBE_PUSH_FUNCTIONS      = 6;
+  public static final byte SUBSCRIBE_PUSH_SEQUENCES      = 7;
 
   //Used by the client to identify what data was pushed
   public static final byte REQUEST_PUSH_DISTRIB_CONFIG = 80;
   public static final byte REQUEST_PUSH_LIVE_QUERY     = 81;                 // SINCE 2.1
   public static final byte REQUEST_PUSH_STORAGE_CONFIG = 82;
+  public static final byte REQUEST_PUSH_SCHEMA         = 83;
+  public static final byte REQUEST_PUSH_INDEX_MANAGER  = 84;
+  public static final byte REQUEST_PUSH_FUNCTIONS      = 85;
+  public static final byte REQUEST_PUSH_SEQUENCES      = 86;
 
   // Default encoding, in future will be possible to have other encodings
-  public static final byte ENCODING_DEFAULT     = 0;
+  public static final byte ENCODING_DEFAULT = 0;
 
   //Error encoding
   public static final byte ERROR_MESSAGE_JAVA   = 0;
   public static final byte ERROR_MESSAGE_STRING = 1;
   public static final byte ERROR_MESSAGE_NONE   = 1;
-
 
 }

@@ -33,14 +33,18 @@ import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.db.*;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
 import com.orientechnologies.orient.core.exception.ODatabaseException;
+import com.orientechnologies.orient.core.index.OIndexManagerRemote;
 import com.orientechnologies.orient.core.metadata.OMetadataDefault;
+import com.orientechnologies.orient.core.metadata.schema.OSchemaRemote;
 import com.orientechnologies.orient.core.metadata.security.OImmutableUser;
 import com.orientechnologies.orient.core.metadata.security.ORole;
 import com.orientechnologies.orient.core.metadata.security.OToken;
 import com.orientechnologies.orient.core.metadata.security.OUser;
 import com.orientechnologies.orient.core.record.ORecord;
+import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.serialization.serializer.record.ORecordSerializerFactory;
 import com.orientechnologies.orient.core.serialization.serializer.record.binary.ORecordSerializerNetworkV37;
+import com.orientechnologies.orient.core.sql.executor.OResult;
 import com.orientechnologies.orient.core.sql.executor.OResultSet;
 import com.orientechnologies.orient.core.storage.OStorage;
 import com.orientechnologies.orient.core.storage.impl.local.OMicroTransaction;
@@ -232,7 +236,7 @@ public class ODatabaseDocumentRemote extends ODatabaseDocumentAbstract {
     sharedContext = getStorage().getResource(OSharedContext.class.getName(), new Callable<OSharedContext>() {
       @Override
       public OSharedContext call() throws Exception {
-        OSharedContext shared = new OSharedContextRemote();
+        OSharedContext shared = new OSharedContextRemote(getStorage());
         return shared;
       }
     });
@@ -330,6 +334,8 @@ public class ODatabaseDocumentRemote extends ODatabaseDocumentAbstract {
     ORemoteQueryResult result = storage.query(this, query, args);
     if (result.isTransactionUpdated())
       fetchTransacion();
+    if (result.isReloadMetadata())
+      reload();
     return result.getResult();
   }
 
@@ -340,6 +346,8 @@ public class ODatabaseDocumentRemote extends ODatabaseDocumentAbstract {
     ORemoteQueryResult result = storage.query(this, query, args);
     if (result.isTransactionUpdated())
       fetchTransacion();
+    if (result.isReloadMetadata())
+      reload();
     return result.getResult();
   }
 
@@ -350,6 +358,8 @@ public class ODatabaseDocumentRemote extends ODatabaseDocumentAbstract {
     ORemoteQueryResult result = storage.command(this, query, args);
     if (result.isTransactionUpdated())
       fetchTransacion();
+    if (result.isReloadMetadata())
+      reload();
     return result.getResult();
   }
 
@@ -360,6 +370,8 @@ public class ODatabaseDocumentRemote extends ODatabaseDocumentAbstract {
     ORemoteQueryResult result = storage.command(this, query, args);
     if (result.isTransactionUpdated())
       fetchTransacion();
+    if (result.isReloadMetadata())
+      reload();
     return result.getResult();
   }
 
@@ -371,6 +383,8 @@ public class ODatabaseDocumentRemote extends ODatabaseDocumentAbstract {
     ORemoteQueryResult result = storage.execute(this, language, script, args);
     if (result.isTransactionUpdated())
       fetchTransacion();
+    if (result.isReloadMetadata())
+      reload();
     return result.getResult();
   }
 
@@ -382,6 +396,8 @@ public class ODatabaseDocumentRemote extends ODatabaseDocumentAbstract {
     ORemoteQueryResult result = storage.execute(this, language, script, args);
     if (result.isTransactionUpdated())
       fetchTransacion();
+    if (result.isReloadMetadata())
+      reload();
     return result.getResult();
   }
 
@@ -422,6 +438,63 @@ public class ODatabaseDocumentRemote extends ODatabaseDocumentAbstract {
     //This storage may not have been completely opened yet
     if (sharedContext != null)
       sharedContext.close();
+  }
+
+  public static void updateSchema(OStorageRemote storage, ODocument schema) {
+//    storage.get
+    OSharedContext shared = storage.getResource(OSharedContext.class.getName(), new Callable<OSharedContext>() {
+      @Override
+      public OSharedContext call() throws Exception {
+        OSharedContext shared = new OSharedContextRemote(storage);
+        return shared;
+      }
+    });
+    ((OSchemaRemote) shared.getSchema()).update(schema);
+  }
+
+  public static void updateIndexManager(OStorageRemote storage, ODocument indexManager) {
+    OSharedContext shared = storage.getResource(OSharedContext.class.getName(), new Callable<OSharedContext>() {
+      @Override
+      public OSharedContext call() throws Exception {
+        OSharedContext shared = new OSharedContextRemote(storage);
+        return shared;
+      }
+    });
+    ((OIndexManagerRemote) shared.getIndexManager()).update(indexManager);
+  }
+
+  public static void updateFunction(OStorageRemote storage) {
+    OSharedContext shared = storage.getResource(OSharedContext.class.getName(), new Callable<OSharedContext>() {
+      @Override
+      public OSharedContext call() throws Exception {
+        OSharedContext shared = new OSharedContextRemote(storage);
+        return shared;
+      }
+    });
+    (shared.getFunctionLibrary()).update();
+
+  }
+
+  public static void updateSequences(OStorageRemote storage) {
+    OSharedContext shared = storage.getResource(OSharedContext.class.getName(), new Callable<OSharedContext>() {
+      @Override
+      public OSharedContext call() throws Exception {
+        OSharedContext shared = new OSharedContextRemote(storage);
+        return shared;
+      }
+    });
+    (shared.getSequenceLibrary()).update();
+  }
+
+  @Override
+  public int addBlobCluster(final String iClusterName, final Object... iParameters) {
+    int id;
+    OResultSet resultSet = command("create blob cluster :1", iClusterName);
+    assert resultSet.hasNext();
+    OResult result = resultSet.next();
+    assert result.getProperty("value") != null;
+    id = result.getProperty("value");
+    return id;
   }
 
 }

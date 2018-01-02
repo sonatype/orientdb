@@ -32,12 +32,12 @@ import com.orientechnologies.orient.client.remote.message.*;
 import com.orientechnologies.orient.core.command.OCommandOutputListener;
 import com.orientechnologies.orient.core.command.OCommandRequestAsynch;
 import com.orientechnologies.orient.core.command.OCommandRequestText;
-import com.orientechnologies.orient.core.config.*;
+import com.orientechnologies.orient.core.config.OContextConfiguration;
+import com.orientechnologies.orient.core.config.OGlobalConfiguration;
+import com.orientechnologies.orient.core.config.OStorageClusterConfiguration;
+import com.orientechnologies.orient.core.config.OStorageConfiguration;
 import com.orientechnologies.orient.core.conflict.ORecordConflictStrategy;
-import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
-import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
-import com.orientechnologies.orient.core.db.OLiveQueryMonitor;
-import com.orientechnologies.orient.core.db.OrientDBRemote;
+import com.orientechnologies.orient.core.db.*;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentRemote;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTxInternal;
 import com.orientechnologies.orient.core.db.document.OLiveQueryMonitorRemote;
@@ -420,7 +420,7 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
   public void reload() {
     OReloadResponse37 res = networkOperation(new OReloadRequest37(), "error loading storage configuration");
     final OStorageConfiguration storageConfiguration = new OStorageConfigurationRemote(
-        ORecordSerializerFactory.instance().getDefaultRecordSerializer().toString(), res, clientConfiguration);
+        ORecordSerializerFactory.instance().getDefaultRecordSerializer().toString(), res.getPayload(), clientConfiguration);
 
     updateStorageConfiguration(storageConfiguration);
   }
@@ -838,52 +838,76 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
   }
 
   public ORemoteQueryResult query(ODatabaseDocumentRemote db, String query, Object[] args) {
-    OQueryRequest request = new OQueryRequest("sql", query, args, OQueryRequest.QUERY, db.getSerializer(), 100);
+    int recordsPerPage = OGlobalConfiguration.QUERY_REMOTE_RESULTSET_PAGE_SIZE.getValueAsInteger();
+    if (recordsPerPage <= 0) {
+      recordsPerPage = 100;
+    }
+    OQueryRequest request = new OQueryRequest("sql", query, args, OQueryRequest.QUERY, db.getSerializer(), recordsPerPage);
     OQueryResponse response = networkOperation(request, "Error on executing command: " + query);
     ORemoteResultSet rs = new ORemoteResultSet(db, response.getQueryId(), response.getResult(), response.getExecutionPlan(),
         response.getQueryStats(), response.isHasNextPage());
-    return new ORemoteQueryResult(rs, response.isTxChanges());
+    return new ORemoteQueryResult(rs, response.isTxChanges(), response.isReloadMetadata());
   }
 
   public ORemoteQueryResult query(ODatabaseDocumentRemote db, String query, Map args) {
-    OQueryRequest request = new OQueryRequest("sql", query, args, OQueryRequest.QUERY, db.getSerializer(), 100);
+    int recordsPerPage = OGlobalConfiguration.QUERY_REMOTE_RESULTSET_PAGE_SIZE.getValueAsInteger();
+    if (recordsPerPage <= 0) {
+      recordsPerPage = 100;
+    }
+    OQueryRequest request = new OQueryRequest("sql", query, args, OQueryRequest.QUERY, db.getSerializer(), recordsPerPage);
     OQueryResponse response = networkOperation(request, "Error on executing command: " + query);
 
     ORemoteResultSet rs = new ORemoteResultSet(db, response.getQueryId(), response.getResult(), response.getExecutionPlan(),
         response.getQueryStats(), response.isHasNextPage());
-    return new ORemoteQueryResult(rs, response.isTxChanges());
+    return new ORemoteQueryResult(rs, response.isTxChanges(), response.isReloadMetadata());
   }
 
   public ORemoteQueryResult command(ODatabaseDocumentRemote db, String query, Object[] args) {
-    OQueryRequest request = new OQueryRequest("sql", query, args, OQueryRequest.COMMAND, db.getSerializer(), 100);
+    int recordsPerPage = OGlobalConfiguration.QUERY_REMOTE_RESULTSET_PAGE_SIZE.getValueAsInteger();
+    if (recordsPerPage <= 0) {
+      recordsPerPage = 100;
+    }
+    OQueryRequest request = new OQueryRequest("sql", query, args, OQueryRequest.COMMAND, db.getSerializer(), recordsPerPage);
     OQueryResponse response = networkOperationNoRetry(request, "Error on executing command: " + query);
     ORemoteResultSet rs = new ORemoteResultSet(db, response.getQueryId(), response.getResult(), response.getExecutionPlan(),
         response.getQueryStats(), response.isHasNextPage());
-    return new ORemoteQueryResult(rs, response.isTxChanges());
+    return new ORemoteQueryResult(rs, response.isTxChanges(), response.isReloadMetadata());
   }
 
   public ORemoteQueryResult command(ODatabaseDocumentRemote db, String query, Map args) {
-    OQueryRequest request = new OQueryRequest("sql", query, args, OQueryRequest.COMMAND, db.getSerializer(), 100);
+    int recordsPerPage = OGlobalConfiguration.QUERY_REMOTE_RESULTSET_PAGE_SIZE.getValueAsInteger();
+    if (recordsPerPage <= 0) {
+      recordsPerPage = 100;
+    }
+    OQueryRequest request = new OQueryRequest("sql", query, args, OQueryRequest.COMMAND, db.getSerializer(), recordsPerPage);
     OQueryResponse response = networkOperationNoRetry(request, "Error on executing command: " + query);
     ORemoteResultSet rs = new ORemoteResultSet(db, response.getQueryId(), response.getResult(), response.getExecutionPlan(),
         response.getQueryStats(), response.isHasNextPage());
-    return new ORemoteQueryResult(rs, response.isTxChanges());
+    return new ORemoteQueryResult(rs, response.isTxChanges(), response.isReloadMetadata());
   }
 
   public ORemoteQueryResult execute(ODatabaseDocumentRemote db, String language, String query, Object[] args) {
-    OQueryRequest request = new OQueryRequest(language, query, args, OQueryRequest.EXECUTE, db.getSerializer(), 100);
+    int recordsPerPage = OGlobalConfiguration.QUERY_REMOTE_RESULTSET_PAGE_SIZE.getValueAsInteger();
+    if (recordsPerPage <= 0) {
+      recordsPerPage = 100;
+    }
+    OQueryRequest request = new OQueryRequest(language, query, args, OQueryRequest.EXECUTE, db.getSerializer(), recordsPerPage);
     OQueryResponse response = networkOperationNoRetry(request, "Error on executing command: " + query);
     ORemoteResultSet rs = new ORemoteResultSet(db, response.getQueryId(), response.getResult(), response.getExecutionPlan(),
         response.getQueryStats(), response.isHasNextPage());
-    return new ORemoteQueryResult(rs, response.isTxChanges());
+    return new ORemoteQueryResult(rs, response.isTxChanges(), response.isReloadMetadata());
   }
 
   public ORemoteQueryResult execute(ODatabaseDocumentRemote db, String language, String query, Map args) {
-    OQueryRequest request = new OQueryRequest(language, query, args, OQueryRequest.EXECUTE, db.getSerializer(), 100);
+    int recordsPerPage = OGlobalConfiguration.QUERY_REMOTE_RESULTSET_PAGE_SIZE.getValueAsInteger();
+    if (recordsPerPage <= 0) {
+      recordsPerPage = 100;
+    }
+    OQueryRequest request = new OQueryRequest(language, query, args, OQueryRequest.EXECUTE, db.getSerializer(), recordsPerPage);
     OQueryResponse response = networkOperationNoRetry(request, "Error on executing command: " + query);
     ORemoteResultSet rs = new ORemoteResultSet(db, response.getQueryId(), response.getResult(), response.getExecutionPlan(),
         response.getQueryStats(), response.isHasNextPage());
-    return new ORemoteQueryResult(rs, response.isTxChanges());
+    return new ORemoteQueryResult(rs, response.isTxChanges(), response.isReloadMetadata());
   }
 
   public void closeQuery(ODatabaseDocumentRemote database, String queryId) {
@@ -892,20 +916,19 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
   }
 
   public void fetchNextPage(ODatabaseDocumentRemote database, ORemoteResultSet rs) {
-    OQueryNextPageRequest request = new OQueryNextPageRequest(rs.getQueryId(), 100);
+    int recordsPerPage = OGlobalConfiguration.QUERY_REMOTE_RESULTSET_PAGE_SIZE.getValueAsInteger();
+    if (recordsPerPage <= 0) {
+      recordsPerPage = 100;
+    }
+    OQueryNextPageRequest request = new OQueryNextPageRequest(rs.getQueryId(), recordsPerPage);
     OQueryResponse response = networkOperation(request, "Error on fetching next page for statment: " + rs.getQueryId());
 
     rs.fetched(response.getResult(), response.isHasNextPage(), response.getExecutionPlan(), response.getQueryStats());
   }
 
   public List<ORecordOperation> commit(final OTransactionInternal iTx, final Runnable callback) {
-    OCommit37Request request;
-    if (((OTransactionOptimistic) iTx).isChanged()) {
-      request = new OCommit37Request(iTx.getId(), true, iTx.isUsingLog(), (Iterable<ORecordOperation>) iTx.getRecordOperations(),
-          ((OTransactionOptimistic) iTx).getIndexOperations());
-    } else {
-      request = new OCommit37Request(iTx.getId(), false, iTx.isUsingLog(), null, null);
-    }
+    OCommit37Request request = new OCommit37Request(iTx.getId(), true, iTx.isUsingLog(), iTx.getRecordOperations(),
+        iTx.getIndexOperations());
 
     OCommit37Response response = networkOperationNoRetry(request, "Error on commit");
     for (OCommit37Response.OCreatedRecordResponse created : response.getCreated()) {
@@ -1372,7 +1395,10 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
           pushThread.start();
           subscribeStorageConfiguration(session);
           subscribeDistributedConfiguration(session);
-
+          subscribeSchema(session);
+          subscribeIndexManager(session);
+          subscribeFunctions(session);
+          subscribeSequences(session);
         }
       } finally {
         stateLock.releaseWriteLock();
@@ -1385,7 +1411,23 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
   }
 
   private void subscribeStorageConfiguration(OStorageRemoteSession nodeSession) {
-    //TODO
+    pushThread.subscribe(new OSubscribeStorageConfigurationRequest(), nodeSession);
+  }
+
+  private void subscribeSchema(OStorageRemoteSession nodeSession) {
+    pushThread.subscribe(new OSubscribeSchemaRequest(), nodeSession);
+  }
+
+  private void subscribeFunctions(OStorageRemoteSession nodeSession) {
+    pushThread.subscribe(new OSubscribeFunctionsRequest(), nodeSession);
+  }
+
+  private void subscribeSequences(OStorageRemoteSession nodeSession) {
+    pushThread.subscribe(new OSubscribeSequencesRequest(), nodeSession);
+  }
+
+  private void subscribeIndexManager(OStorageRemoteSession nodeSession) {
+    pushThread.subscribe(new OSubscribeIndexManagerRequest(), nodeSession);
   }
 
   protected void openRemoteDatabase(String currentURL) {
@@ -1857,9 +1899,17 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
       return new OPushDistributedConfigurationRequest();
     case OChannelBinaryProtocol.REQUEST_PUSH_LIVE_QUERY:
       return new OLiveQueryPushRequest();
-//    case OChannelBinaryProtocol.REQUEST_PUSH_STORAGE_CONFIG:
-//
-//      return  new
+    case OChannelBinaryProtocol.REQUEST_PUSH_STORAGE_CONFIG:
+      return new OPushStorageConfigurationRequest();
+    case OChannelBinaryProtocol.REQUEST_PUSH_SCHEMA:
+      return new OPushSchemaRequest();
+    case OChannelBinaryProtocol.REQUEST_PUSH_INDEX_MANAGER:
+      return new OPushIndexManagerRequest();
+    case OChannelBinaryProtocol.REQUEST_PUSH_FUNCTIONS:
+      return new OPushFunctionsRequest();
+    case OChannelBinaryProtocol.REQUEST_PUSH_SEQUENCES:
+      return new OPushSequencesRequest();
+
     }
     return null;
   }
@@ -1867,6 +1917,43 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
   @Override
   public OBinaryPushResponse executeUpdateDistributedConfig(OPushDistributedConfigurationRequest request) {
     updateDistributedNodes(request.getHosts());
+    return null;
+  }
+
+  @Override
+  public OBinaryPushResponse executeUpdateFunction(OPushFunctionsRequest request) {
+    ODatabaseDocumentRemote.updateFunction(this);
+    return null;
+  }
+
+  @Override
+  public OBinaryPushResponse executeUpdateSequences(OPushSequencesRequest request) {
+    ODatabaseDocumentRemote.updateSequences(this);
+    return null;
+  }
+
+  @Override
+  public OBinaryPushResponse executeUpdateStorageConfig(OPushStorageConfigurationRequest payload) {
+    final OStorageConfiguration storageConfiguration = new OStorageConfigurationRemote(
+        ORecordSerializerFactory.instance().getDefaultRecordSerializer().toString(), payload.getPayload(), clientConfiguration);
+
+    updateStorageConfiguration(storageConfiguration);
+    return null;
+  }
+
+  @Override
+  public OBinaryPushResponse executeUpdateSchema(OPushSchemaRequest request) {
+    ODocument schema = request.getSchema();
+    ORecordInternal.setIdentity(schema, new ORecordId(getConfiguration().getSchemaRecordId()));
+    ODatabaseDocumentRemote.updateSchema(this, schema);
+    return null;
+  }
+
+  @Override
+  public OBinaryPushResponse executeUpdateIndexManager(OPushIndexManagerRequest request) {
+    ODocument indexManager = request.getIndexManager();
+    ORecordInternal.setIdentity(indexManager, new ORecordId(getConfiguration().getIndexMgrRecordId()));
+    ODatabaseDocumentRemote.updateIndexManager(this, indexManager);
     return null;
   }
 

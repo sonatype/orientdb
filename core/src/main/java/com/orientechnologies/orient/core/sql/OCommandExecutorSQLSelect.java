@@ -38,6 +38,7 @@ import com.orientechnologies.orient.core.command.OCommandRequestText;
 import com.orientechnologies.orient.core.config.OContextConfiguration;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
+import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
 import com.orientechnologies.orient.core.db.OExecutionThreadLocal;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocument;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
@@ -1692,6 +1693,7 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
 
           OLogManager.instance().error(this, "Error during command execution", e);
         }
+        ODatabaseRecordThreadLocal.instance().remove();
       };
 
       jobs.add(Orient.instance().submit(job));
@@ -2743,15 +2745,54 @@ public class OCommandExecutorSQLSelect extends OCommandExecutorSQLResultsetAbstr
         if (ascOrder) {
           final OIndexCursor cursor = index.cursor();
           fetchEntriesFromIndexCursor(cursor);
+          fetchNullKeyEntries(index);
         } else {
 
           final OIndexCursor cursor = index.descCursor();
+          fetchNullKeyEntries(index);
           fetchEntriesFromIndexCursor(cursor);
         }
       } finally {
         if (indexInternal instanceof OSharedResource) {
           ((OSharedResource) indexInternal).releaseExclusiveLock();
         }
+      }
+    }
+  }
+
+  private void fetchNullKeyEntries(OIndex<Object> index) {
+    if(index.getDefinition().isNullValuesIgnored()){
+      return;
+    }
+    Object values = index.get(null);
+    if (values instanceof OIdentifiable) {
+      values = Collections.singleton(values);
+    }
+
+    Iterator iterator = null;
+    if (values instanceof Iterable) {
+      iterator = ((Iterable) values).iterator();
+    } else if (values instanceof Iterator) {
+      iterator = (Iterator) values;
+    } else {
+      return;
+    }
+
+    while (iterator.hasNext()) {
+      Object item = iterator.next();
+      if (!(item instanceof OIdentifiable)) {
+        continue;
+      }
+      final ODocument doc = new ODocument().setOrdered(true);
+      doc.field("key", (Object) null);
+      doc.field("rid", ((OIdentifiable) item).getIdentity());
+      ORecordInternal.unsetDirty(doc);
+
+      applyGroupBy(doc, context);
+
+      if (!handleResult(doc, context)) {
+        // LIMIT REACHED
+        break;
       }
     }
   }

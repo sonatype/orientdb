@@ -19,7 +19,6 @@
  */
 package com.orientechnologies.orient.core.config;
 
-import com.orientechnologies.common.directmemory.OByteBufferPool;
 import com.orientechnologies.common.io.OFileUtils;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.profiler.OProfiler;
@@ -67,9 +66,8 @@ public enum OGlobalConfiguration {
   // MEMORY
   MEMORY_USE_UNSAFE("memory.useUnsafe", "Indicates whether Unsafe will be used, if it is present", Boolean.class, true),
 
-  @Deprecated
-  MEMORY_CHUNK_SIZE("memory.chunk.size", "Size of single memory chunk (in bytes) which will be preallocated by OrientDB",
-      Integer.class, Integer.MAX_VALUE),
+  @Deprecated MEMORY_CHUNK_SIZE("memory.chunk.size",
+      "Size of single memory chunk (in bytes) which will be preallocated by OrientDB", Integer.class, Integer.MAX_VALUE),
 
   MEMORY_LEFT_TO_OS("memory.leftToOS",
       "Amount of free memory which should be left unallocated in case of OrientDB is started outside of container. "
@@ -195,7 +193,7 @@ public enum OGlobalConfiguration {
       "Indicates a force sync should be performed for each update on the storage configuration", Boolean.class, true),
 
   STORAGE_COMPRESSION_METHOD("storage.compressionMethod", "Record compression method used in storage"
-      + " Possible values : gzip, nothing, snappy, snappy-native. Default is 'nothing' that means no compression", String.class,
+      + " Possible values : gzip, nothing. Default is 'nothing' that means no compression", String.class,
       "nothing"),
 
   STORAGE_ENCRYPTION_METHOD("storage.encryptionMethod",
@@ -491,6 +489,10 @@ public enum OGlobalConfiguration {
       "Maximum attempts, until a response can be read. Otherwise, the response will be dropped from the channel", Integer.class, 20,
       true),
 
+  NETWORK_BINARY_MIN_PROTOCOL_VERSION("network.binary.minProtocolVersion",
+      "Set the minimum enabled binary protocol version and disable all backward compatible behaviour for version previous the one specified",
+      Integer.class, 26, false),
+
   NETWORK_BINARY_DEBUG("network.binary.debug", "Debug mode: print all data incoming on the binary channel", Boolean.class, false,
       true),
 
@@ -633,6 +635,9 @@ public enum OGlobalConfiguration {
       Integer.class, 500),
 
   // QUERY
+  QUERY_REMOTE_RESULTSET_PAGE_SIZE("query.remoteResultSet.pageSize", "The size of a remote ResultSet page, ie. the number of records"
+      + "that are fetched together during remote query execution. This has to be set on the client.", Integer.class, 100),
+
   QUERY_PARALLEL_AUTO("query.parallelAuto", "Auto enable parallel query, if requirements are met", Boolean.class, false),
 
   QUERY_PARALLEL_MINIMUM_RECORDS("query.parallelMinimumRecords",

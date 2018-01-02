@@ -1,20 +1,14 @@
 package com.orientechnologies.orient.core.metadata.schema;
 
 import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
-import com.orientechnologies.orient.core.db.OScenarioThreadLocal;
 import com.orientechnologies.orient.core.exception.ODatabaseException;
 import com.orientechnologies.orient.core.exception.OSchemaException;
 import com.orientechnologies.orient.core.metadata.security.ORole;
 import com.orientechnologies.orient.core.metadata.security.ORule;
 import com.orientechnologies.orient.core.record.impl.ODocument;
-import com.orientechnologies.orient.core.sql.OCommandSQL;
-import com.orientechnologies.orient.core.storage.OAutoshardedStorage;
-import com.orientechnologies.orient.core.storage.OStorage;
-import com.orientechnologies.orient.core.storage.OStorageProxy;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Callable;
 
 /**
  * Created by tglman on 14/06/17.
@@ -418,6 +412,63 @@ public class OClassRemote extends OClassImpl {
     }
 
     return this;
+  }
+
+  protected OClass removeBaseClassInternal(final OClass baseClass) {
+    acquireSchemaWriteLock();
+    try {
+      checkEmbedded();
+
+      if (subclasses == null)
+        return this;
+
+      if (subclasses.remove(baseClass))
+        removePolymorphicClusterIds((OClassImpl) baseClass);
+
+      return this;
+    } finally {
+      releaseSchemaWriteLock();
+    }
+  }
+
+  protected void setSuperClassesInternal(final List<? extends OClass> classes) {
+    List<OClassImpl> newSuperClasses = new ArrayList<OClassImpl>();
+    OClassImpl cls;
+    for (OClass superClass : classes) {
+      if (superClass instanceof OClassAbstractDelegate)
+        cls = (OClassImpl) ((OClassAbstractDelegate) superClass).delegate;
+      else
+        cls = (OClassImpl) superClass;
+
+      if (newSuperClasses.contains(cls)) {
+        throw new OSchemaException("Duplicated superclass '" + cls.getName() + "'");
+      }
+
+      newSuperClasses.add(cls);
+    }
+
+    List<OClassImpl> toAddList = new ArrayList<OClassImpl>(newSuperClasses);
+    toAddList.removeAll(superClasses);
+    List<OClassImpl> toRemoveList = new ArrayList<OClassImpl>(superClasses);
+    toRemoveList.removeAll(newSuperClasses);
+
+    for (OClassImpl toRemove : toRemoveList) {
+      toRemove.removeBaseClassInternal(this);
+    }
+    for (OClassImpl addTo : toAddList) {
+      addTo.addBaseClass(this);
+    }
+    superClasses.clear();
+    superClasses.addAll(newSuperClasses);
+  }
+
+  public void setDefaultClusterId(final int defaultClusterId) {
+    final ODatabaseDocumentInternal database = getDatabase();
+    String clusterName = database.getClusterNameById(defaultClusterId);
+    if (clusterName != null)
+      throw new OSchemaException("Cluster with id '" + defaultClusterId + "' do not exists");
+    final String cmd = String.format("alter class `%s` DEFAULTCLUSTER `%s`", this.name, clusterName);
+    database.command(cmd).close();
   }
 
 }

@@ -37,7 +37,7 @@ public class OSubscribeDistributedConfigurationRequest implements OBinaryRequest
 
   @Override
   public OBinaryResponse execute(OBinaryRequestExecutor executor) {
-    return executor.executeSubscribePushRequest(this);
+    return executor.executeSubscribeDistributedConfiguration(this);
   }
 
   @Override

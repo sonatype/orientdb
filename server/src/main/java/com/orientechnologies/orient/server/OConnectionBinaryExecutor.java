@@ -21,10 +21,7 @@ import com.orientechnologies.orient.core.command.OCommandResultListener;
 import com.orientechnologies.orient.core.config.OContextConfiguration;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.config.OStorageConfigurationImpl;
-import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
-import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
-import com.orientechnologies.orient.core.db.ODatabaseType;
-import com.orientechnologies.orient.core.db.OLiveQueryMonitor;
+import com.orientechnologies.orient.core.db.*;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.db.record.ORecordOperation;
 import com.orientechnologies.orient.core.db.tool.ODatabaseImport;
@@ -79,6 +76,8 @@ import java.nio.charset.Charset;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.Callable;
+
+import static com.orientechnologies.orient.core.config.OGlobalConfiguration.NETWORK_BINARY_MIN_PROTOCOL_VERSION;
 
 public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
 
@@ -896,6 +895,8 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
 
   @Override
   public OBinaryResponse executeConnect(OConnectRequest request) {
+
+    OBinaryProtocolHelper.checkProtocolVersion(this, request.getProtocolVersion());
     connection.getData().driverName = request.getDriverName();
     connection.getData().driverVersion = request.getDriverVersion();
     connection.getData().protocolVersion = request.getProtocolVersion();
@@ -957,6 +958,8 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
 
   @Override
   public OBinaryResponse executeDatabaseOpen(OOpenRequest request) {
+    OBinaryProtocolHelper.checkProtocolVersion(this, request.getProtocolVersion());
+
     connection.getData().driverName = request.getDriverName();
     connection.getData().driverVersion = request.getDriverVersion();
     connection.getData().protocolVersion = request.getProtocolVersion();
@@ -1141,8 +1144,8 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
   @Override
   public OBinaryResponse executeQuery(OQueryRequest request) {
     ODatabaseDocumentInternal database = connection.getDatabase();
-    //TODO set a timeout on the request?
-    final long serverTimeout = database.getConfiguration().getValueAsLong(OGlobalConfiguration.COMMAND_TIMEOUT);
+    OQueryMetadataUpdateListener metadataListener = new OQueryMetadataUpdateListener();
+    database.getSharedContext().registerListener(metadataListener);
     if (database.getTransaction().isActive()) {
       ((OTransactionOptimistic) database.getTransaction()).resetChangesTracking();
     }
@@ -1181,9 +1184,10 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
     if (database.getTransaction().isActive()) {
       txChanges = ((OTransactionOptimistic) database.getTransaction()).isChanged();
     }
+    database.getSharedContext().unregisterListener(metadataListener);
 
     return new OQueryResponse(((OLocalResultSetLifecycleDecorator) rs).getQueryId(), txChanges, rsCopy, rs.getExecutionPlan(),
-        hasNext, rs.getQueryStats());
+        hasNext, rs.getQueryStats(), metadataListener.isUpdated());
   }
 
   @Override
@@ -1199,9 +1203,6 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
 
   @Override
   public OBinaryResponse executeQueryNextPage(OQueryNextPageRequest request) {
-    final long serverTimeout = connection.getDatabase().getConfiguration().getValueAsLong(OGlobalConfiguration.COMMAND_TIMEOUT);
-    //TODO set a timeout on the request?
-
     OLocalResultSetLifecycleDecorator rs = (OLocalResultSetLifecycleDecorator) connection.getDatabase()
         .getActiveQuery(request.getQueryId());
 
@@ -1214,7 +1215,7 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
       i++;
     }
     boolean hasNext = rs.hasNext();
-    return new OQueryResponse(rs.getQueryId(), false, rsCopy, rs.getExecutionPlan(), hasNext, rs.getQueryStats());
+    return new OQueryResponse(rs.getQueryId(), false, rsCopy, rs.getExecutionPlan(), hasNext, rs.getQueryStats(), false);
   }
 
   @Override
@@ -1243,7 +1244,11 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
         throw e.getCause() instanceof OOfflineClusterException ? (OOfflineClusterException) e.getCause() : e;
       }
     } else {
-      tx = (OTransactionOptimisticServer) database.getTransaction();
+      if (database.getTransaction().isActive()) {
+        tx = (OTransactionOptimisticServer) database.getTransaction();
+      } else {
+        throw new ODatabaseException("No transaction active on the server, send full content");
+      }
     }
     tx.assignClusters();
 
@@ -1305,11 +1310,46 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
   }
 
   @Override
-  public OBinaryResponse executeSubscribePushRequest(OSubscribeDistributedConfigurationRequest request) {
-    OClientConnectionManager manager = server.getClientConnectionManager();
+  public OBinaryResponse executeSubscribeDistributedConfiguration(OSubscribeDistributedConfigurationRequest request) {
+    OPushManager manager = server.getPushManager();
 
     manager.subscribeDistributeConfig((ONetworkProtocolBinary) connection.getProtocol());
     return new OSubscribeDistributedConfigurationResponse();
+  }
+
+  @Override
+  public OBinaryResponse executeSubscribeStorageConfiguration(OSubscribeStorageConfigurationRequest request) {
+    OPushManager manager = server.getPushManager();
+    manager.subscribeStorageConfiguration(connection.getDatabase(), (ONetworkProtocolBinary) connection.getProtocol());
+    return new OSubscribeStorageConfigurationResponse();
+  }
+
+  @Override
+  public OBinaryResponse executeSubscribeSchema(OSubscribeSchemaRequest request) {
+    OPushManager manager = server.getPushManager();
+    manager.subscribeSchema(connection.getDatabase(), (ONetworkProtocolBinary) connection.getProtocol());
+    return new OSubscribeSchemaResponse();
+  }
+
+  @Override
+  public OBinaryResponse executeSubscribeIndexManager(OSubscribeIndexManagerRequest request) {
+    OPushManager manager = server.getPushManager();
+    manager.subscribeIndexManager(connection.getDatabase(), (ONetworkProtocolBinary) connection.getProtocol());
+    return new OSubscribeIndexManagerResponse();
+  }
+
+  @Override
+  public OBinaryResponse executeSubscribeFunctions(OSubscribeFunctionsRequest request) {
+    OPushManager manager = server.getPushManager();
+    manager.subscribeFunctions(connection.getDatabase(), (ONetworkProtocolBinary) connection.getProtocol());
+    return new OSubscribeFunctionsResponse();
+  }
+
+  @Override
+  public OBinaryResponse executeSubscribeSequences(OSubscribeSequencesRequest request) {
+    OPushManager manager = server.getPushManager();
+    manager.subscribeSequences(connection.getDatabase(), (ONetworkProtocolBinary) connection.getProtocol());
+    return new OSubscribeSequencesResponse();
   }
 
   @Override
@@ -1354,5 +1394,10 @@ public final class OConnectionBinaryExecutor implements OBinaryRequestExecutor {
     byte[] token = server.getTokenHandler().getSignedBinaryToken(null, null, connection.getData());
 
     return new ODistributedConnectResponse(connection.getId(), token, chosenProtocolVersion);
+  }
+
+  @Override
+  public OBinaryResponse executeExperimental(OExperimentalRequest request) {
+    return new OExperimentalResponse(request.getRequest().execute(this));
   }
 }

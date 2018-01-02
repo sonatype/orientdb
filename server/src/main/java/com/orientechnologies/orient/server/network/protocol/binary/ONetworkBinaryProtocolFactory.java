@@ -40,7 +40,6 @@ public class ONetworkBinaryProtocolFactory {
 
   public static Function<Integer, OBinaryRequest<? extends OBinaryResponse>> matchProtocol(short protocolVersion) {
     switch (protocolVersion) {
-    case 38:
     case 37:
       return ONetworkBinaryProtocolFactory::createRequest37;
     default:
@@ -216,6 +215,9 @@ public class ONetworkBinaryProtocolFactory {
 
     case OChannelBinaryProtocol.SUBSCRIBE_PUSH:
       return new OSubscribeRequest();
+
+    case OChannelBinaryProtocol.EXPERIMENTAL:
+      return new OExperimentalRequest();
 
     case OChannelBinaryProtocol.UNSUBSCRIBE_PUSH:
       return new OUnsubscribeRequest();
