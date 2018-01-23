@@ -128,7 +128,9 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
 
     Orient.instance().setRunningDistributed(true);
 
+    //FORCE TO NEVER CONVERT RIDBAG EMBEDDED TO TREE
     OGlobalConfiguration.RID_BAG_EMBEDDED_TO_SBTREEBONSAI_THRESHOLD.setValue(Integer.MAX_VALUE);
+    //FORCE TO EVERYTIME CONVERT RIDBAG TREE TO EMBEDDED 
     OGlobalConfiguration.RID_BAG_SBTREEBONSAI_TO_EMBEDDED_THRESHOLD.setValue(Integer.MAX_VALUE);
     OGlobalConfiguration.STORAGE_TRACK_CHANGED_RECORDS_IN_WAL.setValue(true);
 
@@ -539,8 +541,9 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
   public void shutdown() {
     if (!enabled)
       return;
-
-    Orient.instance().getSignalHandler().unregisterListener(signalListener);
+    OSignalHandler signalHandler = Orient.instance().getSignalHandler();
+    if (signalHandler != null)
+      signalHandler.unregisterListener(signalListener);
 
     for (OServerNetworkListener nl : serverInstance.getNetworkListeners())
       nl.unregisterBeforeConnectNetworkEventListener(this);
@@ -609,6 +612,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
 
     serverInstance.getDatabases().replaceFactory(new ODefaultEmbeddedDatabaseInstanceFactory());
     setNodeStatus(NODE_STATUS.OFFLINE);
+    OServer.unregisterServerInstance(getLocalNodeName());
   }
 
   public ORemoteServerController getRemoteServer(final String rNodeName) throws IOException {

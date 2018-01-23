@@ -1336,7 +1336,7 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
         // NO SAME RECORD TYPE: CAN'T REUSE OLD ONE BUT CREATE A NEW ONE FOR IT
         iRecord = Orient.instance().getRecordFactoryManager().newInstance(recordBuffer.recordType);
 
-      ORecordInternal.fill(iRecord, rid, recordBuffer.version, recordBuffer.buffer, false);
+      ORecordInternal.fill(iRecord, rid, recordBuffer.version, recordBuffer.buffer, false, this);
 
       if (iRecord instanceof ODocument)
         ODocumentInternal.checkClass((ODocument) iRecord, this);
@@ -3001,6 +3001,6 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
 
   @Override
   public void internalCommit(OTransactionInternal transaction) {
-    this.getStorage().commit(transaction, null);
+    this.getStorage().commit(transaction);
   }
 }

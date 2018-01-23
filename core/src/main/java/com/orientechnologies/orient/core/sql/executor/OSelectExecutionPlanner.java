@@ -927,7 +927,16 @@ public class OSelectExecutionPlanner {
       if (target == null) {
         handleNoTarget(shardedPlan.getValue(), ctx, profilingEnabled);
       } else if (target.getIdentifier() != null) {
-        handleClassAsTarget(shardedPlan.getValue(), info.serverToClusters.get(shardedPlan.getKey()), info, ctx, profilingEnabled);
+        Set<String> filterClusters = info.serverToClusters.get(shardedPlan.getKey());
+
+        OAndBlock ridRangeConditions = extractRidRanges(info.flattenedWhereClause, ctx);
+        if (ridRangeConditions != null && !ridRangeConditions.isEmpty()) {
+          info.ridRangeConditions = ridRangeConditions;
+          filterClusters = filterClusters.stream()
+              .filter(x -> clusterMatchesRidRange(x, ridRangeConditions, ctx.getDatabase(), ctx)).collect(Collectors.toSet());
+        }
+
+        handleClassAsTarget(shardedPlan.getValue(), filterClusters, info, ctx, profilingEnabled);
       } else if (target.getCluster() != null) {
         handleClustersAsTarget(shardedPlan.getValue(), info, Collections.singletonList(target.getCluster()), ctx, profilingEnabled);
       } else if (target.getClusterList() != null) {
@@ -984,6 +993,79 @@ public class OSelectExecutionPlanner {
         throw new UnsupportedOperationException();
       }
     }
+  }
+
+  private boolean clusterMatchesRidRange(String clusterName, OAndBlock ridRangeConditions, ODatabase database,
+      OCommandContext ctx) {
+    int thisClusterId = database.getClusterIdByName(clusterName);
+    for (OBooleanExpression ridRangeCondition : ridRangeConditions.getSubBlocks()) {
+      if (ridRangeCondition instanceof OBinaryCondition) {
+        OBinaryCompareOperator operator = ((OBinaryCondition) ridRangeCondition).getOperator();
+        ORID conditionRid;
+
+        Object obj;
+        if (((OBinaryCondition) ridRangeCondition).getRight().getRid() != null) {
+          obj = ((OBinaryCondition) ridRangeCondition).getRight().getRid().toRecordId((OResult) null, ctx);
+        } else {
+          obj = ((OBinaryCondition) ridRangeCondition).getRight().execute((OResult) null, ctx);
+        }
+
+        conditionRid = ((OIdentifiable) obj).getIdentity();
+
+        if (conditionRid != null) {
+          int conditionClusterId = conditionRid.getClusterId();
+          if (operator instanceof OGtOperator || operator instanceof OGeOperator) {
+            if (thisClusterId < conditionClusterId) {
+              return false;
+            }
+          } else if (operator instanceof OLtOperator || operator instanceof OLeOperator) {
+            if (thisClusterId > conditionClusterId) {
+              return false;
+            }
+          }
+        }
+      }
+    }
+    return true;
+  }
+
+  private OAndBlock extractRidRanges(List<OAndBlock> flattenedWhereClause, OCommandContext ctx) {
+    OAndBlock result = new OAndBlock(-1);
+
+    if (flattenedWhereClause == null || flattenedWhereClause.size() != 1) {
+      return result;
+    }
+    //TODO optimization: merge multiple conditions
+
+    for (OBooleanExpression booleanExpression : flattenedWhereClause.get(0).getSubBlocks()) {
+      if (isRidRange(booleanExpression, ctx)) {
+        result.getSubBlocks().add(booleanExpression.copy());
+      }
+    }
+
+    return result;
+  }
+
+  private boolean isRidRange(OBooleanExpression booleanExpression, OCommandContext ctx) {
+    if (booleanExpression instanceof OBinaryCondition) {
+      OBinaryCondition cond = ((OBinaryCondition) booleanExpression);
+      OBinaryCompareOperator operator = cond.getOperator();
+      if (isRangeOperator(operator) && cond.getLeft().toString().equalsIgnoreCase("@rid")) {
+        Object obj;
+        if (cond.getRight().getRid() != null) {
+          obj = cond.getRight().getRid().toRecordId((OResult) null, ctx);
+        } else {
+          obj = cond.getRight().execute((OResult) null, ctx);
+        }
+        return obj instanceof OIdentifiable;
+      }
+    }
+    return false;
+  }
+
+  private boolean isRangeOperator(OBinaryCompareOperator operator) {
+    return operator instanceof OLtOperator || operator instanceof OLeOperator || operator instanceof OGtOperator
+        || operator instanceof OGeOperator;
   }
 
   private void handleInputParamAsTarget(OSelectExecutionPlan result, Set<String> filterClusters, QueryPlanningInfo info,
@@ -1321,7 +1403,7 @@ public class OSelectExecutionPlanner {
     } else if (isOrderByRidDesc(info)) {
       orderByRidAsc = false;
     }
-    FetchFromClassExecutionStep fetcher = new FetchFromClassExecutionStep(identifier.getStringValue(), filterClusters, ctx,
+    FetchFromClassExecutionStep fetcher = new FetchFromClassExecutionStep(identifier.getStringValue(), filterClusters, info, ctx,
         orderByRidAsc, profilingEnabled);
     if (orderByRidAsc != null && info.serverToClusters.size() == 1) {
       info.orderApplied = true;
@@ -1588,8 +1670,8 @@ public class OSelectExecutionPlanner {
     return false;
   }
 
-  private List<OExecutionStepInternal> handleClassAsTargetWithIndexRecursive(String targetClass, Set<String> filterClusters, QueryPlanningInfo info,
-      OCommandContext ctx, boolean profilingEnabled) {
+  private List<OExecutionStepInternal> handleClassAsTargetWithIndexRecursive(String targetClass, Set<String> filterClusters,
+      QueryPlanningInfo info, OCommandContext ctx, boolean profilingEnabled) {
     List<OExecutionStepInternal> result = handleClassAsTargetWithIndex(targetClass, filterClusters, info, ctx, profilingEnabled);
     if (result == null) {
       result = new ArrayList<>();
