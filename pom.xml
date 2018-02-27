@@ -246,7 +246,7 @@
         <!--
         SONATYPE: used by our patched orientdb.properties to record+log the upstream version
         -->
-        <upstream.version>2.2.32-SNAPSHOT</upstream.version>
+        <upstream.version>2.2.33-SNAPSHOT</upstream.version>
     </properties>
 
     <build>
