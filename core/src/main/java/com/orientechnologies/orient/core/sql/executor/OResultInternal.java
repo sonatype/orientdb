@@ -8,8 +8,6 @@ import com.orientechnologies.orient.core.id.ORecordId;
 import com.orientechnologies.orient.core.record.*;
 import com.orientechnologies.orient.core.record.impl.OBlob;
 import com.orientechnologies.orient.core.record.impl.ODocument;
-import com.orientechnologies.orient.core.record.impl.OEdgeDelegate;
-import com.orientechnologies.orient.core.record.impl.OVertexDelegate;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -45,13 +43,96 @@ public class OResultInternal implements OResult {
   }
 
   public <T> T getProperty(String name) {
+    T result = null;
     if (content.containsKey(name)) {
-      return (T) wrap(content.get(name));
+      result = (T) wrap(content.get(name));
+    } else if (element != null) {
+      result = (T) wrap(((ODocument) element.getRecord()).getProperty(name));
     }
-    if (element != null) {
-      return (T) wrap(((ODocument) element.getRecord()).getProperty(name));
+    if (result instanceof OIdentifiable && ((OIdentifiable) result).getIdentity().isPersistent()) {
+      result = (T) ((OIdentifiable) result).getIdentity();
     }
-    return null;
+    return result;
+  }
+
+  @Override
+  public OElement getElementProperty(String name) {
+    Object result = null;
+    if (content.containsKey(name)) {
+      result = content.get(name);
+    } else if (element != null) {
+      result = ((ODocument) element.getRecord()).getProperty(name);
+    }
+
+    if (result instanceof OResult) {
+      result = ((OResult) result).getRecord().orElse(null);
+    }
+
+    if (result instanceof ORID) {
+      result = ((ORID) result).getRecord();
+    }
+
+    return result instanceof OElement ? (OElement) result : null;
+  }
+
+  @Override
+  public OVertex getVertexProperty(String name) {
+    Object result = null;
+    if (content.containsKey(name)) {
+      result = content.get(name);
+    } else if (element != null) {
+      result = ((ODocument) element.getRecord()).getProperty(name);
+    }
+
+    if (result instanceof OResult) {
+      result = ((OResult) result).getRecord().orElse(null);
+    }
+
+    if (result instanceof ORID) {
+      result = ((ORID) result).getRecord();
+    }
+
+    return result instanceof OElement ? ((OElement) result).asVertex().orElse(null) : null;
+  }
+
+  @Override
+  public OEdge getEdgeProperty(String name) {
+    Object result = null;
+    if (content.containsKey(name)) {
+      result = content.get(name);
+    } else if (element != null) {
+      result = ((ODocument) element.getRecord()).getProperty(name);
+    }
+
+    if (result instanceof OResult) {
+      result = ((OResult) result).getRecord().orElse(null);
+    }
+
+    if (result instanceof ORID) {
+      result = ((ORID) result).getRecord();
+    }
+
+    return result instanceof OElement ? ((OElement) result).asEdge().orElse(null) : null;
+  }
+
+  @Override
+  public OBlob getBlobProperty(String name) {
+    Object result = null;
+    if (content.containsKey(name)) {
+      result = content.get(name);
+    } else if (element != null) {
+      result = ((ODocument) element.getRecord()).getProperty(name);
+    }
+
+    if (result instanceof OResult) {
+      result = ((OResult) result).getRecord().orElse(null);
+    }
+
+    if (result instanceof ORID) {
+      result = ((ORID) result).getRecord();
+    }
+
+    return result instanceof OBlob ? (OBlob) result : null;
   }
 
   private Object wrap(Object input) {
@@ -364,13 +445,7 @@ public class OResultInternal implements OResult {
         if (!cached.isDirty()) {
           cached.fromStream(rec.toStream());
         }
-        if (element instanceof OVertex) {
-          element = new OVertexDelegate((ODocument) cached);
-        } else if (element instanceof OEdge) {
-          element = new OEdgeDelegate((ODocument) cached);
-        } else {
-          element = cached;
-        }
+        element = cached;
       } else {
         db.getLocalCache().updateRecord(rec);
       }

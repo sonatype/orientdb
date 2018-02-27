@@ -3,6 +3,7 @@
 package com.orientechnologies.orient.core.sql.parser;
 
 import com.orientechnologies.common.exception.OException;
+import com.orientechnologies.orient.core.collate.OCollate;
 import com.orientechnologies.orient.core.command.OCommandContext;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
@@ -566,6 +567,15 @@ public class OMathExpression extends SimpleNode {
     super(p, id);
   }
 
+  public boolean isCacheable() {
+    for (OMathExpression exp : childExpressions) {
+      if (!exp.isCacheable()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   public Object execute(OIdentifiable iCurrentRecord, OCommandContext ctx) {
     if (childExpressions.size() == 0) {
       return null;
@@ -850,6 +860,12 @@ public class OMathExpression extends SimpleNode {
       return childExpressions.get(0).isBaseIdentifier();
     }
     return false;
+  }
+
+  public OCollate getCollate(OResult currentRecord, OCommandContext ctx) {
+    if (childExpressions.size() == 1)
+      return childExpressions.get(0).getCollate(currentRecord, ctx);
+    return null;
   }
 
   public boolean isEarlyCalculated() {

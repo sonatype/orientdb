@@ -83,23 +83,17 @@ import java.util.zip.CRC32;
 /**
  * Write part of disk cache which is used to collect pages which were changed on read cache and store them to the disk in background
  * thread.
- * <p>
  * In current implementation only single background thread is used to store all changed data, despite of SSD parallelization
  * capabilities we suppose that better to write data in single big chunk by one thread than by many small chunks from many threads
  * introducing contention and multi threading overhead. Another reasons for usage of only one thread are
- * <p>
  * <ol> <li>That we should give room for readers to read data during data write phase</li> <li>It provides much less synchronization
  * overhead</li> </ol>
- * <p>
  * Background thread is running by with predefined intervals. Such approach allows SSD GC to use pauses to make some clean up of
  * half empty erase blocks.
- * <p>
  * Also write cache is used for checking of free space left on disk and putting of database in "read mode" if space limit is reached
  * and to perform fuzzy checkpoints.
- * <p>
  * Write cache holds two different type of pages, pages which are shared with read cache and pages which belong only to write cache
  * (so called exclusive pages).
- * <p>
  * Files in write cache are accessed by id , there are two types of ids, internal used inside of write cache and external used
  * outside of write cache. Presence of two types of ids is caused by the fact that read cache is global across all storages but each
  * storage has its own write cache. So all ids of files should be global across whole read cache. External id is created from
@@ -255,22 +249,16 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
   /**
    * Container for dirty pages. Dirty pages table is concept taken from ARIES protocol. It contains earliest LSNs of operations on
    * each page which is potentially changed but not flushed to the disk.
-   * <p>
    * It allows us by calculation of minimal LSN contained by this container calculate which part of write ahead log may be already
    * truncated.
-   * <p>
    * "dirty pages" itself is managed using following algorithm.
-   * <p>
    * <ol> <li>Just after acquiring the exclusive lock on page we fetch LSN of latest record logged into WAL</li> <li>If page with
    * given index is absent into table we add it to this container</li> </ol>
-   * <p>
    * Because we add last WAL LSN if we are going to modify page, it means that we can calculate smallest LSN of operation which is
    * not flushed to the log yet without locking of all operations on database.
-   * <p>
    * There is may be situation when thread locks the page but did not add LSN to the dirty pages table yet. If at the moment of
    * start of iteration over the dirty pages table we have a non empty dirty pages table it means that new operation on page will
    * have LSN bigger than any LSN already stored in table.
-   * <p>
    * If dirty pages table is empty at the moment of iteration it means at the moment of start of iteration all page changes were
    * flushed to the disk.
    */
@@ -280,10 +268,8 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
    * Copy of content of {@link #dirtyPages} table at the moment when {@link #convertSharedDirtyPagesToLocal()} was called. This
    * field is not thread safe because it is used inside of tasks which are running inside of {@link #commitExecutor} thread. It is
    * used to keep results of postprocessing of {@link #dirtyPages} table.
-   * <p>
    * Every time we invoke {@link #convertSharedDirtyPagesToLocal()} all content of dirty pages is removed and copied to current
    * field and {@link #localDirtyPagesByLSN} filed.
-   * <p>
    * Such approach is possible because {@link #dirtyPages} table is filled by many threads but is read only from inside of {@link
    * #commitExecutor} thread.
    */
@@ -298,10 +284,8 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
 
   /**
    * Amount of pages which were booked in file but were not flushed yet.
-   * <p>
    * In file systems like ext3 for example it is not enough to set size of the file to guarantee that subsequent write inside of
    * already allocated file range will not cause "not enough free space" exception. Such strange files are called sparse files.
-   * <p>
    * When you change size of the sparse file amount of available free space on disk is not changed and can be occupied by subsequent
    * writes to other files. So to calculate free space which is really consumed by system we calculate amount of pages which were
    * booked but not written yet on disk.
@@ -352,9 +336,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
   /**
    * Latch which is switched on once amount of pages are cached exclusively in write cache is reached limit. And switched off once
    * size of write cache is down bellow threshold.
-   * <p>
    * Once this latch is switched on all threads which are wrote data in write cache wait till it will be switched off.
-   * <p>
    * It is better to make wait for threads which are going to put data on write cache instead of write threads but it may cause
    * deadlocks so it is considered as good enough alternative.
    */
@@ -374,7 +356,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
   /**
    * Executor which runs in single thread all tasks are related to flush of write cache data.
    */
-  private final ScheduledExecutorService commitExecutor;
+  private final OScheduledThreadPoolExecutorWithLogging commitExecutor;
 
   /**
    * Executor which is used to call event listeners in  background thread
@@ -396,7 +378,6 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
   /**
    * File which contains map between names and ids of files used in write cache. Each record in file has following format (size of
    * file name in bytes (int), file name (string), internal file id)
-   * <p>
    * Internal file id may have negative value, it means that this file existed in storage but was deleted. We still keep mapping
    * between files so if file with given name will be created again it will get the same file id, which can be handy during process
    * of restore of storage data after crash.
@@ -439,6 +420,12 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
   private FLUSH_MODE flushMode = FLUSH_MODE.IDLE;
 
   /**
+   * Error thrown during data flush.
+   * Once error registered no more write operations are allowed.
+   */
+  private Throwable flushError;
+
+  /**
    * Listeners which are called when exception in background data flush thread is happened.
    */
   private final List<WeakReference<OBackgroundExceptionListener>> backgroundExceptionListeners = new CopyOnWriteArrayList<>();
@@ -472,6 +459,8 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
       this.stringSerializer = binarySerializerFactory.getObjectSerializer(OType.STRING);
 
       commitExecutor = new OScheduledThreadPoolExecutorWithLogging(1, new FlushThreadFactory(storageLocal.getName()));
+      commitExecutor.setMaximumPoolSize(1);
+
       cacheEventsPublisher = new OThreadPoolExecutorWithLogging(0, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS,
           new SynchronousQueue<>(), new CacheEventsPublisherFactory(storageLocal.getName()));
 
@@ -607,7 +596,6 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
   /**
    * This method is called once new pages are added to the disk inside of
    * {@link #load(long, long, int, boolean, OModifiableBoolean, boolean)}  method.
-   * <p>
    * If total amount of added pages minus amount of added pages at the time of last disk space check bigger than threshold value
    * {@link #diskSizeCheckInterval} new disk space check is performed and if amount of space left on disk less than threshold
    * {@link
@@ -1816,7 +1804,6 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
 
   /**
    * Read information about files are registered inside of write cache/storage
-   * <p>
    * File consist of rows of variable length which contains following entries: <ol> <li>Internal file id, may be positive or
    * negative depends on whether file is removed or not</li> <li>Name of file inside of write cache, this name is case
    * sensitive</li> <li>Name of file which is used inside file system it can be different from name of file used inside write
@@ -1827,6 +1814,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
 
     long localFileCounter = -1;
 
+    //noinspection resource
     nameIdMapHolder.position(0);
 
     NameFileIdEntry nameFileIdEntry;
@@ -1886,6 +1874,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
 
     long localFileCounter = -1;
 
+    //noinspection resource
     nameIdMapHolder.position(0);
 
     NameFileIdEntry nameFileIdEntry;
@@ -2249,23 +2238,27 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
     }
   }
 
-  private void flushWALTillPageLSN(final ByteBuffer buffer) throws IOException {
+  private void flushWALTillPageLSN(final ByteBuffer buffer) {
     if (writeAheadLog != null) {
       final OLogSequenceNumber lsn = ODurablePage.getLogSequenceNumberFromPage(buffer);
-      final OLogSequenceNumber flushedLSN = writeAheadLog.getFlushedLsn();
+      OLogSequenceNumber flushedLSN = writeAheadLog.getFlushedLsn();
 
-      if (flushedLSN == null || flushedLSN.compareTo(lsn) < 0)
+      while (flushedLSN == null || flushedLSN.compareTo(lsn) < 0) {
         writeAheadLog.flush();
+        flushedLSN = writeAheadLog.getFlushedLsn();
+      }
     }
   }
 
   private void flushPage(final int fileId, final long pageIndex, final ByteBuffer buffer) throws IOException, InterruptedException {
     if (writeAheadLog != null) {
       final OLogSequenceNumber lsn = ODurablePage.getLogSequenceNumberFromPage(buffer);
-      final OLogSequenceNumber flushedLSN = writeAheadLog.getFlushedLsn();
+      OLogSequenceNumber flushedLSN = writeAheadLog.getFlushedLsn();
 
-      if (flushedLSN == null || flushedLSN.compareTo(lsn) < 0)
+      while (flushedLSN == null || flushedLSN.compareTo(lsn) < 0) {
         writeAheadLog.flush();
+        flushedLSN = writeAheadLog.getFlushedLsn();
+      }
     }
 
     final long externalId = composeFileId(id, fileId);
@@ -2391,6 +2384,13 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
 
     @Override
     public Void call() throws Exception {
+      if (flushError != null) {
+        OLogManager.instance()
+            .errorNoDb(this, "Can not flush data till provided segment because of issue during data write, %s", null,
+                flushError.getMessage());
+        return null;
+      }
+
       try {
         convertSharedDirtyPagesToLocal();
         Map.Entry<OLogSequenceNumber, Set<PageKey>> firstEntry = localDirtyPagesByLSN.firstEntry();
@@ -2408,6 +2408,8 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
 
           if (firstEntry == null)
             return null;
+
+          minDirtyLSN = firstEntry.getKey();
         }
 
         return null;
@@ -2434,6 +2436,12 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
   private final class PeriodicFlushTask implements Runnable {
     @Override
     public void run() {
+      if (flushError != null) {
+        OLogManager.instance()
+            .errorNoDb(this, "Can not flush data because of issue during data write, %s", null, flushError.getMessage());
+        return;
+      }
+
       final OSessionStoragePerformanceStatistic statistic = performanceStatisticManager.getSessionPerformanceStatistic();
       if (statistic != null)
         statistic.startWriteCacheFlushTimer();
@@ -2495,9 +2503,10 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
           }
         }
 
-      } catch (Exception t) {
+      } catch (Error | Exception t) {
         OLogManager.instance().error(this, "Exception during data flush", t);
         OWOWCache.this.fireBackgroundDataFlushExceptionEvent(t);
+        flushError = t;
       } finally {
         if (statistic != null)
           statistic.stopWriteCacheFlushTimer(flushedPages);
@@ -2542,7 +2551,13 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
 
   final class FindMinDirtyLSN implements Callable<OLogSequenceNumber> {
     @Override
-    public OLogSequenceNumber call() throws Exception {
+    public OLogSequenceNumber call() {
+      if (flushError != null) {
+        OLogManager.instance()
+            .errorNoDb(this, "Can not calculate minimum LSN because of issue during data write, %s", null, flushError.getMessage());
+        return null;
+      }
+
       convertSharedDirtyPagesToLocal();
 
       if (localDirtyPagesByLSN.isEmpty())
@@ -2556,7 +2571,9 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
     dirtyPagesLock.acquireWriteLock();
     try {
       for (Map.Entry<PageKey, OLogSequenceNumber> entry : dirtyPages.entrySet()) {
-        if (!localDirtyPages.containsKey(entry.getKey())) {
+        OLogSequenceNumber localLSN = localDirtyPages.get(entry.getKey());
+
+        if (localLSN == null || localLSN.compareTo(entry.getValue()) > 0) {
           localDirtyPages.put(entry.getKey(), entry.getValue());
 
           Set<PageKey> pages = localDirtyPagesByLSN.get(entry.getValue());
@@ -2600,6 +2617,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
     final long startTs = System.nanoTime();
 
     int flushedPages = 0;
+    int copiedPages = 0;
 
     final ArrayList<OTriple<Long, ByteBuffer, OCachePointer>> chunk = new ArrayList<>(CHUNK_SIZE);
 
@@ -2625,8 +2643,12 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
         pageIterator = writeCachePages.entrySet().iterator();
       }
 
-      if (!pageIterator.hasNext())
+      if (!pageIterator.hasNext()) {
+        flushedPages += flushPagesChunk(chunk);
+        releaseExclusiveLatch();
+
         break;
+      }
 
       long firstPageIndex = -1;
       long firstFileId = -1;
@@ -2638,14 +2660,15 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
             flushedPages += flushPagesChunk(chunk);
             releaseExclusiveLatch();
 
-            if (lastFileId != firstFileId || lastPageIndex == -1 || (lastPageIndex - firstPageIndex) > MAX_CHUNK_DISTANCE)
+            if (lastFileId != firstFileId || lastPageIndex == -1 || (lastPageIndex - firstPageIndex) > MAX_CHUNK_DISTANCE) {
               continue flushCycle;
-            else {
+            } else {
               endTs = System.nanoTime();
               pageIterator = writeCachePages.entrySet().iterator();
 
-              if (!pageIterator.hasNext())
+              if (!pageIterator.hasNext()) {
                 break;
+              }
             }
           }
 
@@ -2666,7 +2689,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
           try {
             version = pointer.getVersion();
 
-            final ByteBuffer buffer = pointer.getSharedBuffer();
+            final ByteBuffer buffer = pointer.getBufferDuplicate();
 
             buffer.position(0);
             copy.position(0);
@@ -2674,6 +2697,8 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
             copy.put(buffer);
 
             removeFromDirtyPages(pageKey);
+
+            copiedPages++;
           } finally {
             pointer.releaseSharedLock();
           }
@@ -2689,7 +2714,12 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
               releaseExclusiveLatch();
 
               if (pageKey.fileId != firstFileId || (pageKey.pageIndex - firstPageIndex) > MAX_CHUNK_DISTANCE) {
-                bufferPool.release(copy);
+                //if we copied chunk we bound to flush it or we loose WAL entries because dirty pages are updated
+                chunk.add(new OTriple<>(version, copy, pointer));
+
+                flushedPages += flushPagesChunk(chunk);
+                releaseExclusiveLatch();
+
                 continue flushCycle;
               } else {
                 endTs = System.nanoTime();
@@ -2712,8 +2742,13 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
       }
     }
 
-    assert chunk.isEmpty();
+    if (!chunk.isEmpty()) {
+      throw new IllegalStateException("Chunk is not empty !");
+    }
 
+    if (copiedPages != flushedPages) {
+      throw new IllegalStateException("Copied pages (" + copiedPages + " ) != flushed pages (" + flushedPages + ")");
+    }
     releaseExclusiveLatch();
     return flushedPages;
   }
@@ -2806,6 +2841,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
     Iterator<PageKey> iterator = exclusiveWritePages.iterator();
 
     int flushedPages = 0;
+    int copiedPages = 0;
 
     long ewcSize = exclusiveWriteCacheSize.get();
     double exclusiveWriteCacheThreshold = ((double) ewcSize) / exclusiveWriteCacheMaxSize;
@@ -2830,6 +2866,9 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
         }
 
         if (!iterator.hasNext()) {
+          flushedPages += flushPagesChunk(chunk);
+          releaseExclusiveLatch();
+
           break flushCycle;
         }
 
@@ -2846,7 +2885,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
           final ByteBuffer copy = bufferPool.acquireDirect(false);
           try {
             version = pointer.getVersion();
-            final ByteBuffer buffer = pointer.getSharedBuffer();
+            final ByteBuffer buffer = pointer.getBufferDuplicate();
 
             buffer.position(0);
             copy.position(0);
@@ -2854,6 +2893,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
             copy.put(buffer);
 
             removeFromDirtyPages(pageKey);
+            copiedPages++;
           } finally {
             pointer.releaseSharedLock();
           }
@@ -2885,6 +2925,14 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
 
     releaseExclusiveLatch();
 
+    if (!chunk.isEmpty()) {
+      throw new IllegalStateException("Chunk is not empty !");
+    }
+
+    if (copiedPages != flushedPages) {
+      throw new IllegalStateException("Copied pages (" + copiedPages + " ) != flushed pages (" + flushedPages + ")");
+    }
+
     return flushedPages;
   }
 
@@ -2897,6 +2945,12 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
 
     @Override
     public Void call() throws Exception {
+      if (flushError != null) {
+        OLogManager.instance()
+            .errorNoDb(this, "Can not flush file data because of issue during data write, %s", null, flushError.getMessage());
+        return null;
+      }
+
       final PageKey firstKey = new PageKey(fileId, 0);
       final PageKey lastKey = new PageKey(fileId, Long.MAX_VALUE);
 
@@ -2914,7 +2968,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
             continue;
 
           try {
-            final ByteBuffer buffer = pagePointer.getSharedBuffer();
+            final ByteBuffer buffer = pagePointer.getBufferDuplicate();
             flushPage(pageKey.fileId, pageKey.pageIndex, buffer);
 
             removeFromDirtyPages(pageKey);
@@ -2959,7 +3013,7 @@ public class OWOWCache extends OAbstractWriteCache implements OWriteCache, OCach
     }
 
     @Override
-    public Void call() throws Exception {
+    public Void call() {
       final PageKey firstKey = new PageKey(fileId, 0);
       final PageKey lastKey = new PageKey(fileId, Long.MAX_VALUE);
 

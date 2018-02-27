@@ -1044,11 +1044,14 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
   public void removeClusterFromConfiguration(int iClusterId) {
     stateLock.acquireWriteLock();
     try {
-      // REMOVE THE CLUSTER LOCALLY
-      final OCluster cluster = clusters[iClusterId];
-      clusters[iClusterId] = null;
-      clusterMap.remove(cluster.getName());
-      configuration.dropCluster(iClusterId); // endResponse must be called before this line, which call updateRecord
+      // If this is false the clusters may be already update by a push
+      if (clusters.length > iClusterId && clusters[iClusterId] != null) {
+        // Remove cluster locally waiting for the push
+        final OCluster cluster = clusters[iClusterId];
+        clusters[iClusterId] = null;
+        clusterMap.remove(cluster.getName());
+        configuration.dropCluster(iClusterId); // endResponse must be called before this line, which call updateRecord
+      }
     } finally {
       stateLock.releaseWriteLock();
     }
@@ -1784,24 +1787,29 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
   }
 
   public void updateStorageConfiguration(OStorageConfiguration storageConfiguration) {
+    if (status != STATUS.OPEN)
+      return;
     stateLock.acquireWriteLock();
-    this.configuration = storageConfiguration;
-    OCluster[] clusters = new OCluster[storageConfiguration.getClusters().size()];
-    for (OStorageClusterConfiguration clusterConfig : storageConfiguration.getClusters()) {
-      if (clusterConfig != null) {
-        final OClusterRemote cluster = new OClusterRemote();
-        String clusterName = clusterConfig.getName();
-        final int clusterId = clusterConfig.getId();
-        if (clusterName != null) {
-          clusterName = clusterName.toLowerCase(Locale.ENGLISH);
-          cluster.configure(null, clusterId, clusterName);
-          if (clusterId >= clusters.length)
-            clusters = Arrays.copyOf(clusters, clusterId + 1);
-          clusters[clusterId] = cluster;
+    try {
+      if (status != STATUS.OPEN)
+        return;
+      this.configuration = storageConfiguration;
+      OCluster[] clusters = new OCluster[storageConfiguration.getClusters().size()];
+      for (OStorageClusterConfiguration clusterConfig : storageConfiguration.getClusters()) {
+        if (clusterConfig != null) {
+          final OClusterRemote cluster = new OClusterRemote();
+          String clusterName = clusterConfig.getName();
+          final int clusterId = clusterConfig.getId();
+          if (clusterName != null) {
+            clusterName = clusterName.toLowerCase(Locale.ENGLISH);
+            cluster.configure(null, clusterId, clusterName);
+            if (clusterId >= clusters.length)
+              clusters = Arrays.copyOf(clusters, clusterId + 1);
+            clusters[clusterId] = cluster;
+          }
         }
       }
-    }
-    try {
+
       this.clusters = clusters;
       clusterMap.clear();
       for (int i = 0; i < clusters.length; ++i) {
@@ -1884,13 +1892,17 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
   public void addNewClusterToConfiguration(int clusterId, String iClusterName) {
     stateLock.acquireWriteLock();
     try {
-      final OClusterRemote cluster = new OClusterRemote();
-      cluster.configure(this, clusterId, iClusterName.toLowerCase(Locale.ENGLISH));
+      //If this if is false maybe the content was already update by the push
+      if (clusters.length <= clusterId || clusters[clusterId] == null) {
+        //Adding the cluster waiting for the push
+        final OClusterRemote cluster = new OClusterRemote();
+        cluster.configure(this, clusterId, iClusterName.toLowerCase(Locale.ENGLISH));
 
-      if (clusters.length <= clusterId)
-        clusters = Arrays.copyOf(clusters, clusterId + 1);
-      clusters[cluster.getId()] = cluster;
-      clusterMap.put(cluster.getName().toLowerCase(Locale.ENGLISH), cluster);
+        if (clusters.length <= clusterId)
+          clusters = Arrays.copyOf(clusters, clusterId + 1);
+        clusters[cluster.getId()] = cluster;
+        clusterMap.put(cluster.getName().toLowerCase(Locale.ENGLISH), cluster);
+      }
     } finally {
       stateLock.releaseWriteLock();
     }

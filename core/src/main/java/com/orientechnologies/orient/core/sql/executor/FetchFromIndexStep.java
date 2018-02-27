@@ -28,7 +28,7 @@ public class FetchFromIndexStep extends AbstractExecutionStep {
 
   private boolean orderAsc;
 
-  protected String indexName;//for distributed serialization only
+  protected String indexName;
 
   private long cost  = 0;
   private long count = 0;
@@ -48,6 +48,16 @@ public class FetchFromIndexStep extends AbstractExecutionStep {
       boolean orderAsc, OCommandContext ctx, boolean profilingEnabled) {
     super(ctx, profilingEnabled);
     this.index = index;
+    this.indexName = index.getName();
+    this.condition = condition;
+    this.additionalRangeCondition = additionalRangeCondition;
+    this.orderAsc = orderAsc;
+  }
+
+  public FetchFromIndexStep(String indexName, OBooleanExpression condition, OBinaryCondition additionalRangeCondition,
+      boolean orderAsc, OCommandContext ctx, boolean profilingEnabled) {
+    super(ctx, profilingEnabled);
+    this.indexName = indexName;
     this.condition = condition;
     this.additionalRangeCondition = additionalRangeCondition;
     this.orderAsc = orderAsc;
@@ -62,7 +72,13 @@ public class FetchFromIndexStep extends AbstractExecutionStep {
 
       @Override
       public boolean hasNext() {
-        return (localCount < nRecords && nextEntry != null);
+        if (localCount >= nRecords) {
+          return false;
+        }
+        if (nextEntry == null) {
+          fetchNextEntry();
+        }
+        return nextEntry != null;
       }
 
       @Override
@@ -74,7 +90,8 @@ public class FetchFromIndexStep extends AbstractExecutionStep {
         try {
           Object key = nextEntry.getKey();
           OIdentifiable value = nextEntry.getValue();
-          fetchNextEntry();
+
+          nextEntry = null;
 
           localCount++;
           OResultInternal result = new OResultInternal();
@@ -86,6 +103,7 @@ public class FetchFromIndexStep extends AbstractExecutionStep {
           if (profilingEnabled) {
             cost += (System.nanoTime() - begin);
           }
+
         }
       }
 
@@ -143,6 +161,9 @@ public class FetchFromIndexStep extends AbstractExecutionStep {
   private void updateIndexStats() {
     //stats
     OQueryStats stats = OQueryStats.get((ODatabaseDocumentInternal) ctx.getDatabase());
+    if (index == null) {
+      return;//this could happen, if not inited yet
+    }
     String indexName = index.getName();
     boolean range = false;
     int size = 0;
@@ -540,7 +561,7 @@ public class FetchFromIndexStep extends AbstractExecutionStep {
 
   @Override
   public String prettyPrint(int depth, int indent) {
-    String result = OExecutionStepInternal.getIndent(depth, indent) + "+ FETCH FROM INDEX " + index.getName();
+    String result = OExecutionStepInternal.getIndent(depth, indent) + "+ FETCH FROM INDEX " + indexName;
     if (profilingEnabled) {
       result += " (" + getCostFormatted() + ")";
     }
@@ -588,5 +609,34 @@ public class FetchFromIndexStep extends AbstractExecutionStep {
     } catch (Exception e) {
       throw OException.wrapException(new OCommandExecutionException(""), e);
     }
+  }
+
+  @Override
+  public void reset() {
+    index = null;
+    condition = condition == null ? null : condition.copy();
+    additionalRangeCondition = additionalRangeCondition == null ? null : additionalRangeCondition.copy();
+
+    cost = 0;
+    count = 0;
+
+    inited = false;
+    cursor = null;
+    customIterator = null;
+    nullKeyIterator = null;
+    nextEntry = null;
+  }
+
+  @Override
+  public boolean canBeCached() {
+    return true;
+  }
+
+  @Override
+  public OExecutionStep copy(OCommandContext ctx) {
+    FetchFromIndexStep result = new FetchFromIndexStep(indexName, this.condition == null ? null : this.condition.copy(),
+        this.additionalRangeCondition == null ? null : this.additionalRangeCondition.copy(), this.orderAsc, ctx,
+        this.profilingEnabled);
+    return result;
   }
 }

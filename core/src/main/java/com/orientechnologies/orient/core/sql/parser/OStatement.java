@@ -9,15 +9,15 @@ import com.orientechnologies.orient.core.db.ODatabase;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.OCommandSQLParsingException;
-import com.orientechnologies.orient.core.sql.executor.OInternalExecutionPlan;
-import com.orientechnologies.orient.core.sql.executor.OResult;
-import com.orientechnologies.orient.core.sql.executor.OResultInternal;
-import com.orientechnologies.orient.core.sql.executor.OResultSet;
+import com.orientechnologies.orient.core.sql.executor.*;
 import com.orientechnologies.orient.core.sql.query.OSQLAsynchQuery;
 
 import java.util.Map;
 
 public class OStatement extends SimpleNode {
+
+  //only for internal use!!! (caching)
+  protected String originalStatement;
 
   public static final String CUSTOM_STRICT_SQL = "strictSql";
 
@@ -125,5 +125,14 @@ public class OStatement extends SimpleNode {
   public void deserialize(OResult fromResult) {
     throw new UnsupportedOperationException();
   }
+
+  public boolean executinPlanCanBeCached() {
+    return false;
+  }
+
+  public String getOriginalStatement() {
+    return originalStatement;
+  }
+
 }
 /* JavaCC - OriginalChecksum=589c4dcc8287f430e46d8eb12b0412c5 (do not edit this line) */

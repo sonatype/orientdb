@@ -356,7 +356,6 @@ public class OModifier extends SimpleNode {
 
   }
 
-
   public OResult serialize() {
     OResultInternal result = new OResultInternal();
     result.setProperty("squareBrackets", squareBrackets);
@@ -416,6 +415,27 @@ public class OModifier extends SimpleNode {
       next = new OModifier(-1);
       next.deserialize(fromResult.getProperty("next"));
     }
+  }
+
+  public boolean isCacheable() {
+    if (arrayRange != null || arraySingleValues != null || rightBinaryCondition != null) {
+      return false;//TODO enhance a bit
+    }
+    if (condition != null && !condition.isCacheable()) {
+      return false;
+    }
+    if (methodCall != null && !methodCall.isCacheable()) {
+      return false;
+    }
+    if (suffix != null && !suffix.isCacheable()) {
+      return false;
+    }
+    if (next != null && !next.isCacheable()) {
+      return false;
+    }
+
+    return true;
+
   }
 }
 /* JavaCC - OriginalChecksum=39c21495d02f9b5007b4a2d6915496e1 (do not edit this line) */

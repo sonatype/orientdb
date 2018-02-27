@@ -28,6 +28,8 @@ public class OMethodCall extends SimpleNode {
   protected OIdentifier methodName;
   protected List<OExpression> params = new ArrayList<OExpression>();
 
+  private Boolean calculatedIsGraph = null;
+
   public OMethodCall(int id) {
     super(id);
   }
@@ -73,8 +75,11 @@ public class OMethodCall extends SimpleNode {
   private Object execute(Object targetObjects, OCommandContext ctx, String name, List<OExpression> iParams,
       Iterable<OIdentifiable> iPossibleResults) {
     List<Object> paramValues = new ArrayList<Object>();
+    Object val = ctx.getVariable("$current");
+    if (val == null && targetObjects == null) {
+      return null;
+    }
     for (OExpression expr : iParams) {
-      Object val = ctx.getVariable("$current");
       if (val instanceof OIdentifiable) {
         paramValues.add(expr.execute((OIdentifiable) val, ctx));
       } else if (val instanceof OResult) {
@@ -87,7 +92,7 @@ public class OMethodCall extends SimpleNode {
         throw new OCommandExecutionException("Invalild value for $current: " + val);
       }
     }
-    if (graphMethods.contains(name)) {
+    if (isGraphFunction()) {
       OSQLFunction function = OSQLEngine.getInstance().getFunction(name);
       if (function instanceof OSQLFunctionFiltered) {
         Object current = ctx.getVariable("$current");
@@ -110,7 +115,6 @@ public class OMethodCall extends SimpleNode {
     }
     OSQLMethod method = OSQLEngine.getMethod(name);
     if (method != null) {
-      Object val = ctx.getVariable("$current");
       if (val instanceof OResult) {
         val = ((OResult) val).getElement().orElse(null);
       }
@@ -244,6 +248,29 @@ public class OMethodCall extends SimpleNode {
         params.add(exp);
       }
     }
+  }
+
+  public boolean isCacheable() {
+    if (isGraphFunction()) {
+      return true;
+    }
+    return false;//TODO
+  }
+
+  private boolean isGraphFunction() {
+    if (calculatedIsGraph != null) {
+      return calculatedIsGraph;
+    }
+    for (String graphMethod : graphMethods) {
+      if (graphMethod.equalsIgnoreCase(methodName.getStringValue())) {
+        calculatedIsGraph = true;
+        break;
+      }
+    }
+    if (calculatedIsGraph == null) {
+      calculatedIsGraph = false;
+    }
+    return calculatedIsGraph;
   }
 }
 /* JavaCC - OriginalChecksum=da95662da21ceb8dee3ad88c0d980413 (do not edit this line) */

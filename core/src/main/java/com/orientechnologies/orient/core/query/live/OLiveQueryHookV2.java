@@ -245,15 +245,39 @@ public class OLiveQueryHookV2 extends ODocumentHookAbstract implements ODatabase
     synchronized (ops.pendingOps) {
       List<OLiveQueryOp> list = ops.pendingOps.get(db);
       if (list == null) {
-        list = new ArrayList<OLiveQueryOp>();
+        list = new ArrayList<>();
         ops.pendingOps.put(db, list);
       }
-      list.add(result);
+      if (result.type == ORecordOperation.UPDATED) {
+        OLiveQueryOp prev = prevousUpdate(list, result.originalDoc);
+        if (prev == null) {
+          list.add(result);
+        } else {
+          prev.after = result.after;
+        }
+      } else {
+        list.add(result);
+      }
     }
   }
 
+  private OLiveQueryOp prevousUpdate(List<OLiveQueryOp> list, ODocument doc) {
+    for (OLiveQueryOp oLiveQueryOp : list) {
+      if (oLiveQueryOp.originalDoc == doc) {
+        return oLiveQueryOp;
+      }
+    }
+    return null;
+  }
+
   private OResultInternal calculateBefore(ODocument iDocument) {
-    OResultInternal result = calculateAfter(iDocument);
+    OResultInternal result = new OResultInternal();
+    for (String prop : iDocument.getPropertyNames()) {
+      result.setProperty(prop, iDocument.getProperty(prop));
+    }
+    result.setProperty("@rid", iDocument.getIdentity());
+    result.setProperty("@class", iDocument.getClassName());
+    result.setProperty("@version", iDocument.getVersion());
     for (String prop : iDocument.getDirtyFields()) {
       result.setProperty(prop, iDocument.getOriginalValue(prop));
     }
@@ -267,7 +291,7 @@ public class OLiveQueryHookV2 extends ODocumentHookAbstract implements ODatabase
     }
     result.setProperty("@rid", iDocument.getIdentity());
     result.setProperty("@class", iDocument.getClassName());
-    result.setProperty("@version", iDocument.getVersion());
+    result.setProperty("@version", iDocument.getVersion() + 1);
     return result;
   }
 

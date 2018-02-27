@@ -206,7 +206,7 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
    */
   private final Set<OPair<String, Long>> brokenPages = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
-  protected volatile ScheduledExecutorService fuzzyCheckpointExecutor;
+  protected volatile OScheduledThreadPoolExecutorWithLogging fuzzyCheckpointExecutor;
 
   private volatile Throwable dataFlushException = null;
 
@@ -270,6 +270,8 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
           throw new OStorageException("Cannot open the storage '" + name + "' because it does not exist in path: " + url);
 
         fuzzyCheckpointExecutor = new OScheduledThreadPoolExecutorWithLogging(1, new FuzzyCheckpointThreadFactory());
+        fuzzyCheckpointExecutor.setMaximumPoolSize(1);
+
         transaction = new ThreadLocal<>();
         getConfiguration().load(contextConfiguration);
 
@@ -348,7 +350,7 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
    * That is internal method which is called once we encounter any error inside of JVM. In such case we need to restart JVM to avoid
    * any data corruption. Till JVM is not restarted storage will be put in read-only state.
    */
-  private void handleJVMError(Error e) {
+  public void handleJVMError(Error e) {
     jvmError.compareAndSet(null, e);
   }
 
@@ -450,7 +452,8 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
         if (exists())
           throw new OStorageExistsException("Cannot create new storage '" + getURL() + "' because it already exists");
 
-        fuzzyCheckpointExecutor = Executors.newScheduledThreadPool(1, new FuzzyCheckpointThreadFactory());
+        fuzzyCheckpointExecutor = new OScheduledThreadPoolExecutorWithLogging(1, new FuzzyCheckpointThreadFactory());
+        fuzzyCheckpointExecutor.setMaximumPoolSize(1);
 
         getConfiguration().initConfiguration(contextConfiguration);
         componentsFactory = new OCurrentStorageComponentsFactory(getConfiguration());
@@ -489,7 +492,10 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
         // ADD THE DEFAULT CLUSTER
         defaultClusterId = doAddCluster(CLUSTER_DEFAULT_NAME, null);
 
-        clearStorageDirty();
+        if (jvmError.get() == null) {
+          clearStorageDirty();
+        }
+
         if (contextConfiguration.getValueAsBoolean(OGlobalConfiguration.STORAGE_MAKE_FULL_CHECKPOINT_AFTER_CREATE))
           makeFullCheckpoint();
 
@@ -1334,6 +1340,96 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
     }
   }
 
+  public Iterator<OClusterBrowsePage> browseCluster(int clusterId) {
+    try {
+      checkOpenness();
+      stateLock.acquireReadLock();
+      try {
+        checkOpenness();
+
+        final int finalClusterId;
+        if (clusterId == ORID.CLUSTER_ID_INVALID)
+          // GET THE DEFAULT CLUSTER
+          finalClusterId = defaultClusterId;
+        else
+          finalClusterId = clusterId;
+        return new Iterator<OClusterBrowsePage>() {
+          private OClusterBrowsePage page = null;
+          private long lastPos = -1;
+
+          @Override
+          public boolean hasNext() {
+            if (page == null) {
+              page = nextPage(finalClusterId, lastPos);
+              if (page != null)
+                lastPos = page.getLastPosition();
+            }
+            return page != null;
+          }
+
+          @Override
+          public OClusterBrowsePage next() {
+            if (!hasNext()) {
+              throw new NoSuchElementException();
+            }
+            OClusterBrowsePage curPage = page;
+            page = null;
+            return curPage;
+          }
+        };
+      } finally {
+        stateLock.releaseReadLock();
+      }
+    } catch (RuntimeException ee) {
+      throw logAndPrepareForRethrow(ee);
+    } catch (Error ee) {
+      throw logAndPrepareForRethrow(ee);
+    } catch (Throwable t) {
+      throw logAndPrepareForRethrow(t);
+    }
+  }
+
+  private OClusterBrowsePage nextPage(int clusterId, long lastPosition) {
+    try {
+      checkOpenness();
+      stateLock.acquireReadLock();
+      try {
+        checkOpenness();
+
+        final OCluster cluster = doGetAndCheckCluster(clusterId);
+        OPhysicalPosition[] nextPositions = cluster.higherPositions(new OPhysicalPosition(lastPosition));
+        if (nextPositions.length > 0) {
+          long newLastPosition = nextPositions[nextPositions.length - 1].clusterPosition;
+          List<OClusterBrowseEntry> nexv = new ArrayList<>();
+          for (OPhysicalPosition pos : nextPositions) {
+            final ORawBuffer buff = cluster.readRecord(pos.clusterPosition, false);
+            nexv.add(new OClusterBrowseEntry(pos.clusterPosition, buff));
+          }
+          return new OClusterBrowsePage(nexv, newLastPosition);
+        } else {
+          return null;
+        }
+      } finally {
+        stateLock.releaseReadLock();
+      }
+    } catch (RuntimeException ee) {
+      throw logAndPrepareForRethrow(ee);
+    } catch (Error ee) {
+      throw logAndPrepareForRethrow(ee);
+    } catch (Throwable t) {
+      throw logAndPrepareForRethrow(t);
+    }
+  }
+
+  private OCluster doGetAndCheckCluster(int clusterId) {
+    checkClusterSegmentIndexRange(clusterId);
+
+    final OCluster cluster = clusters.get(clusterId);
+    if (cluster == null)
+      throw new IllegalArgumentException("Cluster " + clusterId + " is null");
+    return cluster;
+  }
+
   @Override
   public OStorageOperationResult<ORawBuffer> readRecord(final ORecordId iRid, final String iFetchPlan, boolean iIgnoreCache,
       boolean prefetchRecords, ORecordCallback<ORawBuffer> iCallback) {
@@ -1371,7 +1467,6 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
     }
   }
 
-  @Override
   public OStorageOperationResult<Integer> updateRecord(final ORecordId rid, final boolean updateContent, final byte[] content,
       final int version, final byte recordType, final int mode, final ORecordCallback<Integer> callback) {
     try {
@@ -1723,6 +1818,7 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
    * Traditional commit that support already temporary rid and already assigned rids
    *
    * @param clientTx the transaction to commit
+   *
    * @return The list of operations applied by the transaction
    */
   @Override
@@ -1826,6 +1922,8 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
 
             lockClusters(clustersToLock);
 
+            checkReadOnlyConditions();
+
             Map<ORecordOperation, OPhysicalPosition> positions = new IdentityHashMap<>();
             for (ORecordOperation recordOperation : newRecords) {
               ORecord rec = recordOperation.getRecord();
@@ -1868,12 +1966,16 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
 
             lockRidBags(clustersToLock, indexOperations, indexManager);
 
+            checkReadOnlyConditions();
+
             for (ORecordOperation recordOperation : recordOperations) {
               commitEntry(recordOperation, positions.get(recordOperation), database.getSerializer());
               result.add(recordOperation);
             }
 
             lockIndexes(indexOperations);
+
+            checkReadOnlyConditions();
 
             commitIndexes(indexOperations);
 
@@ -1921,12 +2023,14 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
     } catch (RuntimeException ee) {
       throw logAndPrepareForRethrow(ee);
     } catch (Error ee) {
+      handleJVMError(ee);
+      atomicOperationsManager.alarmClearOfAtomicOperation();
       throw logAndPrepareForRethrow(ee);
     } catch (Throwable t) {
       throw logAndPrepareForRethrow(t);
     }
   }
-  
+
   private void commitIndexes(final Map<String, OTransactionIndexChanges> indexesToCommit) {
     final Map<OIndex, OIndexAbstract.IndexTxSnapshot> snapshots = new IdentityHashMap<>();
 
@@ -3064,27 +3168,31 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
         final long lockId = atomicOperationsManager.freezeAtomicOperations(null, null);
         try {
           checkOpenness();
+          if (jvmError.get() == null) {
+            for (OIndexEngine indexEngine : indexEngines)
+              try {
+                if (indexEngine != null)
+                  indexEngine.flush();
+              } catch (Throwable t) {
+                OLogManager.instance().error(this, "Error while flushing index via index engine of class %s.", t,
+                    indexEngine.getClass().getSimpleName());
+              }
 
-          for (OIndexEngine indexEngine : indexEngines)
-            try {
-              if (indexEngine != null)
-                indexEngine.flush();
-            } catch (Throwable t) {
-              OLogManager.instance().error(this, "Error while flushing index via index engine of class %s.", t,
-                  indexEngine.getClass().getSimpleName());
+            if (writeAheadLog != null) {
+              makeFullCheckpoint();
+              return;
             }
 
-          if (writeAheadLog != null) {
-            makeFullCheckpoint();
-            return;
+            writeCache.flush();
+
+            if (configuration != null)
+              getConfiguration().synch();
+
+            clearStorageDirty();
+          } else {
+            OLogManager.instance().errorNoDb(this, "Sync can not be performed because of JVM error on storage", null);
           }
 
-          writeCache.flush();
-
-          if (configuration != null)
-            getConfiguration().synch();
-
-          clearStorageDirty();
         } catch (IOException e) {
           throw OException.wrapException(new OStorageException("Error on synch storage '" + name + "'"), e);
 
@@ -3152,11 +3260,7 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
           // GET THE DEFAULT CLUSTER
           iClusterId = defaultClusterId;
 
-        checkClusterSegmentIndexRange(iClusterId);
-
-        final OCluster cluster = clusters.get(iClusterId);
-        if (cluster == null)
-          throw new IllegalArgumentException("Cluster " + iClusterId + " is null");
+        final OCluster cluster = doGetAndCheckCluster(iClusterId);
 
         return cluster;
       } finally {
@@ -3833,7 +3937,10 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
 
         writeAheadLog.cutTill(lastLSN);
 
-        clearStorageDirty();
+        if (jvmError.get() == null) {
+          clearStorageDirty();
+        }
+
       } catch (IOException ioe) {
         throw OException.wrapException(new OStorageException("Error during checkpoint creation for storage " + name), ioe);
       }
@@ -4430,80 +4537,85 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
 
       status = STATUS.CLOSING;
 
-      readCache.storeCacheState(writeCache);
+      if (jvmError.get() == null) {
+        readCache.storeCacheState(writeCache);
 
-      if (!onDelete)
-        makeFullCheckpoint();
+        if (!onDelete && jvmError.get() == null)
+          makeFullCheckpoint();
 
-      preCloseSteps();
+        preCloseSteps();
 
-      sbTreeCollectionManager.close();
+        sbTreeCollectionManager.close();
 
-      // we close all files inside cache system so we only clear cluster metadata
-      clusters.clear();
-      clusterMap.clear();
+        // we close all files inside cache system so we only clear cluster metadata
+        clusters.clear();
+        clusterMap.clear();
 
-      // we close all files inside cache system so we only clear index metadata and close non core indexes
-      for (OIndexEngine engine : indexEngines) {
-        if (engine != null && !(engine instanceof OSBTreeIndexEngine || engine instanceof OHashTableIndexEngine)) {
+        // we close all files inside cache system so we only clear index metadata and close non core indexes
+        for (OIndexEngine engine : indexEngines) {
+          if (engine != null && !(engine instanceof OSBTreeIndexEngine || engine instanceof OHashTableIndexEngine)) {
+            if (onDelete)
+              engine.delete();
+            else
+              engine.close();
+          }
+        }
+
+        indexEngines.clear();
+        indexEngineNameMap.clear();
+
+        if (getConfiguration() != null)
           if (onDelete)
-            engine.delete();
+            getConfiguration().delete();
           else
-            engine.close();
+            getConfiguration().close();
+
+        super.close(force, onDelete);
+
+        if (writeCache != null) {
+          writeCache.removeLowDiskSpaceListener(this);
+          writeCache.removeBackgroundExceptionListener(this);
+          writeCache.removePageIsBrokenListener(this);
         }
-      }
 
-      indexEngines.clear();
-      indexEngineNameMap.clear();
+        if (writeAheadLog != null) {
+          writeAheadLog.removeFullCheckpointListener(this);
+          writeAheadLog.removeLowDiskSpaceListener(this);
+        }
 
-      if (getConfiguration() != null)
-        if (onDelete)
-          getConfiguration().delete();
-        else
-          getConfiguration().close();
+        if (readCache != null)
+          if (!onDelete)
+            readCache.closeStorage(writeCache);
+          else
+            readCache.deleteStorage(writeCache);
 
-      super.close(force, onDelete);
+        if (writeAheadLog != null) {
+          writeAheadLog.close();
+          if (onDelete)
+            writeAheadLog.delete();
+        }
 
-      if (writeCache != null) {
-        writeCache.removeLowDiskSpaceListener(this);
-        writeCache.removeBackgroundExceptionListener(this);
-        writeCache.removePageIsBrokenListener(this);
-      }
-
-      if (writeAheadLog != null) {
-        writeAheadLog.removeFullCheckpointListener(this);
-        writeAheadLog.removeLowDiskSpaceListener(this);
-      }
-
-      if (readCache != null)
-        if (!onDelete)
-          readCache.closeStorage(writeCache);
-        else
-          readCache.deleteStorage(writeCache);
-
-      if (writeAheadLog != null) {
-        writeAheadLog.close();
-        if (onDelete)
-          writeAheadLog.delete();
-      }
-
-      try {
-        performanceStatisticManager.unregisterMBean(name, id);
-      } catch (Exception e) {
-        OLogManager.instance().error(this, "MBean for write cache cannot be unregistered", e);
-      }
-
-      postCloseSteps(onDelete, jvmError.get() != null);
-
-      if (atomicOperationsManager != null)
         try {
-          atomicOperationsManager.unregisterMBean();
+          performanceStatisticManager.unregisterMBean(name, id);
         } catch (Exception e) {
-          OLogManager.instance().error(this, "MBean for atomic operations manager cannot be unregistered", e);
+          OLogManager.instance().error(this, "MBean for write cache cannot be unregistered", e);
         }
 
-      transaction = null;
-      fuzzyCheckpointExecutor = null;
+        postCloseSteps(onDelete, jvmError.get() != null);
+
+        if (atomicOperationsManager != null)
+          try {
+            atomicOperationsManager.unregisterMBean();
+          } catch (Exception e) {
+            OLogManager.instance().error(this, "MBean for atomic operations manager cannot be unregistered", e);
+          }
+
+        transaction = null;
+        fuzzyCheckpointExecutor = null;
+      } else {
+        OLogManager.instance()
+            .errorNoDb(this, "Because of JVM error happened inside of storage it can not be properly closed", null);
+      }
 
       status = STATUS.CLOSED;
     } catch (IOException e) {
@@ -4691,78 +4803,88 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
 
     OLogManager.instance().info(this, "Looking for last checkpoint...");
 
-    OLogSequenceNumber lastCheckPoint;
+    final OLogSequenceNumber end = writeAheadLog.end();
+    if (end == null) {
+      OLogManager.instance().errorNoDb(this, "WAL is empty, there is nothing not restore", null);
+      return null;
+    }
+
+    writeAheadLog.addCutTillLimit(end);
     try {
-      lastCheckPoint = writeAheadLog.getLastCheckpoint();
-    } catch (OWALPageBrokenException ignore) {
-      lastCheckPoint = null;
-    }
+      OLogSequenceNumber lastCheckPoint;
+      try {
+        lastCheckPoint = writeAheadLog.getLastCheckpoint();
+      } catch (OWALPageBrokenException ignore) {
+        lastCheckPoint = null;
+      }
 
-    if (lastCheckPoint == null) {
-      OLogManager.instance().info(this, "Checkpoints are absent, the restore will start from the beginning.");
-      return restoreFromBeginning();
-    }
+      if (lastCheckPoint == null) {
+        OLogManager.instance().info(this, "Checkpoints are absent, the restore will start from the beginning.");
+        return restoreFromBeginning();
+      }
 
-    OWALRecord checkPointRecord;
-    try {
-      checkPointRecord = writeAheadLog.read(lastCheckPoint);
-    } catch (OWALPageBrokenException ignore) {
-      checkPointRecord = null;
-    }
-
-    if (checkPointRecord == null) {
-      OLogManager.instance().info(this, "Checkpoints are absent, the restore will start from the beginning.");
-      return restoreFromBeginning();
-    }
-
-    if (checkPointRecord instanceof OFuzzyCheckpointStartRecord) {
-      OLogManager.instance().info(this, "Found FUZZY checkpoint.");
-
-      boolean fuzzyCheckPointIsComplete = checkFuzzyCheckPointIsComplete(lastCheckPoint);
-      if (!fuzzyCheckPointIsComplete) {
-        OLogManager.instance().warn(this, "FUZZY checkpoint is not complete.");
-
-        OLogSequenceNumber previousCheckpoint = ((OFuzzyCheckpointStartRecord) checkPointRecord).getPreviousCheckpoint();
+      OWALRecord checkPointRecord;
+      try {
+        checkPointRecord = writeAheadLog.read(lastCheckPoint);
+      } catch (OWALPageBrokenException ignore) {
         checkPointRecord = null;
+      }
 
-        if (previousCheckpoint != null)
-          checkPointRecord = writeAheadLog.read(previousCheckpoint);
+      if (checkPointRecord == null) {
+        OLogManager.instance().info(this, "Checkpoints are absent, the restore will start from the beginning.");
+        return restoreFromBeginning();
+      }
 
-        if (checkPointRecord != null) {
-          OLogManager.instance().warn(this, "Restore will start from the previous checkpoint.");
+      if (checkPointRecord instanceof OFuzzyCheckpointStartRecord) {
+        OLogManager.instance().info(this, "Found FUZZY checkpoint.");
+
+        boolean fuzzyCheckPointIsComplete = checkFuzzyCheckPointIsComplete(lastCheckPoint);
+        if (!fuzzyCheckPointIsComplete) {
+          OLogManager.instance().warn(this, "FUZZY checkpoint is not complete.");
+
+          OLogSequenceNumber previousCheckpoint = ((OFuzzyCheckpointStartRecord) checkPointRecord).getPreviousCheckpoint();
+          checkPointRecord = null;
+
+          if (previousCheckpoint != null)
+            checkPointRecord = writeAheadLog.read(previousCheckpoint);
+
+          if (checkPointRecord != null) {
+            OLogManager.instance().warn(this, "Restore will start from the previous checkpoint.");
+            return restoreFromCheckPoint((OAbstractCheckPointStartRecord) checkPointRecord);
+          } else {
+            OLogManager.instance().warn(this, "Restore will start from the beginning.");
+            return restoreFromBeginning();
+          }
+        } else
           return restoreFromCheckPoint((OAbstractCheckPointStartRecord) checkPointRecord);
-        } else {
-          OLogManager.instance().warn(this, "Restore will start from the beginning.");
-          return restoreFromBeginning();
-        }
-      } else
-        return restoreFromCheckPoint((OAbstractCheckPointStartRecord) checkPointRecord);
-    }
+      }
 
-    if (checkPointRecord instanceof OFullCheckpointStartRecord) {
-      OLogManager.instance().info(this, "FULL checkpoint found.");
-      boolean fullCheckPointIsComplete = checkFullCheckPointIsComplete(lastCheckPoint);
-      if (!fullCheckPointIsComplete) {
-        OLogManager.instance().warn(this, "FULL checkpoint has not completed.");
+      if (checkPointRecord instanceof OFullCheckpointStartRecord) {
+        OLogManager.instance().info(this, "FULL checkpoint found.");
+        boolean fullCheckPointIsComplete = checkFullCheckPointIsComplete(lastCheckPoint);
+        if (!fullCheckPointIsComplete) {
+          OLogManager.instance().warn(this, "FULL checkpoint has not completed.");
 
-        OLogSequenceNumber previousCheckpoint = ((OFullCheckpointStartRecord) checkPointRecord).getPreviousCheckpoint();
-        checkPointRecord = null;
-        if (previousCheckpoint != null)
-          checkPointRecord = writeAheadLog.read(previousCheckpoint);
+          OLogSequenceNumber previousCheckpoint = ((OFullCheckpointStartRecord) checkPointRecord).getPreviousCheckpoint();
+          checkPointRecord = null;
+          if (previousCheckpoint != null)
+            checkPointRecord = writeAheadLog.read(previousCheckpoint);
 
-        if (checkPointRecord != null) {
-          OLogManager.instance().warn(this, "Restore will start from the previous checkpoint.");
+          if (checkPointRecord != null) {
+            OLogManager.instance().warn(this, "Restore will start from the previous checkpoint.");
+            return restoreFromCheckPoint((OAbstractCheckPointStartRecord) checkPointRecord);
+          } else {
+            OLogManager.instance().warn(this, "Restore will start from the beginning.");
+            return restoreFromBeginning();
+          }
+        } else
           return restoreFromCheckPoint((OAbstractCheckPointStartRecord) checkPointRecord);
-        } else {
-          OLogManager.instance().warn(this, "Restore will start from the beginning.");
-          return restoreFromBeginning();
-        }
-      } else
-        return restoreFromCheckPoint((OAbstractCheckPointStartRecord) checkPointRecord);
+      }
+
+      throw new OStorageException("Unknown checkpoint record type " + checkPointRecord.getClass().getName());
+    } finally {
+      writeAheadLog.removeCutTillLimit(end);
     }
-
-    throw new OStorageException("Unknown checkpoint record type " + checkPointRecord.getClass().getName());
-
   }
 
   private boolean checkFullCheckPointIsComplete(OLogSequenceNumber lastCheckPoint) throws IOException {
@@ -5193,6 +5315,10 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
       }
     }
 
+    checkReadOnlyConditions();
+  }
+
+  public void checkReadOnlyConditions() {
     if (dataFlushException != null) {
       throw OException.wrapException(new OStorageException(
               "Error in data flush background thread, please restart database and send full stack trace inside of bug report"),
@@ -5240,6 +5366,7 @@ public abstract class OAbstractPaginatedStorage extends OStorageAbstract
           + "To prevent this exception please restart the JVM and check data consistency by calling of 'check database' "
           + "command from database console.");
     }
+
   }
 
   @SuppressWarnings("unused")

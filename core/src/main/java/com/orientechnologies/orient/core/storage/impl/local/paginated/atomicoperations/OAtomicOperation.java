@@ -19,6 +19,7 @@
  */
 package com.orientechnologies.orient.core.storage.impl.local.paginated.atomicoperations;
 
+import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.orient.core.exception.OStorageException;
 import com.orientechnologies.orient.core.storage.cache.*;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.base.ODurablePage;
@@ -77,7 +78,8 @@ public class OAtomicOperation {
     return operationUnitId;
   }
 
-  public OCacheEntry loadPage(long fileId, long pageIndex, boolean checkPinnedPages, final int pageCount) throws IOException {
+  public OCacheEntry loadPageForWrite(long fileId, long pageIndex, boolean checkPinnedPages, final int pageCount)
+      throws IOException {
     assert pageCount > 0;
 
     fileId = checkFileIdCompatibility(fileId, storageId);
@@ -96,30 +98,65 @@ public class OAtomicOperation {
     } else {
       OCacheEntryChanges pageChangesContainer = changesContainer.pageChangesMap.get(pageIndex);
 
-      final long filledUpTo = internalFilledUpTo(fileId, changesContainer);
-
-      if (pageIndex < filledUpTo) {
+      if (checkChangesFilledUpTo(changesContainer, pageIndex)) {
         if (pageChangesContainer == null) {
-          pageChangesContainer = new OCacheEntryChanges();
-          changesContainer.pageChangesMap.put(pageIndex, pageChangesContainer);
-          if (pageChangesContainer.isNew) {
-            OCacheEntry delegate = new OCacheEntryImpl(fileId, pageIndex, new OCachePointer(null, null, fileId, pageIndex), false);
-            pageChangesContainer.delegate = delegate;
-          }
-        }
-
-        if (pageChangesContainer.isNew) {
-          return pageChangesContainer;
-        } else {
           OCacheEntry delegate = readCache.loadForRead(fileId, pageIndex, checkPinnedPages, writeCache, pageCount, true);
-          pageChangesContainer.delegate = delegate;
-          pageChangesContainer.originalLsn = ODurablePage
-              .getLogSequenceNumberFromPage(delegate.getCachePointer().getSharedBuffer());
-          return pageChangesContainer;
+          if (delegate != null) {
+            pageChangesContainer = new OCacheEntryChanges();
+            changesContainer.pageChangesMap.put(pageIndex, pageChangesContainer);
+            pageChangesContainer.delegate = delegate;
+            return pageChangesContainer;
+          }
+        } else {
+          if (pageChangesContainer.isNew) {
+            return pageChangesContainer;
+          } else {
+            // Need to load the page again from cache for locking reasons
+            OCacheEntry delegate = readCache.loadForRead(fileId, pageIndex, checkPinnedPages, writeCache, pageCount, true);
+            pageChangesContainer.delegate = delegate;
+            return pageChangesContainer;
+          }
         }
       }
     }
+    return null;
+  }
 
+  public OCacheEntry loadPageForRead(long fileId, long pageIndex, boolean checkPinnedPages, final int pageCount)
+      throws IOException {
+    assert pageCount > 0;
+
+    fileId = checkFileIdCompatibility(fileId, storageId);
+
+    if (deletedFiles.contains(fileId))
+      throw new OStorageException("File with id " + fileId + " is deleted.");
+
+    FileChanges changesContainer = fileChanges.computeIfAbsent(fileId, k -> new FileChanges());
+
+    if (changesContainer.isNew) {
+      if (pageIndex <= changesContainer.maxNewPageIndex) {
+        OCacheEntryChanges pageChange = changesContainer.pageChangesMap.get(pageIndex);
+        return pageChange;
+      } else
+        return null;
+    } else {
+      OCacheEntryChanges pageChangesContainer = changesContainer.pageChangesMap.get(pageIndex);
+
+      if (checkChangesFilledUpTo(changesContainer, pageIndex)) {
+        if (pageChangesContainer == null) {
+          return readCache.loadForRead(fileId, pageIndex, checkPinnedPages, writeCache, pageCount, true);
+        } else {
+          if (pageChangesContainer.isNew) {
+            return pageChangesContainer;
+          } else {
+            // Need to load the page again from cache for locking reasons
+            OCacheEntry delegate = readCache.loadForRead(fileId, pageIndex, checkPinnedPages, writeCache, pageCount, true);
+            pageChangesContainer.delegate = delegate;
+            return pageChangesContainer;
+          }
+        }
+      }
+    }
     return null;
   }
 
@@ -188,12 +225,19 @@ public class OAtomicOperation {
     return pageChangesContainer;
   }
 
-  public void releasePage(OCacheEntry cacheEntry) {
+  public void releasePageFromRead(OCacheEntry cacheEntry) {
+    if (cacheEntry instanceof OCacheEntryChanges) {
+      releasePageFromWrite(cacheEntry);
+    } else
+      readCache.releaseFromRead(cacheEntry, writeCache);
+  }
+
+  public void releasePageFromWrite(OCacheEntry cacheEntry) {
     OCacheEntryChanges real = (OCacheEntryChanges) cacheEntry;
     if (deletedFiles.contains(cacheEntry.getFileId()))
       throw new OStorageException("File with id " + cacheEntry.getFileId() + " is deleted.");
 
-    if (cacheEntry.getCachePointer().getExclusiveBuffer() != null)
+    if (cacheEntry.getCachePointer().getBuffer() != null)
       readCache.releaseFromRead(real.getDelegate(), writeCache);
     else {
       assert real.isNew || !cacheEntry.isLockAcquiredByCurrentThread();
@@ -221,6 +265,24 @@ public class OAtomicOperation {
       return 0;
 
     return writeCache.getFilledUpTo(fileId);
+  }
+
+  /**
+   * This check if a file was trimmed or trunked in the current atomic operation.
+   *
+   * @param changesContainer changes container to check
+   * @param pageIndex        limit to check aginst the changes
+   *
+   * @return true if there are no changes or pageIndex still fit, false if the pageIndex do not fit anymore
+   */
+  private boolean checkChangesFilledUpTo(FileChanges changesContainer, long pageIndex) {
+    if (changesContainer == null) {
+      return true;
+    } else if (changesContainer.isNew || changesContainer.maxNewPageIndex > -2) {
+      return pageIndex < changesContainer.maxNewPageIndex + 1;
+    } else if (changesContainer.truncate)
+      return false;
+    return true;
   }
 
   public long addFile(String fileName) {
@@ -340,7 +402,65 @@ public class OAtomicOperation {
     try {
       if (writeAheadLog != null) {
         for (long deletedFileId : deletedFiles) {
-          writeAheadLog.log(new OFileDeletedWALRecord(operationUnitId, deletedFileId));
+          readCache.deleteFile(deletedFileId, writeCache);
+        }
+
+        for (Map.Entry<Long, FileChanges> fileChangesEntry : fileChanges.entrySet()) {
+          final FileChanges fileChanges = fileChangesEntry.getValue();
+          final long fileId = fileChangesEntry.getKey();
+
+          if (fileChanges.isNew) {
+            writeAheadLog.log(new OFileCreatedWALRecord(operationUnitId, fileChanges.fileName, fileId));
+            readCache.addFile(fileChanges.fileName, newFileNamesId.get(fileChanges.fileName), writeCache);
+          } else if (fileChanges.truncate) {
+            OLogManager.instance().warn(this,
+                "You performing truncate operation which is considered unsafe because can not be rolled back, "
+                    + "as result data can be incorrectly restored after crash, this operation is not recommended to be used");
+            readCache.truncateFile(fileId, writeCache);
+          }
+
+          Iterator<Map.Entry<Long, OCacheEntryChanges>> filePageChangesIterator = fileChanges.pageChangesMap.entrySet().iterator();
+          while (filePageChangesIterator.hasNext()) {
+            Map.Entry<Long, OCacheEntryChanges> filePageChangesEntry = filePageChangesIterator.next();
+
+            if (filePageChangesEntry.getValue().changes.hasChanges()) {
+              final long pageIndex = filePageChangesEntry.getKey();
+              final OCacheEntryChanges filePageChanges = filePageChangesEntry.getValue();
+
+              OCacheEntry cacheEntry = readCache.loadForWrite(fileId, pageIndex, true, writeCache, 1, true);
+              if (cacheEntry == null) {
+                assert filePageChanges.isNew;
+                do {
+                  if (cacheEntry != null)
+                    readCache.releaseFromWrite(cacheEntry, writeCache);
+
+                  cacheEntry = readCache.allocateNewPage(fileId, writeCache, true);
+                } while (cacheEntry.getPageIndex() != pageIndex);
+              }
+
+              final OLogSequenceNumber originalPageLSN = ODurablePage
+                  .getLogSequenceNumberFromPage(cacheEntry.getCachePointer().getBuffer());
+              final OLogSequenceNumber changesLSN = writeAheadLog
+                  .log(new OUpdatePageRecord(pageIndex, fileId, operationUnitId, filePageChanges.changes, originalPageLSN));
+
+              try {
+                ODurablePage durablePage = new ODurablePage(cacheEntry);
+                durablePage.restoreChanges(filePageChanges.changes);
+                durablePage.setLsn(changesLSN);
+
+                if (filePageChanges.pinPage)
+                  readCache.pinPage(cacheEntry);
+
+              } finally {
+                readCache.releaseFromWrite(cacheEntry, writeCache);
+              }
+            } else
+              filePageChangesIterator.remove();
+          }
+        }
+      } else {
+        for (long deletedFileId : deletedFiles) {
+          readCache.deleteFile(deletedFileId, writeCache);
         }
 
         for (Map.Entry<Long, FileChanges> fileChangesEntry : fileChanges.entrySet()) {
@@ -348,67 +468,37 @@ public class OAtomicOperation {
           final long fileId = fileChangesEntry.getKey();
 
           if (fileChanges.isNew)
-            writeAheadLog.log(new OFileCreatedWALRecord(operationUnitId, fileChanges.fileName, fileId));
+            readCache.addFile(fileChanges.fileName, newFileNamesId.get(fileChanges.fileName), writeCache);
           else if (fileChanges.truncate)
-            writeAheadLog.log(new OFileTruncatedWALRecord(operationUnitId, fileId));
-          Iterator<Map.Entry<Long, OCacheEntryChanges>> filePageChangesIterator = fileChanges.pageChangesMap.entrySet().iterator();
-          while (filePageChangesIterator.hasNext()) {
-            Map.Entry<Long, OCacheEntryChanges> filePageChangesEntry = filePageChangesIterator.next();
-            //I assume new pages have always changes
-            if (filePageChangesEntry.getValue().changes.hasChanges()) {
-              final long pageIndex = filePageChangesEntry.getKey();
-              final OCacheEntryChanges filePageChanges = filePageChangesEntry.getValue();
+            readCache.truncateFile(fileId, writeCache);
 
-              filePageChanges.lsn = writeAheadLog.log(
-                  new OUpdatePageRecord(pageIndex, fileId, operationUnitId, filePageChanges.changes, filePageChanges.originalLsn));
-            } else
-              filePageChangesIterator.remove();
-          }
-        }
-      }
+          for (Map.Entry<Long, OCacheEntryChanges> filePageChangesEntry : fileChanges.pageChangesMap.entrySet()) {
+            final OCacheEntryChanges filePageChanges = filePageChangesEntry.getValue();
+            if (!filePageChanges.changes.hasChanges())
+              continue;
+            final long pageIndex = filePageChangesEntry.getKey();
 
-      for (long deletedFileId : deletedFiles) {
-        readCache.deleteFile(deletedFileId, writeCache);
-      }
+            OCacheEntry cacheEntry = readCache.loadForWrite(fileId, pageIndex, true, writeCache, 1, true);
+            if (cacheEntry == null) {
+              assert filePageChanges.isNew;
+              do {
+                if (cacheEntry != null)
+                  readCache.releaseFromWrite(cacheEntry, writeCache);
 
-      for (Map.Entry<Long, FileChanges> fileChangesEntry : fileChanges.entrySet()) {
-        final FileChanges fileChanges = fileChangesEntry.getValue();
-        final long fileId = fileChangesEntry.getKey();
+                cacheEntry = readCache.allocateNewPage(fileId, writeCache, true);
+              } while (cacheEntry.getPageIndex() != pageIndex);
+            }
 
-        if (fileChanges.isNew)
-          readCache.addFile(fileChanges.fileName, newFileNamesId.get(fileChanges.fileName), writeCache);
-        else if (fileChanges.truncate)
-          readCache.truncateFile(fileId, writeCache);
+            try {
+              ODurablePage durablePage = new ODurablePage(cacheEntry);
+              durablePage.restoreChanges(filePageChanges.changes);
 
-        for (Map.Entry<Long, OCacheEntryChanges> filePageChangesEntry : fileChanges.pageChangesMap.entrySet()) {
-          final OCacheEntryChanges filePageChanges = filePageChangesEntry.getValue();
-          if (!filePageChanges.changes.hasChanges())
-            continue;
-          final long pageIndex = filePageChangesEntry.getKey();
+              if (filePageChanges.pinPage)
+                readCache.pinPage(cacheEntry);
 
-          OCacheEntry cacheEntry = readCache.loadForWrite(fileId, pageIndex, true, writeCache, 1, true);
-          if (cacheEntry == null) {
-            assert filePageChanges.isNew;
-            do {
-              if (cacheEntry != null)
-                readCache.releaseFromWrite(cacheEntry, writeCache);
-
-              cacheEntry = readCache.allocateNewPage(fileId, writeCache, true);
-            } while (cacheEntry.getPageIndex() != pageIndex);
-          }
-
-          try {
-            ODurablePage durablePage = new ODurablePage(cacheEntry);
-            durablePage.restoreChanges(filePageChanges.changes);
-
-            if (writeAheadLog != null)
-              durablePage.setLsn(filePageChanges.lsn);
-
-            if (filePageChanges.pinPage)
-              readCache.pinPage(cacheEntry);
-
-          } finally {
-            readCache.releaseFromWrite(cacheEntry, writeCache);
+            } finally {
+              readCache.releaseFromWrite(cacheEntry, writeCache);
+            }
           }
         }
       }

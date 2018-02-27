@@ -21,7 +21,9 @@ import org.junit.*;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.lang.reflect.Array;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -43,8 +45,9 @@ public class SBTreeWALTestIT extends SBTreeTestIT {
   private OLocalPaginatedStorage actualStorage;
   private OWriteCache            actualWriteCache;
 
-  private OReadCache             expectedReadCache;
-  private OWriteCache            expectedWriteCache;
+  private OReadCache     expectedReadCache;
+  private OWriteCache    expectedWriteCache;
+  private OWriteAheadLog expectedWAL;
 
   @Before
   public void before() throws IOException {
@@ -105,7 +108,7 @@ public class SBTreeWALTestIT extends SBTreeTestIT {
     OReadCache actualReadCache = ((OAbstractPaginatedStorage) databaseDocumentTx.getStorage()).getReadCache();
     actualWriteCache = ((OAbstractPaginatedStorage) databaseDocumentTx.getStorage()).getWriteCache();
 
-    sbTree = new OSBTree<>("actualSBTree", ".sbt", true, ".nbt", actualStorage);
+    sbTree = new OSBTree<>("actualSBTree", ".sbt", ".nbt", actualStorage);
     sbTree.create(OIntegerSerializer.INSTANCE, OLinkSerializer.INSTANCE, null, 1, false);
   }
 
@@ -127,6 +130,7 @@ public class SBTreeWALTestIT extends SBTreeTestIT {
     OLocalPaginatedStorage expectedStorage = (OLocalPaginatedStorage) expectedDatabaseDocumentTx.getStorage();
     expectedReadCache = expectedStorage.getReadCache();
     expectedWriteCache = expectedStorage.getWriteCache();
+    expectedWAL = expectedStorage.getWALInstance();
   }
 
   @Override
@@ -308,7 +312,7 @@ public class SBTreeWALTestIT extends SBTreeTestIT {
             try {
               ODurablePage durablePage = new ODurablePage(cacheEntry);
               durablePage.restoreChanges(updatePageRecord.getChanges());
-              durablePage.setLsn(updatePageRecord.getLsn());
+              durablePage.setLsn(new OLogSequenceNumber(0, 0));
 
               cacheEntry.markDirty();
             } finally {
@@ -348,7 +352,8 @@ public class SBTreeWALTestIT extends SBTreeTestIT {
     while (bytesRead >= 0) {
       fileTwo.readFully(actualContent, 0, bytesRead);
 
-      Assertions.assertThat(expectedContent).isEqualTo(actualContent);
+      Assertions.assertThat(Arrays.copyOfRange(expectedContent, ODurablePage.NEXT_FREE_POSITION, ODurablePage.MAX_PAGE_SIZE_BYTES))
+          .isEqualTo(Arrays.copyOfRange(actualContent, ODurablePage.NEXT_FREE_POSITION, ODurablePage.MAX_PAGE_SIZE_BYTES));
       expectedContent = new byte[OClusterPage.PAGE_SIZE];
       actualContent = new byte[OClusterPage.PAGE_SIZE];
       bytesRead = fileOne.read(expectedContent);
