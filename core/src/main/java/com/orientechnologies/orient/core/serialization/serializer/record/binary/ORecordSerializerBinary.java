@@ -65,7 +65,7 @@ public class ORecordSerializerBinary implements ORecordSerializer {
 
   @Override
   public int getMinSupportedVersion() {
-    return 0;
+    return currentSerializerVersion;
   }
 
   public ODocumentSerializer getSerializer(final int iVersion) {
@@ -128,17 +128,34 @@ public class ORecordSerializerBinary implements ORecordSerializer {
 
       return container.fitBytes();
     }
-  }
-
+  }  
+  
   @Override
-  public String[] getFieldNames(ODocument reference, final byte[] iSource) {
+  public String[] getFieldNamesEmbedded(ODocument reference, byte[] iSource, int offset, int serializerVersion) {
     if (iSource == null || iSource.length == 0)
       return new String[0];
 
-    final BytesContainer container = new BytesContainer(iSource).skip(1);
+    final BytesContainer container = new BytesContainer(iSource);
+    container.skip(offset);
 
     try {
-      return serializerByVersion[iSource[0]].getFieldNames(reference, container, false);
+      return serializerByVersion[serializerVersion].getFieldNames(reference, container, serializerByVersion[serializerVersion].isSerializingClassNameForEmbedded());
+    } catch (RuntimeException e) {
+      OLogManager.instance().warn(this, "Error deserializing record to get field-names, send this data for debugging: %s ",
+          Base64.getEncoder().encodeToString(iSource));
+      throw e;
+    }
+  }
+  
+  @Override
+  public String[] getFieldNamesRoot(ODocument reference, final byte[] iSource) {
+    if (iSource == null || iSource.length == 0)
+      return new String[0];
+
+    final BytesContainer container = new BytesContainer(iSource).skip(1);    
+
+    try {
+      return serializerByVersion[iSource[0]].getFieldNames(reference, container, serializerByVersion[iSource[0]].isSerializingClassNameByDefault());
     } catch (RuntimeException e) {
       OLogManager.instance().warn(this, "Error deserializing record to get field-names, send this data for debugging: %s ",
           Base64.getEncoder().encodeToString(iSource));
@@ -168,5 +185,30 @@ public class ORecordSerializerBinary implements ORecordSerializer {
   @Override
   public String getName() {
     return NAME;
+  }
+    
+  
+  private <RET> RET deserializeField(byte[]record, int offset, String iFieldName, boolean isEmbedded, int serializerVersion){
+    BytesContainer bytes = new BytesContainer(record);
+    int wantedSerializerVersion = serializerVersion;
+    if (!isEmbedded && offset == 0){
+      wantedSerializerVersion = record[0];      
+      //skip serializer version
+      bytes = bytes.skip(1);
+    }
+    else if (isEmbedded){
+      bytes.skip(offset);
+    }
+    return serializerByVersion[wantedSerializerVersion].deserializeFieldTyped(bytes, iFieldName, isEmbedded, wantedSerializerVersion);
+  }
+  
+  @Override
+  public <RET> RET deserializeFieldFromRoot(byte[]record, String iFieldName){
+    return deserializeField(record, 0, iFieldName, false, -1);
+  }
+  
+  @Override
+  public <RET> RET deserializeFieldFromEmbedded(byte[]record, int offset, String iFieldName, int serializerVersion){       
+    return deserializeField(record, offset, iFieldName, true, serializerVersion);
   }
 }

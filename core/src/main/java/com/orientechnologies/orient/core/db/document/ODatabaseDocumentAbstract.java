@@ -565,19 +565,20 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
   public void reloadUser() {
     if (user != null) {
       activateOnCurrentThread();
+      if (user.checkIfAllowed(ORule.ResourceGeneric.CLASS, OUser.CLASS_NAME, ORole.PERMISSION_READ) != null) {
+        OMetadata metadata = getMetadata();
 
-      OMetadata metadata = getMetadata();
+        if (metadata != null) {
+          final OSecurity security = metadata.getSecurity();
+          OUser secGetUser = security.getUser(user.getName());
 
-      if (metadata != null) {
-        final OSecurity security = metadata.getSecurity();
-        OUser secGetUser = security.getUser(user.getName());
-
-        if (secGetUser != null)
-          user = new OImmutableUser(security.getVersion(), secGetUser);
-        else
+          if (secGetUser != null)
+            user = new OImmutableUser(security.getVersion(), secGetUser);
+          else
+            user = new OImmutableUser(-1, new OUser());
+        } else
           user = new OImmutableUser(-1, new OUser());
-      } else
-        user = new OImmutableUser(-1, new OUser());
+      }
     }
   }
 
@@ -2187,30 +2188,23 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
       return this;
 
     if (!force && currentTx.amountOfNestedTxs() > 1) {
+      //This just do count down no real commit here
       currentTx.commit();
       return this;
     }
 
     // WAKE UP LISTENERS
-    for (ODatabaseListener listener : browseListeners())
+
+    try {
+      beforeCommitOperations();
+    } catch (OException e) {
       try {
-        listener.onBeforeTxCommit(this);
-      } catch (Exception e) {
-        OLogManager.instance()
-            .error(this, "Cannot commit the transaction: caught exception on execution of %s.onBeforeTxCommit() `%08X`", e,
-                listener.getClass().getName(), System.identityHashCode(e));
-
-        try {
-          rollback(force);
-        } catch (Exception re) {
-          OLogManager.instance().error(this, "Exception during rollback `%08X`", re, System.identityHashCode(re));
-        }
-
-        throw OException.wrapException(new OTransactionException(
-            "Cannot commit the transaction: caught exception on execution of " + listener.getClass().getName()
-                + "#onBeforeTxCommit()"), e);
+        rollback(force);
+      } catch (Exception re) {
+        OLogManager.instance().error(this, "Exception during rollback `%08X`", re, System.identityHashCode(re));
       }
-
+      throw e;
+    }
     try {
       currentTx.commit(force);
     } catch (RuntimeException e) {
@@ -2221,12 +2215,7 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
         OLogManager.instance().error(this, "Error on transaction commit `%08X`", e, System.identityHashCode(e));
 
       // WAKE UP ROLLBACK LISTENERS
-      for (ODatabaseListener listener : browseListeners())
-        try {
-          listener.onBeforeTxRollback(this);
-        } catch (Exception t) {
-          OLogManager.instance().error(this, "Error before transaction rollback `%08X`", t, System.identityHashCode(t));
-        }
+      beforeRollbackOperations();
 
       try {
         // ROLLBACK TX AT DB LEVEL
@@ -2238,16 +2227,31 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
       getLocalCache().clear();
 
       // WAKE UP ROLLBACK LISTENERS
-      for (ODatabaseListener listener : browseListeners())
-        try {
-          listener.onAfterTxRollback(this);
-        } catch (Exception t) {
-          OLogManager.instance().error(this, "Error after transaction rollback `%08X`", t, System.identityHashCode(t));
-        }
+      afterRollbackOperations();
       throw e;
     }
 
     // WAKE UP LISTENERS
+    afterCommitOperations();
+
+    return this;
+  }
+
+  protected void beforeCommitOperations() {
+    for (ODatabaseListener listener : browseListeners())
+      try {
+        listener.onBeforeTxCommit(this);
+      } catch (Exception e) {
+        OLogManager.instance()
+            .error(this, "Cannot commit the transaction: caught exception on execution of %s.onBeforeTxCommit() `%08X`", e,
+                listener.getClass().getName(), System.identityHashCode(e));
+        throw OException.wrapException(new OTransactionException(
+            "Cannot commit the transaction: caught exception on execution of " + listener.getClass().getName()
+                + "#onBeforeTxCommit()"), e);
+      }
+  }
+
+  protected void afterCommitOperations() {
     for (ODatabaseListener listener : browseListeners())
       try {
         listener.onAfterTxCommit(this);
@@ -2261,8 +2265,24 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
         throw OException.wrapException(new OTransactionBlockedException(message), e);
 
       }
+  }
 
-    return this;
+  protected void beforeRollbackOperations() {
+    for (ODatabaseListener listener : browseListeners())
+      try {
+        listener.onBeforeTxRollback(this);
+      } catch (Exception t) {
+        OLogManager.instance().error(this, "Error before transaction rollback `%08X`", t, System.identityHashCode(t));
+      }
+  }
+
+  protected void afterRollbackOperations() {
+    for (ODatabaseListener listener : browseListeners())
+      try {
+        listener.onAfterTxRollback(this);
+      } catch (Exception t) {
+        OLogManager.instance().error(this, "Error after transaction rollback `%08X`", t, System.identityHashCode(t));
+      }
   }
 
   /**
@@ -2279,27 +2299,16 @@ public abstract class ODatabaseDocumentAbstract extends OListenerManger<ODatabas
     if (currentTx.isActive()) {
 
       if (!force && currentTx.amountOfNestedTxs() > 1) {
+        //This just decrement the counter no real rollback here
         currentTx.rollback();
         return this;
       }
 
       // WAKE UP LISTENERS
-      for (ODatabaseListener listener : browseListeners())
-        try {
-          listener.onBeforeTxRollback(this);
-        } catch (Exception t) {
-          OLogManager.instance().error(this, "Error before transactional rollback", t);
-        }
-
+      beforeRollbackOperations();
       currentTx.rollback(force, -1);
-
       // WAKE UP LISTENERS
-      for (ODatabaseListener listener : browseListeners())
-        try {
-          listener.onAfterTxRollback(this);
-        } catch (Exception t) {
-          OLogManager.instance().error(this, "Error after transaction rollback", t);
-        }
+      afterRollbackOperations();
     }
 
     getLocalCache().clear();

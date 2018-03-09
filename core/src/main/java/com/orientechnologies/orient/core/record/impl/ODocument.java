@@ -268,7 +268,7 @@ public class ODocument extends ORecordAbstract
     if (_status == ORecordElement.STATUS.LOADED && _source != null && ODatabaseRecordThreadLocal.instance().isDefined()
         && !ODatabaseRecordThreadLocal.instance().get().isClosed()) {
       // DESERIALIZE FIELD NAMES ONLY (SUPPORTED ONLY BY BINARY SERIALIZER)
-      final String[] fieldNames = _recordFormat.getFieldNames(this, _source);
+      final String[] fieldNames = _recordFormat.getFieldNamesRoot(this, _source);
       if (fieldNames != null) {
         Set<String> result = new HashSet<>();
         Collections.addAll(result, fieldNames);
@@ -1041,7 +1041,7 @@ public class ODocument extends ORecordAbstract
     if (_status == ORecordElement.STATUS.LOADED && _source != null && ODatabaseRecordThreadLocal.instance().isDefined()
         && !ODatabaseRecordThreadLocal.instance().get().isClosed()) {
       // DESERIALIZE FIELD NAMES ONLY (SUPPORTED ONLY BY BINARY SERIALIZER)
-      final String[] fieldNames = _recordFormat.getFieldNames(this, _source);
+      final String[] fieldNames = _recordFormat.getFieldNamesRoot(this, _source);
       if (fieldNames != null)
         return fieldNames;
     }
@@ -2548,14 +2548,16 @@ public class ODocument extends ORecordAbstract
     if (_immutableClazz == null) {
       if (_className == null)
         fetchClassName();
-      final ODatabaseDocument databaseRecord = getDatabaseIfDefined();
+      if (_className != null) {
+        final ODatabaseDocument databaseRecord = getDatabaseIfDefined();
 
-      if (databaseRecord != null && !databaseRecord.isClosed()) {
-        final OSchema immutableSchema = ((OMetadataInternal) databaseRecord.getMetadata()).getImmutableSchemaSnapshot();
-        if (immutableSchema == null)
-          return null;
-        _immutableSchemaVersion = immutableSchema.getVersion();
-        _immutableClazz = (OImmutableClass) immutableSchema.getClass(_className);
+        if (databaseRecord != null && !databaseRecord.isClosed()) {
+          final OSchema immutableSchema = ((OMetadataInternal) databaseRecord.getMetadata()).getImmutableSchemaSnapshot();
+          if (immutableSchema == null)
+            return null;
+          _immutableSchemaVersion = immutableSchema.getVersion();
+          _immutableClazz = (OImmutableClass) immutableSchema.getClass(_className);
+        }
       }
     }
 

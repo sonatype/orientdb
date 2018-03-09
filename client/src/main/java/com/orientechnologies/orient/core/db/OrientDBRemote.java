@@ -172,7 +172,7 @@ public class OrientDBRemote implements OrientDBInternal {
     checkOpen();
     OServerAdmin admin = null;
     try {
-      admin = new OServerAdmin(buildUrl(name));
+      admin = new OServerAdmin(this, buildUrl(name));
       admin.connect(user, password);
       return operation.execute(admin);
     } catch (IOException e) {
@@ -233,17 +233,23 @@ public class OrientDBRemote implements OrientDBInternal {
   }
 
   @Override
-  public synchronized void close() {
+  public void close() {
     if (!open)
       return;
     removeShutdownHook();
     internalClose();
   }
 
-  public synchronized void internalClose() {
+  public void internalClose() {
     if (!open)
       return;
-    final List<OStorageRemote> storagesCopy = new ArrayList<>(storages.values());
+    final List<OStorageRemote> storagesCopy;
+    synchronized (this) {
+      // SHUTDOWN ENGINES AVOID OTHER OPENS
+      open = false;
+      storagesCopy = new ArrayList<>(storages.values());
+    }
+
     for (OStorageRemote stg : storagesCopy) {
       try {
         ODatabaseDocumentRemote.deInit(stg);
@@ -256,12 +262,11 @@ public class OrientDBRemote implements OrientDBInternal {
         throw e;
       }
     }
-    storages.clear();
+    synchronized (this) {
+      storages.clear();
 
-    connectionManager.close();
-
-    // SHUTDOWN ENGINES
-    open = false;
+      connectionManager.close();
+    }
   }
 
   private OrientDBConfig solveConfig(OrientDBConfig config) {
