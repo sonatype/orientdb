@@ -297,6 +297,7 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
       } catch (OTokenException | OTokenSecurityException e) {
         connectionManager.release(network);
         if (session.isStickToSession()) {
+          session.removeServerSession(network.getServerURL());
           throw OException.wrapException(new OStorageException(errorMessage), e);
         } else {
           session.removeServerSession(network.getServerURL());
@@ -854,7 +855,6 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
   }
 
   public ORemoteQueryResult query(ODatabaseDocumentRemote db, String query, Object[] args) {
-    stickToSession();
     int recordsPerPage = OGlobalConfiguration.QUERY_REMOTE_RESULTSET_PAGE_SIZE.getValueAsInteger();
     if (recordsPerPage <= 0) {
       recordsPerPage = 100;
@@ -863,11 +863,11 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
     OQueryResponse response = networkOperation(request, "Error on executing command: " + query);
     ORemoteResultSet rs = new ORemoteResultSet(db, response.getQueryId(), response.getResult(), response.getExecutionPlan(),
         response.getQueryStats(), response.isHasNextPage());
+    stickToSession();
     return new ORemoteQueryResult(rs, response.isTxChanges(), response.isReloadMetadata());
   }
 
   public ORemoteQueryResult query(ODatabaseDocumentRemote db, String query, Map args) {
-    stickToSession();
     int recordsPerPage = OGlobalConfiguration.QUERY_REMOTE_RESULTSET_PAGE_SIZE.getValueAsInteger();
     if (recordsPerPage <= 0) {
       recordsPerPage = 100;
@@ -877,6 +877,7 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
 
     ORemoteResultSet rs = new ORemoteResultSet(db, response.getQueryId(), response.getResult(), response.getExecutionPlan(),
         response.getQueryStats(), response.isHasNextPage());
+    stickToSession();
     return new ORemoteQueryResult(rs, response.isTxChanges(), response.isReloadMetadata());
   }
 
@@ -1912,13 +1913,13 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
   }
 
   public void beginTransaction(ODatabaseDocumentRemote database, OTransactionOptimistic transaction) {
-    stickToSession();
     OBeginTransactionRequest request = new OBeginTransactionRequest(transaction.getId(), true, transaction.isUsingLog(),
         transaction.getRecordOperations(), transaction.getIndexOperations());
     OBeginTransactionResponse response = networkOperationNoRetry(request, "Error on remote treansaction begin");
     for (Map.Entry<ORID, ORID> entry : response.getUpdatedIds().entrySet()) {
       transaction.updateIdentityAfterCommit(entry.getKey(), entry.getValue());
     }
+    stickToSession();
   }
 
   public void reBeginTransaction(ODatabaseDocumentRemote database, OTransactionOptimistic transaction) {
