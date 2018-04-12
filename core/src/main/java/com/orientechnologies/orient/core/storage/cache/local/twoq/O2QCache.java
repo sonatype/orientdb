@@ -1135,7 +1135,8 @@ public class O2QCache implements OReadCache {
   }
 
   private UpdateCacheResult updateCache(final long fileId, final long pageIndex, final boolean addNewPages, OWriteCache writeCache,
-      final int pageCount, final OModifiableBoolean cacheHit, boolean verifyChecksums) throws IOException {
+      final int pageCount, final OModifiableBoolean cacheHit, boolean verifyChecksums)
+      throws IOException {
 
     assert pageCount > 0;
 

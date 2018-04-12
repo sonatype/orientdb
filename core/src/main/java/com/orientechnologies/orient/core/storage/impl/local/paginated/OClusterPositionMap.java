@@ -21,8 +21,10 @@
 package com.orientechnologies.orient.core.storage.impl.local.paginated;
 
 import com.orientechnologies.common.exception.OException;
+import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.util.OCommonConst;
 import com.orientechnologies.orient.core.exception.OClusterPositionMapException;
+import com.orientechnologies.orient.core.exception.OPageIsBrokenException;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.storage.cache.OCacheEntry;
 import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
@@ -38,7 +40,7 @@ import java.util.Arrays;
  */
 public class OClusterPositionMap extends ODurableComponent {
   public static final String DEF_EXTENSION = ".cpm";
-  private long fileId;
+  private             long   fileId;
 
   public OClusterPositionMap(OAbstractPaginatedStorage storage, String name, String lockName) {
     super(storage, name, DEF_EXTENSION, lockName);
@@ -161,6 +163,44 @@ public class OClusterPositionMap extends ODurableComponent {
     } finally {
       completeOperation();
     }
+  }
+
+  int checkMapConsistency() throws IOException {
+    int brokenPages = 0;
+    final OAtomicOperation atomicOperation = startAtomicOperation(false);
+    acquireExclusiveLock();
+    try {
+      final long filledUpTo = writeCache.getFilledUpTo(fileId);
+      for (long pageIndex = 0; pageIndex < filledUpTo; pageIndex++) {
+        if (!writeCache.verifyPage(fileId, pageIndex)) {
+          OLogManager.instance().error(this, "Page " + pageIndex + " of " + getFullName() + " is broken, will clean it up\n", null);
+          final OCacheEntry cacheEntry = loadPage(atomicOperation, fileId, pageIndex, true);
+          cacheEntry.acquireExclusiveLock();
+          try {
+            final OClusterPositionMapBucket bucket = new OClusterPositionMapBucket(cacheEntry,
+                getChanges(atomicOperation, cacheEntry));
+            bucket.fillWithDeletedEntries();
+            brokenPages++;
+          } finally {
+            cacheEntry.releaseExclusiveLock();
+          }
+          releasePage(atomicOperation, cacheEntry);
+        }
+      }
+
+      endAtomicOperation(false, null);
+    } catch (IOException ioe) {
+      endAtomicOperation(true, ioe);
+      throw ioe;
+    } catch (Exception e) {
+      endAtomicOperation(true, e);
+      throw OException.wrapException(
+          new OClusterPositionMapException("Error during deletion of cluster position - physical position map", this), e);
+    } finally {
+      releaseExclusiveLock();
+    }
+
+    return brokenPages;
   }
 
   public void rename(String newName) throws IOException {

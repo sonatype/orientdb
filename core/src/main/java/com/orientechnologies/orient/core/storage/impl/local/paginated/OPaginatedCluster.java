@@ -33,9 +33,9 @@ import com.orientechnologies.orient.core.conflict.ORecordConflictStrategy;
 import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
 import com.orientechnologies.orient.core.encryption.OEncryption;
 import com.orientechnologies.orient.core.encryption.OEncryptionFactory;
+import com.orientechnologies.orient.core.exception.OPageIsBrokenException;
 import com.orientechnologies.orient.core.exception.OPaginatedClusterException;
 import com.orientechnologies.orient.core.exception.ORecordNotFoundException;
-import com.orientechnologies.orient.core.exception.OStorageException;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.id.ORecordId;
 import com.orientechnologies.orient.core.metadata.OMetadata;
@@ -231,6 +231,55 @@ public class OPaginatedCluster extends ODurableComponent implements OCluster {
     } finally {
       completeOperation();
     }
+  }
+
+  @Override
+  public int checkClusterConsistency() throws IOException {
+    int brokenPages = 0;
+
+    final OAtomicOperation atomicOperation = startAtomicOperation(true);
+    try {
+      acquireExclusiveLock();
+      try {
+        OLogManager.instance().info(this, "Start consistency check of cluster " + getName() + "\n");
+        brokenPages += clusterPositionMap.checkMapConsistency();
+
+        final long filledUpTo = writeCache.getFilledUpTo(fileId);
+
+        for (long pageIndex = 1; pageIndex < filledUpTo; pageIndex++) {
+          if (!writeCache.verifyPage(fileId, pageIndex)) {
+            OLogManager.instance()
+                .error(this, "Page " + pageIndex + " of " + getFullName() + " is broken, will clean it up\n", null);
+
+            final OCacheEntry cacheEntry = loadPage(atomicOperation, fileId, pageIndex, true, 1);
+            cacheEntry.acquireExclusiveLock();
+            try {
+              final OClusterPage clusterPage = new OClusterPage(cacheEntry, false, getChanges(atomicOperation, cacheEntry));
+              clusterPage.clearAndMarkAsFilled();
+              brokenPages++;
+            } finally {
+              cacheEntry.releaseExclusiveLock();
+            }
+            releasePage(atomicOperation, cacheEntry);
+          }
+        }
+        endAtomicOperation(false, null);
+      } finally {
+        releaseExclusiveLock();
+      }
+    } catch (RuntimeException e) {
+      endAtomicOperation(true, e);
+      throw e;
+    }
+
+    OLogManager.instance().info(this, "Consistency check of cluster " + getName() + " is completed\n");
+    if (brokenPages > 0) {
+      OLogManager.instance().info(this,
+          brokenPages + " were fixed, you can observe few warnings about pages misplaced in free list,"
+              + " but that is OK in this case.\n");
+    }
+
+    return brokenPages;
   }
 
   public void replaceFile(File file) throws IOException {
@@ -1765,7 +1814,7 @@ public class OPaginatedCluster extends ODurableComponent implements OCluster {
     try {
       compression = OCompressionFactory.INSTANCE.getCompression(iCompressionMethod, iCompressionOptions);
       config.compression = iCompressionMethod;
-      ((OStorageConfigurationImpl)storageLocal.getConfiguration()).update();
+      ((OStorageConfigurationImpl) storageLocal.getConfiguration()).update();
     } catch (IllegalArgumentException e) {
       throw OException.wrapException(
           new OPaginatedClusterException("Invalid value for " + OCluster.ATTRIBUTES.COMPRESSION + " attribute", this), e);
@@ -1776,7 +1825,7 @@ public class OPaginatedCluster extends ODurableComponent implements OCluster {
     try {
       encryption = OEncryptionFactory.INSTANCE.getEncryption(iMethod, iKey);
       config.encryption = iMethod;
-      ((OStorageConfigurationImpl)storageLocal.getConfiguration()).update();
+      ((OStorageConfigurationImpl) storageLocal.getConfiguration()).update();
     } catch (IllegalArgumentException e) {
       throw OException
           .wrapException(new OPaginatedClusterException("Invalid value for " + ATTRIBUTES.ENCRYPTION + " attribute", this), e);
@@ -1790,7 +1839,7 @@ public class OPaginatedCluster extends ODurableComponent implements OCluster {
         throw new OPaginatedClusterException(OCluster.ATTRIBUTES.RECORD_OVERFLOW_GROW_FACTOR + " cannot be less than 1", this);
 
       config.recordOverflowGrowFactor = growFactor;
-      ((OStorageConfigurationImpl)storageLocal.getConfiguration()).update();
+      ((OStorageConfigurationImpl) storageLocal.getConfiguration()).update();
     } catch (NumberFormatException nfe) {
       throw OException.wrapException(new OPaginatedClusterException(
           "Invalid value for cluster attribute " + OCluster.ATTRIBUTES.RECORD_OVERFLOW_GROW_FACTOR + " was passed [" + stringValue
@@ -1805,7 +1854,7 @@ public class OPaginatedCluster extends ODurableComponent implements OCluster {
         throw new OPaginatedClusterException(OCluster.ATTRIBUTES.RECORD_GROW_FACTOR + " cannot be less than 1", this);
 
       config.recordGrowFactor = growFactor;
-      ((OStorageConfigurationImpl)storageLocal.getConfiguration()).update();
+      ((OStorageConfigurationImpl) storageLocal.getConfiguration()).update();
     } catch (NumberFormatException nfe) {
       throw OException.wrapException(new OPaginatedClusterException(
           "Invalid value for cluster attribute " + OCluster.ATTRIBUTES.RECORD_GROW_FACTOR + " was passed [" + stringValue + "]",
@@ -1822,7 +1871,7 @@ public class OPaginatedCluster extends ODurableComponent implements OCluster {
     storageLocal.renameCluster(getName(), newName);
     setName(newName);
 
-    ((OStorageConfigurationImpl)storageLocal.getConfiguration()).update();
+    ((OStorageConfigurationImpl) storageLocal.getConfiguration()).update();
   }
 
   private OPhysicalPosition createPhysicalPosition(final byte recordType, final long clusterPosition, final int version) {

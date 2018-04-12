@@ -53,13 +53,11 @@ public interface OWriteCache {
 
   /**
    * Registers new file in write cache and returns file id assigned to this file.
-   * <p>
    * File id consist of two parts:
    * <ol>
    * <li>Internal id is permanent and can not be changed during life of storage {@link #internalFileId(long)}</li>
    * <li>Write cache id  which is changed between storage open/close cycles</li>
    * </ol>
-   * <p>
    * If file with the same name is deleted and then new file is created this file with have the same internal id.
    *
    * @param fileName Name of file to register inside storage.
@@ -181,4 +179,6 @@ public interface OWriteCache {
   long externalFileId(int fileId);
 
   OPerformanceStatisticManager getPerformanceStatisticManager();
+
+  boolean verifyPage(long fileId, long pageIndex) throws IOException;
 }
