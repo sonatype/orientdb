@@ -238,7 +238,7 @@
         <public-release.serverId>${public.serverId}</public-release.serverId>
         <public-snapshot.serverId>${public.serverId}</public-snapshot.serverId>
 
-        <license.location>ODB-ASL-LICENSE.txt</license.location>
+        <license.location>license.txt</license.location>
         <!--Override with the given url on external modules-->
         <!--<license.location>https://github.com/orientechnologies/orientdb/raw/develop/ODB-ASL-LICENSE.txt</license.location>-->
         <heapSize>2048m</heapSize>

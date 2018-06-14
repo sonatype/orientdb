@@ -1024,6 +1024,9 @@ OStatement StatementInternal():
                 result = CreateUserStatement()
                 |
                 LOOKAHEAD(2)
+                result = DropUserStatement()
+                |
+                LOOKAHEAD(2)
                 result = CreateSequenceStatement()
                 |
                 LOOKAHEAD(CreateVertexStatementNoTarget())
@@ -4764,6 +4767,18 @@ OCreateUserStatement CreateUserStatement():
     { return jjtThis; }
 }
 
+ODropUserStatement DropUserStatement():
+{
+    Token token;
+}
+{
+    (
+        <DROP> <USER>
+        jjtThis.name = Identifier()
+    )
+    { return jjtThis; }
+}
+
 
 OLetStatement LetStatement():
 { }
@@ -5019,4 +5034,5 @@ OForEachBlock ForEachBlock():
         <SEMICOLON>
     )*
     <RBRACE>
+    { return jjtThis; }
 }
