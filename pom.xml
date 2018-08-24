@@ -15,6 +15,10 @@
 
     <groupId>com.orientechnologies</groupId>
     <artifactId>orientdb-parent</artifactId>
+
+    <!--
+    SONATYPE: Custom version to avoid clobbering upstreams snapshots.
+    -->
     <version>3.0.SONATYPE-SNAPSHOT</version>
     <packaging>pom</packaging>
 
@@ -119,50 +123,89 @@
         <module>crashtests</module>
     </modules>
 
+    <!--<scm>-->
+        <!--<connection>scm:git:git@github.com:orientechnologies/orientdb.git</connection>-->
+        <!--<developerConnection>scm:git:git@github.com:orientechnologies/orientdb.git</developerConnection>-->
+        <!--<url>scm:git:git@github.com:orientechnologies/orientdb.git</url>-->
+    <!--</scm>-->
+
+    <!--
+    SONATYPE: Fork configuration.
+    -->
     <scm>
-        <connection>scm:git:git@github.com:orientechnologies/orientdb.git</connection>
-        <developerConnection>scm:git:git@github.com:orientechnologies/orientdb.git</developerConnection>
-        <url>scm:git:git@github.com:orientechnologies/orientdb.git</url>
+        <connection>scm:git:git@github.com:sonatype/orientdb.git</connection>
+        <developerConnection>scm:git:git@github.com:sonatype/orientdb.git</developerConnection>
+        <url>scm:git:git@github.com:sonatype/orientdb.git</url>
     </scm>
+
     <issueManagement>
         <system>GitHub Issues</system>
         <url>https://github.com/orientechnologies/orientdb/issues</url>
     </issueManagement>
+
+    <!--<ciManagement>-->
+        <!--<system>jenkins</system>-->
+        <!--<url>http://helios.orientdb.com/</url>-->
+    <!--</ciManagement>-->
+
+    <!--
+    SONATYPE: Zion configuration.
+    -->
     <ciManagement>
-        <system>jenkins</system>
-        <url>http://helios.orientdb.com/</url>
+        <system>bamboo</system>
+        <url>http://bamboo.s/browse/EXT-ORIENT</url>
     </ciManagement>
+
+    <!--<distributionManagement>-->
+        <!--<repository>-->
+            <!--<id>sonatype-nexus-staging</id>-->
+            <!--<name>OrientDB Maven2 Repository</name>-->
+            <!--<url>https://oss.sonatype.org/service/local/staging/deploy/maven2</url>-->
+        <!--</repository>-->
+        <!--<snapshotRepository>-->
+            <!--<id>sonatype-nexus-snapshots</id>-->
+            <!--<name>OrientDB Maven2 Snapshot Repository</name>-->
+            <!--<url>https://oss.sonatype.org/content/repositories/snapshots</url>-->
+            <!--<uniqueVersion>false</uniqueVersion>-->
+        <!--</snapshotRepository>-->
+    <!--</distributionManagement>-->
+
+    <!--
+    SONATYPE: Configuration to deploy to Zion.
+    -->
     <distributionManagement>
         <repository>
-            <id>sonatype-nexus-staging</id>
-            <name>OrientDB Maven2 Repository</name>
-            <url>https://oss.sonatype.org/service/local/staging/deploy/maven2</url>
+            <id>${public-release.serverId}</id>
+            <url>${public-release.url}</url>
         </repository>
+
         <snapshotRepository>
-            <id>sonatype-nexus-snapshots</id>
-            <name>OrientDB Maven2 Snapshot Repository</name>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-            <uniqueVersion>false</uniqueVersion>
+            <id>${public-snapshot.serverId}</id>
+            <url>${public-snapshot.url}</url>
         </snapshotRepository>
     </distributionManagement>
-    <repositories>
-        <repository>
-            <id>sonatype-nexus-snapshots</id>
-            <name>Sonatype Nexus Snapshots</name>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-            <releases>
-                <enabled>false</enabled>
-            </releases>
-            <snapshots>
-                <enabled>true</enabled>
-            </snapshots>
-        </repository>
-        <repository>
-            <id>maven2-repository.dev.java.net</id>
-            <name>Java.net repository</name>
-            <url>http://download.java.net/maven/2</url>
-        </repository>
-    </repositories>
+
+    <!--
+    SONATYPE: Defer to Zion's Nexus instance.
+    -->
+    <!--<repositories>-->
+        <!--<repository>-->
+            <!--<id>sonatype-nexus-snapshots</id>-->
+            <!--<name>Sonatype Nexus Snapshots</name>-->
+            <!--<url>https://oss.sonatype.org/content/repositories/snapshots</url>-->
+            <!--<releases>-->
+                <!--<enabled>false</enabled>-->
+            <!--</releases>-->
+            <!--<snapshots>-->
+                <!--<enabled>true</enabled>-->
+            <!--</snapshots>-->
+        <!--</repository>-->
+        <!--<repository>-->
+            <!--<id>maven2-repository.dev.java.net</id>-->
+            <!--<name>Java.net repository</name>-->
+            <!--<url>http://download.java.net/maven/2</url>-->
+        <!--</repository>-->
+    <!--</repositories>-->
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -181,8 +224,19 @@
         <osgi.private/>
         <!-- | shared build/report plugins version -->
         <surefire.version>2.21.0</surefire.version>
-        <sonatypeOssDistMgmtSnapshotsUrl>https://oss.sonatype.org/content/repositories/snapshots/
-        </sonatypeOssDistMgmtSnapshotsUrl>
+
+        <!--
+        SONATYPE: Unsure what this does, comment just in case.
+        -->
+        <!--<sonatypeOssDistMgmtSnapshotsUrl>https://oss.sonatype.org/content/repositories/snapshots/-->
+        <!--</sonatypeOssDistMgmtSnapshotsUrl>-->
+
+        <!--
+        SONATYPE: Additional configuration for Zion, since we are not inheriting from buildsupport.
+        -->
+        <public.serverId>zion-nexus</public.serverId>
+        <public-release.serverId>${public.serverId}</public-release.serverId>
+        <public-snapshot.serverId>${public.serverId}</public-snapshot.serverId>
 
         <license.location>license.txt</license.location>
         <!--Override with the given url on external modules-->
