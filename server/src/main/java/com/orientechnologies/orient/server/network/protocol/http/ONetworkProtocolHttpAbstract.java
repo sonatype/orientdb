@@ -66,22 +66,22 @@ import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 
 public abstract class ONetworkProtocolHttpAbstract extends ONetworkProtocol {
-  private static final String  COMMAND_SEPARATOR = "|";
-  private static final Charset utf8              = Charset.forName("utf8");
-  private static int requestMaxContentLength;                    // MAX = 10Kb
-  private static int socketTimeout;
-  private final StringBuilder requestContent = new StringBuilder(512);
-  protected OClientConnection          connection;
-  protected OChannelTextServer         channel;
-  protected OUser                      account;
-  protected OHttpRequest               request;
-  protected OHttpResponse              response;
-  protected OHttpNetworkCommandManager cmdManager;
-  private   String                     responseCharSet;
-  private   boolean                    jsonResponseError;
-  private   String[]                   additionalResponseHeaders;
-  private String listeningAddress = "?";
-  private OContextConfiguration configuration;
+  private static final String                     COMMAND_SEPARATOR = "|";
+  private static final Charset                    utf8              = Charset.forName("utf8");
+  private static       int                        requestMaxContentLength;                    // MAX = 10Kb
+  private static       int                        socketTimeout;
+  private final        StringBuilder              requestContent    = new StringBuilder(512);
+  protected            OClientConnection          connection;
+  protected            OChannelTextServer         channel;
+  protected            OUser                      account;
+  protected            OHttpRequest               request;
+  protected            OHttpResponse              response;
+  protected            OHttpNetworkCommandManager cmdManager;
+  private              String                     responseCharSet;
+  private              boolean                    jsonResponseError;
+  private              String[]                   additionalResponseHeaders;
+  private              String                     listeningAddress  = "?";
+  private              OContextConfiguration      configuration;
 
   public ONetworkProtocolHttpAbstract(OServer server) {
     super(server.getThreadGroup(), "IO-HTTP");
@@ -117,6 +117,10 @@ public abstract class ONetworkProtocolHttpAbstract extends ONetworkProtocol {
     connection.getData().caller = channel.toString();
 
     listeningAddress = getListeningAddress();
+
+
+
+    OServerPluginHelper.invokeHandlerCallbackOnSocketAccepted(server,this);
 
     start();
   }
@@ -244,7 +248,7 @@ public abstract class ONetworkProtocolHttpAbstract extends ONetworkProtocol {
 
     } finally {
       server.getClientConnectionManager().disconnect(connection.getId());
-
+      OServerPluginHelper.invokeHandlerCallbackOnSocketDestroyed(server, this);
       if (OLogManager.instance().isDebugEnabled())
         OLogManager.instance().debug(this, "Connection closed");
     }
@@ -660,6 +664,14 @@ public abstract class ONetworkProtocolHttpAbstract extends ONetworkProtocol {
           return;
         }
         requestContent.append(c);
+        //review this number: NETWORK_HTTP_MAX_CONTENT_LENGTH should refer to the body only...
+        if (OGlobalConfiguration.NETWORK_HTTP_MAX_CONTENT_LENGTH.getValueAsInteger() > -1
+            && requestContent.length() >= 10000 + OGlobalConfiguration.NETWORK_HTTP_MAX_CONTENT_LENGTH.getValueAsInteger() * 2) {
+          while (channel.inStream.available() > 0) {
+            channel.read();
+          }
+          throw new ONetworkProtocolException("Invalid http request, max content length exceeded");
+        }
       }
 
       if (OLogManager.instance().isDebugEnabled())

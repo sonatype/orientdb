@@ -34,8 +34,8 @@ public class CreateEdgesStep extends AbstractExecutionStep {
   OVertex  currentFrom;
   OVertex  currentTo;
   OEdge    edgeToUpdate;//for upsert
-  boolean finished = false;
-  List    toList   = new ArrayList<>();
+  boolean  finished = false;
+  List     toList   = new ArrayList<>();
   private OIndex<?> uniqueIndex;
 
   private boolean inited = false;
@@ -147,17 +147,17 @@ public class CreateEdgesStep extends AbstractExecutionStep {
 
     Iterator toIter = (Iterator) toValues;
 
-    while (toIter != null && toIter.hasNext()) {
-      toList.add(toIter.next());
-    }
-
-    toIterator = toList.iterator();
     if (toIter instanceof OResultSet) {
       try {
         ((OResultSet) toIter).reset();
       } catch (Exception ignore) {
       }
     }
+    while (toIter != null && toIter.hasNext()) {
+      toList.add(toIter.next());
+    }
+
+    toIterator = toList.iterator();
 
     currentFrom = fromIter != null && fromIter.hasNext() ? asVertex(fromIter.next()) : null;
 
@@ -186,7 +186,10 @@ public class CreateEdgesStep extends AbstractExecutionStep {
       }
       if (toIterator.hasNext() || (toList.size() > 0 && fromIter.hasNext())) {
         if (currentFrom == null) {
-          throw new OCommandExecutionException("Invalid FROM vertex for edge");
+          if (!fromIter.hasNext()) {
+            finished = true;
+            return;
+          }
         }
 
         Object obj = toIterator.next();
@@ -236,15 +239,19 @@ public class CreateEdgesStep extends AbstractExecutionStep {
       currentFrom = ((ORID) currentFrom).getRecord();
     }
     if (currentFrom instanceof OResult) {
-      return ((OResult) currentFrom).getVertex().orElse(null);
+      Object from = currentFrom;
+      currentFrom = ((OResult) currentFrom).getVertex()
+          .orElseThrow(() -> new OCommandExecutionException("Invalid vertex for edge creation: " + from.toString()));
     }
     if (currentFrom instanceof OVertex) {
       return (OVertex) currentFrom;
     }
     if (currentFrom instanceof OElement) {
-      return ((OElement) currentFrom).asVertex().orElse(null);
+      Object from = currentFrom;
+      return ((OElement) currentFrom).asVertex()
+          .orElseThrow(() -> new OCommandExecutionException("Invalid vertex for edge creation: " + from.toString()));
     }
-    return null;
+    throw new OCommandExecutionException("Invalid vertex for edge creation: " + currentFrom.toString());
   }
 
   @Override
@@ -265,6 +272,18 @@ public class CreateEdgesStep extends AbstractExecutionStep {
   @Override
   public long getCost() {
     return cost;
+  }
+
+  @Override
+  public boolean canBeCached() {
+    return true;
+  }
+
+  @Override
+  public OExecutionStep copy(OCommandContext ctx) {
+    return new CreateEdgesStep(targetClass == null ? null : targetClass.copy(), targetCluster == null ? null : targetCluster.copy(),
+        uniqueIndexName, fromAlias == null ? null : fromAlias.copy(), toAlias == null ? null : toAlias.copy(), wait, retry,
+        batch == null ? null : batch.copy(), ctx, profilingEnabled);
   }
 }
 

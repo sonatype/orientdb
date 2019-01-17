@@ -56,6 +56,7 @@ import com.orientechnologies.orient.enterprise.channel.binary.*;
 import com.orientechnologies.orient.server.OClientConnection;
 import com.orientechnologies.orient.server.OConnectionBinaryExecutor;
 import com.orientechnologies.orient.server.OServer;
+import com.orientechnologies.orient.server.OServerAware;
 import com.orientechnologies.orient.server.distributed.*;
 import com.orientechnologies.orient.server.network.OServerNetworkListener;
 import com.orientechnologies.orient.server.network.protocol.ONetworkProtocol;
@@ -121,6 +122,9 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
     channel.writeShort((short) getVersion());
 
     channel.flush();
+
+    OServerPluginHelper.invokeHandlerCallbackOnSocketAccepted(server, this);
+
     start();
     setName("OrientDB (" + iSocket.getLocalSocketAddress() + ") <- BinaryClient (" + iSocket.getRemoteSocketAddress() + ")");
   }
@@ -134,6 +138,8 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
   public void shutdown() {
     sendShutdown();
     channel.close();
+
+    OServerPluginHelper.invokeHandlerCallbackOnSocketDestroyed(server, this);
   }
 
   private boolean isHandshaking(int requestType) {
@@ -144,6 +150,17 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
 
   private boolean isDistributed(int requestType) {
     return requestType == OChannelBinaryProtocol.DISTRIBUTED_REQUEST || requestType == OChannelBinaryProtocol.DISTRIBUTED_RESPONSE;
+  }
+
+  private boolean isCoordinated(int requestType) {
+    return requestType == OChannelBinaryProtocol.DISTRIBUTED_SUBMIT_REQUEST
+        || requestType == OChannelBinaryProtocol.DISTRIBUTED_SUBMIT_RESPONSE
+        || requestType == OChannelBinaryProtocol.DISTRIBUTED_OPERATION_REQUEST
+        || requestType == OChannelBinaryProtocol.DISTRIBUTED_OPERATION_RESPONSE
+        || requestType == OChannelBinaryProtocol.DISTRIBUTED_STRUCTURAL_SUBMIT_REQUEST
+        || requestType == OChannelBinaryProtocol.DISTRIBUTED_STRUCTURAL_SUBMIT_RESPONSE
+        || requestType == OChannelBinaryProtocol.DISTRIBUTED_STRUCTURAL_OPERATION_REQUEST
+        || requestType == OChannelBinaryProtocol.DISTRIBUTED_STRUCTURAL_OPERATION_RESPONSE;
   }
 
   @Override
@@ -170,7 +187,7 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
             && requestType != OChannelBinaryProtocol.REQUEST_OK_PUSH) {
           clientTxId = channel.readInt();
           channel.clearInput();
-          sendError(null,clientTxId,new OOfflineNodeException("Node Shutting down"));
+          sendError(null, clientTxId, new OOfflineNodeException("Node Shutting down"));
         }
         return;
       }
@@ -187,7 +204,9 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
       clientTxId = channel.readInt();
       // GET THE CONNECTION IF EXIST
       OClientConnection connection = server.getClientConnectionManager().getConnection(clientTxId, this);
-      if (isDistributed(requestType)) {
+      if (isCoordinated(requestType)) {
+        coordinatedRequest(connection, requestType, clientTxId);
+      } else if (isDistributed(requestType)) {
         distributedRequest(connection, requestType, clientTxId);
       } else
         sessionRequest(connection, requestType, clientTxId);
@@ -196,6 +215,12 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
       sendShutdown();
       throw e;
     }
+  }
+
+  private void coordinatedRequest(OClientConnection connection, int requestType, int clientTxId) throws IOException {
+    byte[] tokenBytes = channel.readBytes();
+    connection = onBeforeOperationalRequest(connection, tokenBytes);
+    ((OServerAware) server.getDatabases()).coordinatedRequest(connection, requestType, clientTxId, channel);
   }
 
   private void handleHandshake() throws IOException {
@@ -469,8 +494,10 @@ public class ONetworkProtocolBinary extends ONetworkProtocol {
       connection.statsUpdate();
       OServerPluginHelper.invokeHandlerCallbackOnBeforeClientRequest(server, connection, (byte) requestType);
     } catch (RuntimeException e) {
-      if (connection != null)
+      if (connection != null) {
+        connection.endOperation();
         server.getClientConnectionManager().disconnect(connection);
+      }
       ODatabaseRecordThreadLocal.instance().remove();
       throw e;
     }

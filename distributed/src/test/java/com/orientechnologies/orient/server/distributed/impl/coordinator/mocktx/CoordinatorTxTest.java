@@ -5,6 +5,12 @@ import com.orientechnologies.orient.core.db.OrientDB;
 import com.orientechnologies.orient.core.db.OrientDBConfig;
 import com.orientechnologies.orient.core.db.OrientDBInternal;
 import com.orientechnologies.orient.server.distributed.impl.coordinator.*;
+import com.orientechnologies.orient.server.distributed.impl.coordinator.transaction.OSessionOperationId;
+import com.orientechnologies.orient.server.distributed.impl.structural.OStructuralNodeRequest;
+import com.orientechnologies.orient.server.distributed.impl.structural.OStructuralNodeResponse;
+import com.orientechnologies.orient.server.distributed.impl.structural.OStructuralSubmitRequest;
+import com.orientechnologies.orient.server.distributed.impl.structural.OStructuralSubmitResponse;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -15,7 +21,6 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 
 public class CoordinatorTxTest {
 
@@ -26,41 +31,49 @@ public class CoordinatorTxTest {
   @Before
   public void before() {
     this.one = OrientDBInternal.distributed("target/one/", OrientDBConfig.defaultConfig()).newOrientDB();
-    this.one.create("none",ODatabaseType.MEMORY);
+    this.one.create("none", ODatabaseType.MEMORY);
     this.two = OrientDBInternal.distributed("target/two/", OrientDBConfig.defaultConfig()).newOrientDB();
-    this.two.create("none",ODatabaseType.MEMORY);
+    this.two.create("none", ODatabaseType.MEMORY);
     this.three = OrientDBInternal.distributed("target/three/", OrientDBConfig.defaultConfig()).newOrientDB();
-    this.three.create("none",ODatabaseType.MEMORY);
+    this.three.create("none", ODatabaseType.MEMORY);
   }
+
+  @After
+  public void after() {
+    one.close();
+    two.close();
+    three.close();
+  }
+
 
   @Test
   public void testTxCoordinator() throws InterruptedException {
-    ODistributedExecutor eOne = new ODistributedExecutor(Executors.newSingleThreadExecutor(), new MockOperationLog(), this.one,
+    ODistributedExecutor eOne = new ODistributedExecutor(Executors.newSingleThreadExecutor(), new MockOperationLog(), OrientDBInternal.extract(this.one),
         "none");
-    ODistributedExecutor eTwo = new ODistributedExecutor(Executors.newSingleThreadExecutor(), new MockOperationLog(), this.two,
+    ODistributedExecutor eTwo = new ODistributedExecutor(Executors.newSingleThreadExecutor(), new MockOperationLog(), OrientDBInternal.extract(this.two),
         "none");
-    ODistributedExecutor eThree = new ODistributedExecutor(Executors.newSingleThreadExecutor(), new MockOperationLog(), this.three,
+    ODistributedExecutor eThree = new ODistributedExecutor(Executors.newSingleThreadExecutor(), new MockOperationLog(), OrientDBInternal.extract(this.three),
         "none");
 
     ODistributedCoordinator coordinator = new ODistributedCoordinator(Executors.newSingleThreadExecutor(), new MockOperationLog(),
-        null);
+        null, null);
 
     MemberChannel cOne = new MemberChannel(eOne, coordinator);
-    ODistributedMember mOne = new ODistributedMember("one", cOne);
+    ODistributedMember mOne = new ODistributedMember("one", null, cOne);
     cOne.member = mOne;
     coordinator.join(mOne);
 
     MemberChannel cTwo = new MemberChannel(eOne, coordinator);
-    ODistributedMember mTwo = new ODistributedMember("two", cTwo);
+    ODistributedMember mTwo = new ODistributedMember("two", null, cTwo);
     cTwo.member = mTwo;
     coordinator.join(mTwo);
 
     MemberChannel cThree = new MemberChannel(eOne, coordinator);
-    ODistributedMember mThree = new ODistributedMember("three", cThree);
+    ODistributedMember mThree = new ODistributedMember("three", null, cThree);
     cThree.member = mThree;
     coordinator.join(mThree);
     OSubmitTx submit = new OSubmitTx();
-    coordinator.submit(mOne, submit);
+    coordinator.submit(mOne, new OSessionOperationId(), submit);
 
     assertTrue(cOne.latch.await(10, TimeUnit.SECONDS));
     assertTrue(submit.firstPhase);
@@ -90,19 +103,44 @@ public class CoordinatorTxTest {
     }
 
     @Override
-    public void sendRequest(OLogId id, ONodeRequest nodeRequest) {
+    public void sendRequest(String database, OLogId id, ONodeRequest nodeRequest) {
       // Here in real case should be a network call and this method should be call on the other node
       executor.receive(member, id, nodeRequest);
     }
 
     @Override
-    public void sendResponse(OLogId id, ONodeResponse nodeResponse) {
+    public void sendResponse(String database, OLogId id, ONodeResponse nodeResponse) {
       //This in real case should do a network call on the side of the executor node and this call should be in the coordinator node.
       coordinator.receive(member, id, nodeResponse);
     }
 
     @Override
-    public void reply(OSubmitResponse response) {
+    public void sendResponse(OLogId opId, OStructuralNodeResponse response) {
+
+    }
+
+    @Override
+    public void sendRequest(OLogId id, OStructuralNodeRequest request) {
+
+    }
+
+    @Override
+    public void reply(OSessionOperationId operationId, OStructuralSubmitResponse response) {
+
+    }
+
+    @Override
+    public void submit(OSessionOperationId operationId, OStructuralSubmitRequest request) {
+
+    }
+
+    @Override
+    public void submit(String database, OSessionOperationId operationId, OSubmitRequest request) {
+
+    }
+
+    @Override
+    public void reply(String database, OSessionOperationId operationId, OSubmitResponse response) {
       latch.countDown();
       callCount.decrementAndGet();
     }

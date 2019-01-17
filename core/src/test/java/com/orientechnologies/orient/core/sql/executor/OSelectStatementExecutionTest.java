@@ -1,5 +1,6 @@
 package com.orientechnologies.orient.core.sql.executor;
 
+import com.orientechnologies.orient.core.db.ODatabaseSession;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocument;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
@@ -3708,12 +3709,13 @@ public class OSelectStatementExecutionTest {
     db.getMetadata().getSchema().createView(cfg, new ViewCreationListener() {
 
       @Override
-      public void afterCreate(String viewName) {
+      public void afterCreate(ODatabaseSession database, String viewName) {
         latch.countDown();
       }
 
       @Override
       public void onError(String viewName, Exception exception) {
+        latch.countDown();
       }
     });
 
@@ -3771,7 +3773,8 @@ public class OSelectStatementExecutionTest {
       elem1.save();
     }
 
-    try (OResultSet result = db.query("select from " + className + " where themap CONTAINSKEY ? AND thestring = ?", "key10", "thestring10")) {
+    try (OResultSet result = db
+        .query("select from " + className + " where themap CONTAINSKEY ? AND thestring = ?", "key10", "thestring10")) {
       Assert.assertTrue(result.hasNext());
       OResult item = result.next();
       Map<String, Object> map = item.getProperty("themap");
@@ -3808,4 +3811,83 @@ public class OSelectStatementExecutionTest {
     }
   }
 
+  @Test
+  public void testListOfMapsContains() {
+    String className = "testListOfMapsContains";
+
+    OClass clazz1 = db.createClassIfNotExist(className);
+    OProperty prop = clazz1.createProperty("thelist", OType.EMBEDDEDLIST, OType.EMBEDDEDMAP);
+
+    db.command("INSERT INTO " + className + " SET thelist = [{name:\"Jack\"}]").close();
+    db.command("INSERT INTO " + className + " SET thelist = [{name:\"Joe\"}]").close();
+
+    try (OResultSet result = db.query("select from " + className + " where thelist CONTAINS ( name = ?)", "Jack")) {
+      Assert.assertTrue(result.hasNext());
+      result.next();
+      Assert.assertFalse(result.hasNext());
+    }
+  }
+
+  @Test
+  public void testOrderByWithCollate() {
+    String className = "testOrderByWithCollate";
+
+    OClass clazz1 = db.createClassIfNotExist(className);
+
+    db.command("INSERT INTO " + className + " SET name = 'A', idx = 0").close();
+    db.command("INSERT INTO " + className + " SET name = 'C', idx = 2").close();
+    db.command("INSERT INTO " + className + " SET name = 'E', idx = 4").close();
+    db.command("INSERT INTO " + className + " SET name = 'b', idx = 1").close();
+    db.command("INSERT INTO " + className + " SET name = 'd', idx = 3").close();
+
+    try (OResultSet result = db.query("select from " + className + " order by name asc collate ci")) {
+      for (int i = 0; i < 5; i++) {
+        Assert.assertTrue(result.hasNext());
+        OResult item = result.next();
+        int val = item.getProperty("idx");
+        Assert.assertEquals(i, val);
+      }
+      Assert.assertFalse(result.hasNext());
+    }
+  }
+
+  @Test
+  public void testContainsEmptyCollection() {
+    String className = "testContainsEmptyCollection";
+
+    db.createClassIfNotExist(className);
+
+    db.command("INSERT INTO " + className + " content {\"name\": \"jack\", \"age\": 22}").close();
+    db.command("INSERT INTO " + className + " content {\"name\": \"rose\", \"age\": 22, \"test\": [[]]}").close();
+    db.command("INSERT INTO " + className + " content {\"name\": \"rose\", \"age\": 22, \"test\": [[1]]}").close();
+    db.command("INSERT INTO " + className + " content {\"name\": \"pete\", \"age\": 22, \"test\": [{}]}").close();
+    db.command("INSERT INTO " + className + " content {\"name\": \"david\", \"age\": 22, \"test\": [\"hello\"]}").close();
+
+    try (OResultSet result = db.query("select from " + className + " where test contains []")) {
+      Assert.assertTrue(result.hasNext());
+      result.next();
+      Assert.assertFalse(result.hasNext());
+    }
+  }
+
+
+  @Test
+  public void testContainsCollection() {
+    String className = "testContainsCollection";
+
+    db.createClassIfNotExist(className);
+
+    db.command("INSERT INTO " + className + " content {\"name\": \"jack\", \"age\": 22}").close();
+    db.command("INSERT INTO " + className + " content {\"name\": \"rose\", \"age\": 22, \"test\": [[]]}").close();
+    db.command("INSERT INTO " + className + " content {\"name\": \"rose\", \"age\": 22, \"test\": [[1]]}").close();
+    db.command("INSERT INTO " + className + " content {\"name\": \"pete\", \"age\": 22, \"test\": [{}]}").close();
+    db.command("INSERT INTO " + className + " content {\"name\": \"david\", \"age\": 22, \"test\": [\"hello\"]}").close();
+
+    try (OResultSet result = db.query("select from " + className + " where test contains [1]")) {
+      Assert.assertTrue(result.hasNext());
+      result.next();
+      Assert.assertFalse(result.hasNext());
+    }
+  }
+  
 }

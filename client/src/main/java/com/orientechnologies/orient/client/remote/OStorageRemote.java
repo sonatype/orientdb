@@ -26,6 +26,7 @@ import com.orientechnologies.common.exception.OException;
 import com.orientechnologies.common.io.OIOException;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.thread.OScheduledThreadPoolExecutorWithLogging;
+import com.orientechnologies.common.util.OCallable;
 import com.orientechnologies.common.util.OCommonConst;
 import com.orientechnologies.orient.client.ONotSendRequestException;
 import com.orientechnologies.orient.client.binary.OChannelBinaryAsynchClient;
@@ -44,11 +45,13 @@ import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTxInternal
 import com.orientechnologies.orient.core.db.document.OLiveQueryMonitorRemote;
 import com.orientechnologies.orient.core.db.document.OTransactionOptimisticClient;
 import com.orientechnologies.orient.core.db.record.OCurrentStorageComponentsFactory;
+import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.db.record.ORecordOperation;
 import com.orientechnologies.orient.core.exception.*;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.id.ORecordId;
 import com.orientechnologies.orient.core.metadata.security.OTokenException;
+import com.orientechnologies.orient.core.record.ORecord;
 import com.orientechnologies.orient.core.record.ORecordInternal;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.security.OCredentialInterceptor;
@@ -80,7 +83,10 @@ import java.util.Map.Entry;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static com.orientechnologies.orient.core.config.OGlobalConfiguration.CLIENT_CONNECTION_FETCH_HOST_LIST;
 
 /**
  * This object is bound to each remote ODatabase instances.
@@ -668,7 +674,7 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
   }
 
   @Override
-  public String incrementalBackup(final String backupDirectory) {
+  public String incrementalBackup(final String backupDirectory, OCallable<Void, Void> started) {
     OIncrementalBackupRequest request = new OIncrementalBackupRequest(backupDirectory);
     OIncrementalBackupResponse response = networkOperationNoRetry(request, "Error on incremental backup");
     return response.getFileName();
@@ -1214,6 +1220,9 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
   public void updateClusterConfiguration(final String iConnectedURL, final byte[] obj) {
     if (obj == null)
       return;
+    if (!clientConfiguration.getValueAsBoolean(CLIENT_CONNECTION_FETCH_HOST_LIST)) {
+      return;
+    }
 
     // TEMPORARY FIX: DISTRIBUTED MODE DOESN'T SUPPORT TREE BONSAI, KEEP ALWAYS EMBEDDED RIDS
     OGlobalConfiguration.RID_BAG_EMBEDDED_TO_SBTREEBONSAI_THRESHOLD.setValue(Integer.MAX_VALUE);
@@ -2138,7 +2147,9 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
 
   @Override
   public void onPushDisconnect(OChannelBinary network, Exception e) {
-    this.connectionManager.remove((OChannelBinaryAsynchClient) network);
+    if (this.connectionManager.getPool(((OChannelBinaryAsynchClient) network).getServerURL()) != null) {
+      this.connectionManager.remove((OChannelBinaryAsynchClient) network);
+    }
     if (e instanceof InterruptedException) {
       for (OLiveQueryClientListener liveListener : liveQueryListener.values()) {
         liveListener.onEnd();
@@ -2152,6 +2163,20 @@ public class OStorageRemote extends OStorageAbstract implements OStorageProxy, O
         }
       }
     }
+  }
+
+  public OLockRecordResponse lockRecord(OIdentifiable iRecord, LOCKING_STRATEGY lockingStrategy, long timeout) {
+    OExperimentalRequest request = new OExperimentalRequest(
+        new OLockRecordRequest(iRecord.getIdentity(), lockingStrategy, timeout));
+    OExperimentalResponse response = networkOperation(request, "Error locking record");
+    OLockRecordResponse realResponse = (OLockRecordResponse) response.getResponse();
+    return realResponse;
+  }
+
+  public void unlockRecord(OIdentifiable iRecord) {
+    OExperimentalRequest request = new OExperimentalRequest(new OUnlockRecordRequest(iRecord.getIdentity()));
+    OExperimentalResponse response = networkOperation(request, "Error locking record");
+    OUnlockRecordResponse realResponse = (OUnlockRecordResponse) response.getResponse();
   }
 
   @Override

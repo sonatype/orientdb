@@ -1,13 +1,17 @@
 package com.orientechnologies.orient.server.distributed.impl.coordinator.transaction;
 
 import com.orientechnologies.orient.client.remote.message.tx.ORecordOperationRequest;
-import com.orientechnologies.orient.core.db.*;
+import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
+import com.orientechnologies.orient.core.db.ODatabaseSession;
+import com.orientechnologies.orient.core.db.ODatabaseType;
+import com.orientechnologies.orient.core.db.OrientDB;
 import com.orientechnologies.orient.core.db.record.ORecordOperation;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
 import com.orientechnologies.orient.core.metadata.schema.OProperty;
 import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.record.OElement;
+import com.orientechnologies.orient.core.tx.OTransactionIndexChanges;
 import com.orientechnologies.orient.core.tx.OTransactionOptimistic;
 import com.orientechnologies.orient.server.OServer;
 import com.orientechnologies.orient.server.distributed.impl.coordinator.ONodeResponse;
@@ -21,8 +25,10 @@ import javax.management.MalformedObjectNameException;
 import javax.management.NotCompliantMBeanException;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 
@@ -53,10 +59,11 @@ public class FirstPhaseOperationTest {
       ele.setProperty("one", "val");
       session.save(ele);
       Collection<ORecordOperation> txOps = ((OTransactionOptimistic) session.getTransaction()).getRecordOperations();
-      networkOps = OTransactionSubmit.genOps(txOps);
+      networkOps = OTransactionSubmit.genOps(txOps, OTransactionFirstPhaseOperation.useDeltas);
     }
 
-    OTransactionFirstPhaseOperation ops = new OTransactionFirstPhaseOperation(new OSessionOperationId(), networkOps);
+    OTransactionFirstPhaseOperation ops = new OTransactionFirstPhaseOperation(new OSessionOperationId(), networkOps,
+        new ArrayList<>());
     try (ODatabaseSession session = orientDB.open(FirstPhaseOperationTest.class.getSimpleName(), "admin", "admin")) {
       ONodeResponse res = ops.execute(null, null, null, (ODatabaseDocumentInternal) session);
       assertEquals(((OTransactionFirstPhaseResult) res).getType(), OTransactionFirstPhaseResult.Type.SUCCESS);
@@ -81,7 +88,7 @@ public class FirstPhaseOperationTest {
       ele.setProperty("one", "val10");
       session.save(ele);
       Collection<ORecordOperation> txOps = ((OTransactionOptimistic) session.getTransaction()).getRecordOperations();
-      networkOps = OTransactionSubmit.genOps(txOps);
+      networkOps = OTransactionSubmit.genOps(txOps, OTransactionFirstPhaseOperation.useDeltas);
     }
 
     try (ODatabaseSession session = orientDB.open(FirstPhaseOperationTest.class.getSimpleName(), "admin", "admin")) {
@@ -92,7 +99,8 @@ public class FirstPhaseOperationTest {
       session.commit();
     }
 
-    OTransactionFirstPhaseOperation ops = new OTransactionFirstPhaseOperation(new OSessionOperationId(), networkOps);
+    OTransactionFirstPhaseOperation ops = new OTransactionFirstPhaseOperation(new OSessionOperationId(), networkOps,
+        new ArrayList<>());
     try (ODatabaseSession session = orientDB.open(FirstPhaseOperationTest.class.getSimpleName(), "admin", "admin")) {
       ONodeResponse res = ops.execute(null, null, null, (ODatabaseDocumentInternal) session);
       assertEquals(((OTransactionFirstPhaseResult) res).getType(),
@@ -103,6 +111,7 @@ public class FirstPhaseOperationTest {
   @Test
   public void testDuplicateKey() {
     List<ORecordOperationRequest> networkOps;
+    List<OIndexOperationRequest> indexes;
     try (ODatabaseSession session = orientDB.open(FirstPhaseOperationTest.class.getSimpleName(), "admin", "admin")) {
       OProperty pro = session.getClass("simple").createProperty("indexed", OType.STRING);
       pro.createIndex(OClass.INDEX_TYPE.UNIQUE);
@@ -118,11 +127,14 @@ public class FirstPhaseOperationTest {
       OElement ele = session.newElement("simple");
       ele.setProperty("indexed", "val");
       session.save(ele);
-      Collection<ORecordOperation> txOps = ((OTransactionOptimistic) session.getTransaction()).getRecordOperations();
-      networkOps = OTransactionSubmit.genOps(txOps);
+      OTransactionOptimistic tx = (OTransactionOptimistic) session.getTransaction();
+      Collection<ORecordOperation> txOps = tx.getRecordOperations();
+      networkOps = OTransactionSubmit.genOps(txOps, OTransactionFirstPhaseOperation.useDeltas);
+      Map<String, OTransactionIndexChanges> indexOperations = tx.getIndexOperations();
+      indexes = OTransactionSubmit.genIndexes(indexOperations, tx);
     }
 
-    OTransactionFirstPhaseOperation ops = new OTransactionFirstPhaseOperation(new OSessionOperationId(), networkOps);
+    OTransactionFirstPhaseOperation ops = new OTransactionFirstPhaseOperation(new OSessionOperationId(), networkOps, indexes);
     try (ODatabaseSession session = orientDB.open(FirstPhaseOperationTest.class.getSimpleName(), "admin", "admin")) {
       ONodeResponse res = ops.execute(null, null, null, (ODatabaseDocumentInternal) session);
       assertEquals(((OTransactionFirstPhaseResult) res).getType(), OTransactionFirstPhaseResult.Type.UNIQUE_KEY_VIOLATION);

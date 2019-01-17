@@ -7,15 +7,18 @@ import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.db.record.ridbag.ORidBag;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
 import com.orientechnologies.orient.core.id.ORID;
+import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.record.impl.OEdgeToVertexIterable;
 import com.orientechnologies.orient.core.record.impl.OEdgeToVertexIterator;
 import com.orientechnologies.orient.core.sql.executor.AggregationContext;
+import com.orientechnologies.orient.core.sql.executor.OInternalResultSet;
 import com.orientechnologies.orient.core.sql.executor.OResult;
 import com.orientechnologies.orient.core.sql.executor.OResultInternal;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public class OProjectionItem extends SimpleNode {
 
@@ -113,7 +116,7 @@ public class OProjectionItem extends SimpleNode {
     return convert(result);
   }
 
-  private Object convert(Object value) {
+  public Object convert(Object value) {
     if (value instanceof ORidBag) {
       List result = new ArrayList();
       ((ORidBag) value).forEach(x -> result.add(x));
@@ -129,6 +132,10 @@ public class OProjectionItem extends SimpleNode {
       }
       return result;
     }
+    if (value instanceof OInternalResultSet) {
+      ((OInternalResultSet) value).reset();
+      value = ((OInternalResultSet) value).stream().collect(Collectors.toList());
+    }
     return value;
   }
 
@@ -140,6 +147,9 @@ public class OProjectionItem extends SimpleNode {
       result = expression.execute(iCurrentRecord, ctx);
     }
     if (nestedProjection != null) {
+      if (result instanceof ODocument && ((ODocument) result).isEmpty()) {
+        ((ODocument) result).load(null);
+      }
       result = nestedProjection.apply(expression, result, ctx);
     }
     return convert(result);
@@ -162,7 +172,7 @@ public class OProjectionItem extends SimpleNode {
     if (all) {
       result = new OIdentifier("*");
     } else {
-      result = new OIdentifier(expression.toString());
+      result = expression.getDefaultAlias();
     }
     return result;
   }

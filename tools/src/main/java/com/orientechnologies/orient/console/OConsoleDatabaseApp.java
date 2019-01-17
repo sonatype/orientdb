@@ -78,11 +78,11 @@ import com.orientechnologies.orient.core.sql.filter.OSQLPredicate;
 import com.orientechnologies.orient.core.storage.OCluster;
 import com.orientechnologies.orient.core.storage.ORawBuffer;
 import com.orientechnologies.orient.core.storage.OStorage;
+import com.orientechnologies.orient.core.storage.cluster.OClusterPageDebug;
+import com.orientechnologies.orient.core.storage.cluster.OPaginatedCluster;
+import com.orientechnologies.orient.core.storage.cluster.OPaginatedClusterDebug;
+import com.orientechnologies.orient.core.storage.disk.OLocalPaginatedStorage;
 import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
-import com.orientechnologies.orient.core.storage.impl.local.paginated.OClusterPageDebug;
-import com.orientechnologies.orient.core.storage.impl.local.paginated.OLocalPaginatedStorage;
-import com.orientechnologies.orient.core.storage.impl.local.paginated.OPaginatedCluster;
-import com.orientechnologies.orient.core.storage.impl.local.paginated.OPaginatedClusterDebug;
 import com.orientechnologies.orient.core.util.OURLConnection;
 import com.orientechnologies.orient.core.util.OURLHelper;
 import com.orientechnologies.orient.server.config.OServerConfigurationManager;
@@ -130,8 +130,9 @@ public class OConsoleDatabaseApp extends OrientConsole implements OCommandOutput
       new OSignalHandler().installDefaultSignals(signal -> restoreTerminal());
 
       final OConsoleDatabaseApp console = new OConsoleDatabaseApp(args);
+
       if (tty)
-        console.setReader(new TTYConsoleReader());
+        console.setReader(new TTYConsoleReader(console.historyEnabled()));
 
       result = console.run();
 
@@ -1159,10 +1160,15 @@ public class OConsoleDatabaseApp extends OrientConsole implements OCommandOutput
 
     final String dbName = currentDatabase.getName();
     currentDatabase.close();
+    if (storageType != null && !"plocal".equalsIgnoreCase(storageType)&& !"local".equalsIgnoreCase(storageType)&& !"memory".equalsIgnoreCase(storageType)) {
+      message("\n\nInvalid storage type for db: '" + storageType + "'");
+      return;
+    }
     orientDB.drop(dbName);
     currentDatabase = null;
     currentDatabaseName = null;
     message("\n\nDatabase '" + dbName + "' deleted successfully");
+
   }
 
   @ConsoleCommand(description = "Delete the specified database", onlineHelp = "Console-Command-Drop-Database")
@@ -2043,21 +2049,41 @@ public class OConsoleDatabaseApp extends OrientConsole implements OCommandOutput
 
   }
 
-  @ConsoleCommand(description = "Repair database structure")
+  @ConsoleCommand(description = "Repair database structure", splitInWords = false)
   public void repairDatabase(
-      @ConsoleParameter(name = "options", description = "Options: -v", optional = true) final String iOptions) throws IOException {
+      @ConsoleParameter(name = "options", description = "Options: [--fix-graph] [--force-embedded-ridbags] [--fix-links] [-v]] [--fix-ridbags] [--fix-bonsai]", optional = true) String iOptions)
+      throws IOException {
     checkForDatabase();
+    final boolean force_embedded = iOptions == null || iOptions.contains("--force-embedded-ridbags");
+    final boolean fix_graph = iOptions == null || iOptions.contains("--fix-graph");
+    if (force_embedded) {
+      OGlobalConfiguration.RID_BAG_SBTREEBONSAI_TO_EMBEDDED_THRESHOLD.setValue(Integer.MAX_VALUE);
+      OGlobalConfiguration.RID_BAG_EMBEDDED_TO_SBTREEBONSAI_THRESHOLD.setValue(Integer.MAX_VALUE);
+    }
+    if (fix_graph || force_embedded) {
+      // REPAIR GRAPH
+      final Map<String, List<String>> options = parseOptions(iOptions);
+      new OGraphRepair().repair(currentDatabase, this, options);
+    }
 
-    message("\nRepairing database...");
+    final boolean fix_links = iOptions == null || iOptions.contains("--fix-links");
+    if (fix_links) {
+      // REPAIR DATABASE AT LOW LEVEL
+      repairDatabase(iOptions);
+    }
 
-    boolean verbose = iOptions != null && iOptions.contains("-v");
+    if (!currentDatabase.getURL().startsWith("plocal")) {
+      message("\n fix-bonsai can be run only on plocal connection \n");
+      return;
+    }
 
-    new ODatabaseRepair().setDatabase(currentDatabase).setOutputListener(new OCommandOutputListener() {
-      @Override
-      public void onMessage(String iText) {
-        message(iText);
-      }
-    }).setVerbose(verbose).run();
+    final boolean fix_ridbags = iOptions == null || iOptions.contains("--fix-ridbags");
+    final boolean fix_bonsai = iOptions == null || iOptions.contains("--fix-bonsai");
+    if (fix_ridbags || fix_bonsai || force_embedded) {
+      OBonsaiTreeRepair repairer = new OBonsaiTreeRepair();
+      repairer.repairDatabaseRidbags(currentDatabase, this);
+    }
+
   }
 
   @ConsoleCommand(description = "Compare two databases")

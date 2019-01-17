@@ -41,6 +41,7 @@ import com.orientechnologies.orient.core.serialization.serializer.OStringSeriali
 import com.orientechnologies.orient.core.serialization.serializer.record.string.ORecordSerializerStringAbstract;
 import com.orientechnologies.orient.core.sql.OSQLEngine;
 import com.orientechnologies.orient.core.sql.OSQLHelper;
+import com.orientechnologies.orient.core.sql.executor.OResult;
 import com.orientechnologies.orient.core.sql.filter.OSQLPredicate;
 import com.orientechnologies.orient.core.sql.functions.OSQLFunctionRuntime;
 import com.orientechnologies.orient.core.sql.method.OSQLMethod;
@@ -78,6 +79,21 @@ public class ODocumentHelper {
     ORID map(ORID rid);
   }
 
+  public static Set<String> getReservedAttributes() {
+    Set<String> retSet = new HashSet<>();
+    retSet.add(ATTRIBUTE_THIS);
+    retSet.add(ATTRIBUTE_RID);
+    retSet.add(ATTRIBUTE_RID_ID);
+    retSet.add(ATTRIBUTE_RID_POS);
+    retSet.add(ATTRIBUTE_VERSION);
+    retSet.add(ATTRIBUTE_CLASS);
+    retSet.add(ATTRIBUTE_TYPE);
+    retSet.add(ATTRIBUTE_SIZE);
+    retSet.add(ATTRIBUTE_FIELDS);
+    retSet.add(ATTRIBUTE_RAW);
+    return retSet;
+  }
+
   public static void sort(List<? extends OIdentifiable> ioResultSet, List<OPair<String, String>> iOrderCriteria,
       OCommandContext context) {
     if (ioResultSet != null)
@@ -106,6 +122,14 @@ public class ODocumentHelper {
         return (RET) iValue;
       } else if (iValue instanceof String) {
         return (RET) new ORecordId((String) iValue);
+      } else if (OMultiValue.isMultiValue(iValue) && OMultiValue.getSize(iValue) == 1) {
+        Object val = OMultiValue.getFirstValue(iValue);
+        if (val instanceof OResult) {
+          val = ((OResult) val).getIdentity().orElse(null);
+        }
+        if (val instanceof OIdentifiable) {
+          return (RET) val;
+        }
       }
     } else if (Set.class.isAssignableFrom(iFieldType)) {
       if (!(iValue instanceof Set)) {
@@ -1533,5 +1557,188 @@ public class ODocumentHelper {
   public static <T> T makeDbCall(final ODatabaseDocumentInternal databaseRecord, final ODbRelatedCall<T> function) {
     databaseRecord.activateOnCurrentThread();
     return function.call(databaseRecord);
+  }
+
+  private static OMultiValueChangeEvent.OChangeType isNestedValueChanged(ONestedMultiValueChangeEvent event, Object value,
+      List<Object> ownersTrace, int ownersTraceOffset, Object valueIdentifier) {
+    if (event.getTimeLine() != null) {
+      List<OMultiValueChangeEvent<Object, Object>> events = event.getTimeLine().getMultiValueChangeEvents();
+      if (events != null) {
+        for (OMultiValueChangeEvent<Object, Object> nestedEvent : events) {
+          if (ownersTraceOffset < ownersTrace.size() && nestedEvent.getKey() == ownersTrace.get(ownersTraceOffset)
+              && nestedEvent instanceof ONestedMultiValueChangeEvent) {
+            ONestedMultiValueChangeEvent ne = (ONestedMultiValueChangeEvent) nestedEvent;
+            OMultiValueChangeEvent.OChangeType ret = isNestedValueChanged(ne, value, ownersTrace, ownersTraceOffset + 1,
+                valueIdentifier);
+            if (ret != null) {
+              return ret;
+            }
+          } else {
+            if (nestedEvent.getKey().equals(valueIdentifier) && nestedEvent.getValue() == value && ownersTraceOffset == ownersTrace
+                .size()) {
+              return nestedEvent.getChangeType();
+            }
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  public static OMultiValueChangeEvent.OChangeType isNestedValueChanged(ODocumentEntry entry, Object value,
+      List<Object> ownersTrace, int ownersTraceOffset, Object valueIdentifier) {
+    if (entry.timeLine != null) {
+      List<OMultiValueChangeEvent<Object, Object>> timeline = entry.timeLine.getMultiValueChangeEvents();
+      if (timeline != null) {
+        for (OMultiValueChangeEvent<Object, Object> event : timeline) {
+          if (ownersTraceOffset < ownersTrace.size() && event.getKey() == ownersTrace.get(ownersTraceOffset)
+              && event instanceof ONestedMultiValueChangeEvent) {
+            ONestedMultiValueChangeEvent nestedEvent = (ONestedMultiValueChangeEvent) event;
+            OMultiValueChangeEvent.OChangeType ret = isNestedValueChanged(nestedEvent, value, ownersTrace, ownersTraceOffset + 1,
+                valueIdentifier);
+            if (ret != null) {
+              return ret;
+            }
+          } else if ((event.getKey().equals(valueIdentifier) || event.getKey() == value) && event.getValue() == value
+              && ownersTraceOffset == ownersTrace.size()) {
+            return event.getChangeType();
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private static boolean isInNestedEvent(ONestedMultiValueChangeEvent event, Object checkObject, List<Object> ownersTrace,
+      int ownersTraceOffset) {
+    if (event.getKey() == checkObject) {
+      return true;
+    }
+    if (event.getTimeLine() != null) {
+      List<OMultiValueChangeEvent<Object, Object>> timeline = event.getTimeLine().getMultiValueChangeEvents();
+      for (OMultiValueChangeEvent<Object, Object> nestedEvent : timeline) {
+        if (nestedEvent.getKey() == checkObject) {
+          return true;
+        } else {
+          if (nestedEvent instanceof ONestedMultiValueChangeEvent && isInNestedEvent((ONestedMultiValueChangeEvent) nestedEvent,
+              checkObject, ownersTrace, ownersTraceOffset + 1)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  public static boolean isChangedCollection(Collection list, ODocumentEntry entry, List<Object> ownersTrace,
+      int ownersTraceOffset) {
+    ownersTrace.add(list);
+
+    //We can't use same logic as in isNestedValueChanged, because
+    //change of ODocument contained in list will not fire adequate change event
+    for (Object element : list) {
+      if (element instanceof ODocument) {
+        if (((ODocument) element).isChangedInDepth()) {
+          return true;
+        }
+      } else if (element instanceof Collection) {
+        if (isChangedCollection((Collection) element, entry, ownersTrace, ownersTraceOffset + 1)) {
+          return true;
+        }
+      } else if (element instanceof Map) {
+        if (isChangedMap((Map) element, entry, ownersTrace, ownersTraceOffset + 1)) {
+          return true;
+        }
+      }
+    }
+
+    if (entry.timeLine != null) {
+      List<OMultiValueChangeEvent<Object, Object>> timeline = entry.timeLine.getMultiValueChangeEvents();
+      if (timeline != null) {
+        for (OMultiValueChangeEvent<Object, Object> event : timeline) {
+          Object key = event.getKey();
+          if (key == list) {
+            return true;
+          }
+          if (event instanceof ONestedMultiValueChangeEvent && isInNestedEvent((ONestedMultiValueChangeEvent) event, list,
+              ownersTrace, ownersTraceOffset + 1)) {
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
+  }
+
+  public static boolean isChangedRidbag(ORidBag ridbag, ODocumentEntry entry) {
+
+    if (entry.timeLine != null) {
+      List<OMultiValueChangeEvent<Object, Object>> timeline = entry.timeLine.getMultiValueChangeEvents();
+      if (timeline != null) {
+        return !timeline.isEmpty();
+      }
+    }
+
+    return false;
+  }
+
+  public static boolean isChangedMap(Map<Object, Object> map, ODocumentEntry entry, List<Object> ownersTrace,
+      int ownersTraceOffset) {
+    ownersTrace.add(map);
+
+    //We can't use same logic as in isNestedValueChanged, because
+    //change of ODocument contained in list will not fire adequate change event
+    for (Map.Entry<Object, Object> mapEntry : map.entrySet()) {
+      Object element = mapEntry.getValue();
+      if (element instanceof ODocument) {
+        if (((ODocument) element).isChangedInDepth()) {
+          return true;
+        }
+      } else if (element instanceof Collection) {
+        if (isChangedCollection((Collection) element, entry, ownersTrace, ownersTraceOffset + 1)) {
+          return true;
+        }
+      } else if (element instanceof Map) {
+        if (isChangedMap((Map) element, entry, ownersTrace, ownersTraceOffset + 1)) {
+          return true;
+        }
+      }
+    }
+
+    if (entry.timeLine != null) {
+      List<OMultiValueChangeEvent<Object, Object>> timeline = entry.timeLine.getMultiValueChangeEvents();
+      if (timeline != null) {
+        for (OMultiValueChangeEvent<Object, Object> event : timeline) {
+          Object key = event.getKey();
+          if (key == map) {
+            return true;
+          }
+          if (event instanceof ONestedMultiValueChangeEvent && isInNestedEvent((ONestedMultiValueChangeEvent) event, map,
+              ownersTrace, ownersTraceOffset + 1)) {
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
+  }
+
+  protected static boolean hasNonExistingInList(List list) {
+    for (Object element : list) {
+      if (element instanceof ODocument) {
+        if (((ODocument) element).hasNonExistingInDepth()) {
+          return true;
+        }
+      } else if (element instanceof List) {
+        if (hasNonExistingInList((List) element)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 }

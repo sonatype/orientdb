@@ -20,7 +20,8 @@
 package com.orientechnologies.orient.core.storage.cache;
 
 import com.orientechnologies.common.directmemory.OByteBufferPool;
-import com.orientechnologies.common.log.OLogManager;
+import com.orientechnologies.common.directmemory.OPointer;
+import com.orientechnologies.orient.core.storage.impl.local.paginated.wal.OLogSequenceNumber;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -32,7 +33,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * @author Andrey Lomakin (a.lomakin-at-orientdb.com)
  * @since 05.08.13
  */
-public class OCachePointer {
+public final class OCachePointer {
   private static final int WRITERS_OFFSET = 32;
   private static final int READERS_MASK   = 0xFFFFFFFF;
 
@@ -45,7 +46,7 @@ public class OCachePointer {
 
   private volatile WritersListener writersListener;
 
-  private final ByteBuffer      buffer;
+  private final OPointer        pointer;
   private final OByteBufferPool bufferPool;
 
   private long version;
@@ -53,8 +54,10 @@ public class OCachePointer {
   private final long fileId;
   private final long pageIndex;
 
-  public OCachePointer(final ByteBuffer buffer, final OByteBufferPool bufferPool, final long fileId, final long pageIndex) {
-    this.buffer = buffer;
+  private OLogSequenceNumber endLSN;
+
+  public OCachePointer(final OPointer pointer, final OByteBufferPool bufferPool, final long fileId, final long pageIndex) {
+    this.pointer = pointer;
     this.bufferPool = bufferPool;
 
     this.fileId = fileId;
@@ -88,8 +91,9 @@ public class OCachePointer {
 
     final WritersListener wl = writersListener;
     if (wl != null) {
-      if (writers > 0 && readers == 1)
+      if (writers > 0 && readers == 1) {
         wl.removeOnlyWriters(fileId, pageIndex);
+      }
     }
 
     incrementReferrer();
@@ -114,8 +118,9 @@ public class OCachePointer {
 
     final WritersListener wl = writersListener;
     if (wl != null) {
-      if (writers > 0 && readers == 0)
+      if (writers > 0 && readers == 0) {
         wl.addOnlyWriters(fileId, pageIndex);
+      }
     }
 
     decrementReferrer();
@@ -156,8 +161,9 @@ public class OCachePointer {
 
     final WritersListener wl = writersListener;
     if (wl != null) {
-      if (readers == 0 && writers == 0)
+      if (readers == 0 && writers == 0) {
         wl.removeOnlyWriters(fileId, pageIndex);
+      }
     }
 
     decrementReferrer();
@@ -168,7 +174,7 @@ public class OCachePointer {
    *
    * @return Whether pointer lock (read or write )is acquired
    */
-  public boolean isLockAcquiredByCurrentThread() {
+  boolean isLockAcquiredByCurrentThread() {
     return readWriteLock.getReadHoldCount() > 0 || readWriteLock.isWriteLockedByCurrentThread();
   }
 
@@ -178,39 +184,38 @@ public class OCachePointer {
 
   public void decrementReferrer() {
     final int rf = referrersCount.decrementAndGet();
-    if (rf == 0 && buffer != null) {
-      bufferPool.release(buffer);
+    if (rf == 0 && pointer != null) {
+      bufferPool.release(pointer);
     }
 
-    if (rf < 0)
+    if (rf < 0) {
       throw new IllegalStateException("Invalid direct memory state, number of referrers cannot be negative " + rf);
+    }
   }
 
   public ByteBuffer getBuffer() {
-    return buffer;
-  }
-
-  public ByteBuffer getBufferDuplicate() {
-    if (buffer == null) {
+    if (pointer == null) {
       return null;
     }
 
-    return buffer.duplicate().order(ByteOrder.nativeOrder());
+    return pointer.getNativeByteBuffer();
+  }
+
+  public OPointer getPointer() {
+    return pointer;
+  }
+
+  public ByteBuffer getBufferDuplicate() {
+    if (pointer == null) {
+      return null;
+    }
+
+    return pointer.getNativeByteBuffer().duplicate().order(ByteOrder.nativeOrder());
   }
 
   public void acquireExclusiveLock() {
     readWriteLock.writeLock().lock();
     version++;
-  }
-
-  public boolean tryAcquireExclusiveLock() {
-    boolean result = readWriteLock.writeLock().tryLock();
-
-    if (result) {
-      version++;
-    }
-
-    return result;
   }
 
   public long getVersion() {
@@ -229,57 +234,31 @@ public class OCachePointer {
     readWriteLock.readLock().unlock();
   }
 
-  @SuppressWarnings("BooleanMethodIsAlwaysInverted")
   public boolean tryAcquireSharedLock() {
     return readWriteLock.readLock().tryLock();
   }
 
   @Override
-  protected void finalize() throws Throwable {
-    super.finalize();
-
-    boolean needInfo = false;
-
-    if (getReaders(readersWritersReferrer.get()) != 0) {
-      needInfo = true;
-      OLogManager.instance().error(this, "OCachePointer.finalize: readers != 0", null);
-    }
-    if (getWriters(readersWritersReferrer.get()) != 0) {
-      needInfo = true;
-      OLogManager.instance().error(this, "OCachePointer.finalize: writers != 0", null);
-    }
-
-    if (needInfo && buffer != null)
-      bufferPool.logTrackedBufferInfo("finalizing", buffer);
-
-    if (referrersCount.get() > 0 && buffer != null) {
-      if (!needInfo) // not logged yet
-        bufferPool.logTrackedBufferInfo("finalizing", buffer);
-      bufferPool.release(buffer);
-    }
-  }
-
-  @Override
   public boolean equals(Object o) {
-    if (this == o)
+    if (this == o) {
       return true;
-    if (o == null || getClass() != o.getClass())
+    }
+    if (o == null || getClass() != o.getClass()) {
       return false;
+    }
 
     OCachePointer that = (OCachePointer) o;
 
-    buffer.position(0);
-    that.buffer.position(0);
-
-    if (!buffer.equals(that.buffer))
+    if (!pointer.equals(that.pointer)) {
       return false;
+    }
 
     return true;
   }
 
   @Override
   public int hashCode() {
-    return buffer != null ? buffer.hashCode() : 0;
+    return pointer != null ? pointer.hashCode() : 0;
   }
 
   @Override
@@ -287,16 +266,15 @@ public class OCachePointer {
     return "OCachePointer{" + "referrersCount=" + referrersCount + ", usagesCount=" + usagesCounter + '}';
   }
 
-  private long composeReadersWriters(int readers, int writers) {
+  private static long composeReadersWriters(int readers, int writers) {
     return ((long) writers) << WRITERS_OFFSET | readers;
   }
 
-  private int getReaders(long readersWriters) {
-    //noinspection PointlessBitwiseExpression
+  private static int getReaders(long readersWriters) {
     return (int) (readersWriters & READERS_MASK);
   }
 
-  private int getWriters(long readersWriters) {
+  private static int getWriters(long readersWriters) {
     return (int) (readersWriters >>> WRITERS_OFFSET);
   }
 
@@ -306,4 +284,11 @@ public class OCachePointer {
     void removeOnlyWriters(long fileId, long pageIndex);
   }
 
+  public OLogSequenceNumber getEndLSN() {
+    return endLSN;
+  }
+
+  void setEndLSN(OLogSequenceNumber endLSN) {
+    this.endLSN = endLSN;
+  }
 }

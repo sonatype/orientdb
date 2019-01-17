@@ -6,6 +6,7 @@ import com.orientechnologies.common.collection.OMultiValue;
 import com.orientechnologies.orient.core.command.OCommandContext;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.sql.executor.OResult;
+import com.orientechnologies.orient.core.sql.executor.OResultInternal;
 import com.orientechnologies.orient.core.sql.operator.OQueryOperatorEquals;
 
 import java.util.*;
@@ -34,16 +35,27 @@ public class OContainsCondition extends OBooleanExpression {
   public boolean execute(Object left, Object right) {
     if (left instanceof Collection) {
       if (right instanceof Collection) {
-        if (((Collection) left).containsAll((Collection) right)) {
-          return true;
-        }
-
         if (((Collection) right).size() == 1) {
           Object item = ((Collection) right).iterator().next();
           if (item instanceof OResult && ((OResult) item).getPropertyNames().size() == 1) {
             Object propValue = ((OResult) item).getProperty(((OResult) item).getPropertyNames().iterator().next());
-            return ((Collection) left).contains(propValue);
+            if (((Collection) left).contains(propValue)) {
+              return true;
+            }
           }
+          if (((Collection) left).contains(item)) {
+            return true;
+          }
+          if (item instanceof OResult) {
+            item = ((OResult) item).getElement().orElse(null);
+          }
+          if (item instanceof OIdentifiable && ((Collection) left).contains(item)) {
+            return true;
+          }
+        }
+
+        if (OMultiValue.contains(left, right)) {
+          return true;
         }
         return false;
       }
@@ -60,39 +72,60 @@ public class OContainsCondition extends OBooleanExpression {
         }
       }
       for (Object o : (Collection) left) {
-        if (OQueryOperatorEquals.equals(o, right))
+        if (equalsInContainsSpace(o, right)) {
           return true;
+        }
       }
       return false;
     }
+
+    Iterator leftIterator = null;
     if (left instanceof Iterable) {
-      left = ((Iterable) left).iterator();
+      leftIterator = ((Iterable) left).iterator();
+    } else if (left instanceof Iterator) {
+      leftIterator = (Iterator) left;
     }
-    if (left instanceof Iterator) {
+    if (leftIterator != null) {
       if (!(right instanceof Iterable)) {
         right = Collections.singleton(right);
       }
       right = ((Iterable) right).iterator();
 
-      Iterator leftIterator = (Iterator) left;
       Iterator rightIterator = (Iterator) right;
       while (rightIterator.hasNext()) {
         Object leftItem = rightIterator.next();
         boolean found = false;
         while (leftIterator.hasNext()) {
           Object rightItem = leftIterator.next();
-          if (leftItem != null && leftItem.equals(rightItem)) {
+          if ((leftItem != null && leftItem.equals(rightItem)) ||
+              (leftItem == null && rightItem == null)){
             found = true;
             break;
           }
         }
+        
         if (!found) {
           return false;
+        }
+        
+        //here left iterator should go from beginning, that can be done only for iterable
+        //if left at input is iterator result can be invalid 
+        //TODO what if left is Iterator!!!???, should we make temporary Collection , to be able to iterate from beginning
+        if (left instanceof Iterable) {
+          leftIterator = ((Iterable) left).iterator();
         }
       }
       return true;
     }
     return false;
+  }
+
+  private boolean equalsInContainsSpace(Object left, Object right) {
+    if (left == null && right == null) {
+      return true;
+    } else {
+      return OQueryOperatorEquals.equals(left, right);
+    }
   }
 
   @Override
@@ -135,6 +168,12 @@ public class OContainsCondition extends OBooleanExpression {
           return true;
         } else if (item instanceof OResult && condition.evaluate((OResult) item, ctx)) {
           return true;
+        } else if (item instanceof Map) {
+          OResultInternal res = new OResultInternal();
+          ((Map<String, Object>) item).entrySet().forEach(x -> res.setProperty(x.getKey(), x.getValue()));
+          if (condition.evaluate(res, ctx)) {
+            return true;
+          }
         }
       }
       return false;

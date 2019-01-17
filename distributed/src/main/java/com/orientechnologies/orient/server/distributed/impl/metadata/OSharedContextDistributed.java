@@ -49,9 +49,8 @@ public class OSharedContextDistributed extends OSharedContext {
 
     queryStats = new OQueryStats();
 
-    distributedContext = new ODistributedContext();
+    distributedContext = new ODistributedContext(storage, orientDB);
     this.viewManager = new ViewManagerDistributed(orientDB, storage.getName());
-    this.viewManager.start();
 
   }
 
@@ -70,6 +69,7 @@ public class OSharedContextDistributed extends OSharedContext {
           scheduler.load(database);
           sequenceLibrary.load(database);
           schema.onPostIndexManagement();
+          viewManager.load();
           loaded = true;
         }
       } finally {
@@ -94,6 +94,7 @@ public class OSharedContextDistributed extends OSharedContext {
     executionPlanCache.invalidate();
     liveQueryOps.close();
     liveQueryOpsV2.close();
+    distributedContext.close();
   }
 
   public synchronized void reload(ODatabaseDocumentInternal database) {
@@ -107,6 +108,7 @@ public class OSharedContextDistributed extends OSharedContext {
       sequenceLibrary.load(database);
       commandCache.clear();
       scheduler.load(database);
+      distributedContext.reload();
       return null;
     });
   }

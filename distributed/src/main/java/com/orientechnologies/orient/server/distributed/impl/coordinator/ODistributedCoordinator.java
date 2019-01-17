@@ -1,8 +1,15 @@
 package com.orientechnologies.orient.server.distributed.impl.coordinator;
 
+import com.orientechnologies.orient.server.distributed.impl.coordinator.transaction.OSessionOperationId;
+
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Map;
 import java.util.Timer;
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class ODistributedCoordinator implements AutoCloseable {
 
@@ -12,22 +19,25 @@ public class ODistributedCoordinator implements AutoCloseable {
   private final Map<String, ODistributedMember>        members  = new ConcurrentHashMap<>();
   private final Timer                                  timer;
   private final ODistributedLockManager                lockManager;
+  private final OClusterPositionAllocator              allocator;
 
-  public ODistributedCoordinator(ExecutorService requestExecutor, OOperationLog operationLog, ODistributedLockManager lockManager) {
+  public ODistributedCoordinator(ExecutorService requestExecutor, OOperationLog operationLog, ODistributedLockManager lockManager,
+      OClusterPositionAllocator allocator) {
     this.requestExecutor = requestExecutor;
     this.operationLog = operationLog;
     this.timer = new Timer(true);
     this.lockManager = lockManager;
+    this.allocator = allocator;
   }
 
-  public void submit(ODistributedMember member, OSubmitRequest request) {
+  public void submit(ODistributedMember member, OSessionOperationId operationId, OSubmitRequest request) {
     requestExecutor.execute(() -> {
-      request.begin(member, this);
+      request.begin(member, operationId, this);
     });
   }
 
-  public void reply(ODistributedMember member, OSubmitResponse response) {
-    member.reply(response);
+  public void reply(ODistributedMember member, OSessionOperationId operationId, OSubmitResponse response) {
+    member.reply(operationId, response);
   }
 
   public void receive(ODistributedMember member, OLogId relativeRequest, ONodeResponse response) {
@@ -42,9 +52,10 @@ public class ODistributedCoordinator implements AutoCloseable {
 
   public ORequestContext sendOperation(OSubmitRequest submitRequest, ONodeRequest nodeRequest, OResponseHandler handler) {
     OLogId id = log(nodeRequest);
-    ORequestContext context = new ORequestContext(this, submitRequest, nodeRequest, members.values(), handler, id);
+    Collection<ODistributedMember> values = new ArrayList<>(members.values());
+    ORequestContext context = new ORequestContext(this, submitRequest, nodeRequest, values, handler, id);
     contexts.put(id, context);
-    for (ODistributedMember member : members.values()) {
+    for (ODistributedMember member : values) {
       member.sendRequest(id, nodeRequest);
     }
     //Get the timeout from the configuration
@@ -68,11 +79,11 @@ public class ODistributedCoordinator implements AutoCloseable {
 
   }
 
-  protected void executeOperation(Runnable runnable) {
+  public void executeOperation(Runnable runnable) {
     requestExecutor.execute(runnable);
   }
 
-  protected void finish(OLogId requestId) {
+  public void finish(OLogId requestId) {
     contexts.remove(requestId);
   }
 
@@ -84,4 +95,15 @@ public class ODistributedCoordinator implements AutoCloseable {
     return lockManager;
   }
 
+  public OClusterPositionAllocator getAllocator() {
+    return allocator;
+  }
+
+  public ODistributedMember getMember(String senderNode) {
+    return members.get(senderNode);
+  }
+
+  public void leave(ODistributedMember member) {
+    members.remove(member.getName());
+  }
 }

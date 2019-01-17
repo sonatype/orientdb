@@ -21,7 +21,21 @@ package com.orientechnologies.orient.server.hazelcast;
 
 import com.hazelcast.config.Config;
 import com.hazelcast.config.FileSystemXmlConfig;
-import com.hazelcast.core.*;
+import com.hazelcast.core.EntryEvent;
+import com.hazelcast.core.EntryListener;
+import com.hazelcast.core.Hazelcast;
+import com.hazelcast.core.HazelcastException;
+import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.core.HazelcastInstanceNotActiveException;
+import com.hazelcast.core.ILock;
+import com.hazelcast.core.LifecycleEvent;
+import com.hazelcast.core.LifecycleListener;
+import com.hazelcast.core.LifecycleService;
+import com.hazelcast.core.MapEvent;
+import com.hazelcast.core.Member;
+import com.hazelcast.core.MemberAttributeEvent;
+import com.hazelcast.core.MembershipEvent;
+import com.hazelcast.core.MembershipListener;
 import com.hazelcast.spi.exception.RetryableHazelcastException;
 import com.orientechnologies.common.concur.OOfflineNodeException;
 import com.orientechnologies.common.concur.lock.OInterruptedException;
@@ -34,10 +48,16 @@ import com.orientechnologies.common.util.OCallable;
 import com.orientechnologies.common.util.OCallableNoParamNoReturn;
 import com.orientechnologies.common.util.OCallableUtils;
 import com.orientechnologies.common.util.OUncaughtExceptionHandler;
+import com.orientechnologies.orient.client.remote.OBinaryRequest;
+import com.orientechnologies.orient.client.remote.OBinaryResponse;
 import com.orientechnologies.orient.core.OSignalHandler;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
-import com.orientechnologies.orient.core.db.*;
+import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
+import com.orientechnologies.orient.core.db.ODatabaseInternal;
+import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
+import com.orientechnologies.orient.core.db.OScenarioThreadLocal;
+import com.orientechnologies.orient.core.db.OrientDBDistributed;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentAbstract;
 import com.orientechnologies.orient.core.exception.OConfigurationException;
 import com.orientechnologies.orient.core.exception.ODatabaseException;
@@ -46,13 +66,39 @@ import com.orientechnologies.orient.core.record.ORecordInternal;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.storage.OAutoshardedStorage;
 import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
-import com.orientechnologies.orient.core.storage.impl.local.paginated.OLocalPaginatedStorage;
+import com.orientechnologies.orient.enterprise.channel.binary.OChannelBinary;
+import com.orientechnologies.orient.server.OClientConnection;
 import com.orientechnologies.orient.server.OServer;
 import com.orientechnologies.orient.server.OSystemDatabase;
 import com.orientechnologies.orient.server.config.OServerParameterConfiguration;
-import com.orientechnologies.orient.server.distributed.*;
+import com.orientechnologies.orient.server.distributed.ODistributedConfiguration;
+import com.orientechnologies.orient.server.distributed.ODistributedException;
+import com.orientechnologies.orient.server.distributed.ODistributedLifecycleListener;
+import com.orientechnologies.orient.server.distributed.ODistributedRequest;
+import com.orientechnologies.orient.server.distributed.ODistributedResponse;
+import com.orientechnologies.orient.server.distributed.ODistributedServerLog;
 import com.orientechnologies.orient.server.distributed.ODistributedServerLog.DIRECTION;
-import com.orientechnologies.orient.server.distributed.impl.*;
+import com.orientechnologies.orient.server.distributed.ODistributedServerManager;
+import com.orientechnologies.orient.server.distributed.ODistributedStartupException;
+import com.orientechnologies.orient.server.distributed.OModifiableDistributedConfiguration;
+import com.orientechnologies.orient.server.distributed.ORemoteServerController;
+import com.orientechnologies.orient.server.distributed.impl.OClusterHealthChecker;
+import com.orientechnologies.orient.server.distributed.impl.ODistributedAbstractPlugin;
+import com.orientechnologies.orient.server.distributed.impl.ODistributedDatabaseImpl;
+import com.orientechnologies.orient.server.distributed.impl.ODistributedMessageServiceImpl;
+import com.orientechnologies.orient.server.distributed.impl.ODistributedOutput;
+import com.orientechnologies.orient.server.distributed.impl.ODistributedStorage;
+import com.orientechnologies.orient.server.distributed.impl.coordinator.OCoordinateMessagesFactory;
+import com.orientechnologies.orient.server.distributed.impl.coordinator.network.ODistributedChannelBinaryProtocol;
+import com.orientechnologies.orient.server.distributed.impl.coordinator.network.ODistributedExecutable;
+import com.orientechnologies.orient.server.distributed.impl.coordinator.network.ONetworkStructuralSubmitRequest;
+import com.orientechnologies.orient.server.distributed.impl.coordinator.network.ONetworkStructuralSubmitResponse;
+import com.orientechnologies.orient.server.distributed.impl.coordinator.network.ONetworkSubmitRequest;
+import com.orientechnologies.orient.server.distributed.impl.coordinator.network.ONetworkSubmitResponse;
+import com.orientechnologies.orient.server.distributed.impl.coordinator.network.OOperationRequest;
+import com.orientechnologies.orient.server.distributed.impl.coordinator.network.OOperationResponse;
+import com.orientechnologies.orient.server.distributed.impl.coordinator.network.OStructuralOperationRequest;
+import com.orientechnologies.orient.server.distributed.impl.coordinator.network.OStructuralOperationResponse;
 import com.orientechnologies.orient.server.distributed.impl.task.OAbstractSyncDatabaseTask;
 import com.orientechnologies.orient.server.distributed.impl.task.ODropDatabaseTask;
 import com.orientechnologies.orient.server.distributed.impl.task.OUpdateDatabaseConfigurationTask;
@@ -63,7 +109,25 @@ import sun.misc.Signal;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.security.SecureRandom;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TimerTask;
+
+import static com.orientechnologies.orient.enterprise.channel.binary.OChannelBinaryProtocol.DISTRIBUTED_OPERATION_REQUEST;
+import static com.orientechnologies.orient.enterprise.channel.binary.OChannelBinaryProtocol.DISTRIBUTED_OPERATION_RESPONSE;
+import static com.orientechnologies.orient.enterprise.channel.binary.OChannelBinaryProtocol.DISTRIBUTED_STRUCTURAL_OPERATION_REQUEST;
+import static com.orientechnologies.orient.enterprise.channel.binary.OChannelBinaryProtocol.DISTRIBUTED_STRUCTURAL_OPERATION_RESPONSE;
+import static com.orientechnologies.orient.enterprise.channel.binary.OChannelBinaryProtocol.DISTRIBUTED_STRUCTURAL_SUBMIT_REQUEST;
+import static com.orientechnologies.orient.enterprise.channel.binary.OChannelBinaryProtocol.DISTRIBUTED_STRUCTURAL_SUBMIT_RESPONSE;
+import static com.orientechnologies.orient.enterprise.channel.binary.OChannelBinaryProtocol.DISTRIBUTED_SUBMIT_REQUEST;
+import static com.orientechnologies.orient.enterprise.channel.binary.OChannelBinaryProtocol.DISTRIBUTED_SUBMIT_RESPONSE;
 
 /**
  * Hazelcast implementation for clustering.
@@ -106,7 +170,6 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
   @Override
   public void config(final OServer iServer, final OServerParameterConfiguration[] iParams) {
     super.config(iServer, iParams);
-
     if (nodeName == null)
       assignNodeName();
 
@@ -148,9 +211,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
     activeNodesUuidByName.clear();
 
     // CLOSE ALL CONNECTIONS TO THE SERVERS
-    for (ORemoteServerController server : remoteServers.values())
-      server.close();
-    remoteServers.clear();
+    remoteServerManager.closeAll();
 
     registeredNodeById.clear();
     registeredNodeByName.clear();
@@ -223,6 +284,11 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
             activeNodes.put(memberName, m);
             activeNodesNamesByUuid.put(m.getUuid(), memberName);
             activeNodesUuidByName.put(memberName, m.getUuid());
+
+            OrientDBDistributed distributed = (OrientDBDistributed) serverInstance.getDatabases();
+
+            distributed
+                .nodeJoin(memberName, new ODistributedChannelBinaryProtocol(getLocalNodeName(), getRemoteServer(memberName)));
             break;
           }
 
@@ -232,9 +298,9 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
         }
       }
 
-      assignLockManagerFromCluster();
-
       messageService = new ODistributedMessageServiceImpl(this);
+
+      assignLockManagerFromCluster();
 
       initSystemDatabase();
 
@@ -622,7 +688,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
 //    if (rNodeName.equalsIgnoreCase(getLocalNodeName()))
 //      throw new IllegalArgumentException("Cannot send remote message to the local server");
 
-    ORemoteServerController remoteServer = remoteServers.get(rNodeName);
+    ORemoteServerController remoteServer = remoteServerManager.getRemoteServer(rNodeName);
     if (remoteServer == null) {
       Member member = getClusterMemberByName(rNodeName);
 
@@ -650,13 +716,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
         final String userPassword = cfg.field("user_replicator");
 
         if (userPassword != null) {
-          // OK
-          remoteServer = new ORemoteServerController(this, rNodeName, url, REPLICATOR_USER, userPassword);
-          final ORemoteServerController old = remoteServers.putIfAbsent(rNodeName, remoteServer);
-          if (old != null) {
-            remoteServer.close();
-            remoteServer = old;
-          }
+          remoteServer = remoteServerManager.connectRemoteServer(rNodeName, url, REPLICATOR_USER, userPassword);
           break;
         }
 
@@ -779,7 +839,6 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
                   .error(this, nodeName, null, DIRECTION.NONE, "Error on saving distributed LSN for database '%s' (err=%s).",
                       databaseName, e.getMessage());
             }
-
             ddb.setOnline();
 
             return null;
@@ -839,7 +898,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
     return updated;
   }
 
-  protected void notifyClients(String databaseName) {
+  public void notifyClients(String databaseName) {
     List<String> hosts = new ArrayList<>();
     for (Member member : activeNodes.values()) {
       ODocument memberConfig = getNodeConfigurationByUuid(member.getUuid(), true);
@@ -941,13 +1000,21 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
 
         final ODocument cfg = (ODocument) iEvent.getValue();
 
-        if (!activeNodes.containsKey((String) cfg.field("name")))
+        String name = (String) cfg.field("name");
+        if (!activeNodes.containsKey(name))
           updateLastClusterChange();
 
-        activeNodes.put((String) cfg.field("name"), (Member) iEvent.getMember());
+        activeNodes.put(name, (Member) iEvent.getMember());
         if (iEvent.getMember().getUuid() != null) {
-          activeNodesNamesByUuid.put(iEvent.getMember().getUuid(), (String) cfg.field("name"));
-          activeNodesUuidByName.put((String) cfg.field("name"), iEvent.getMember().getUuid());
+          activeNodesNamesByUuid.put(iEvent.getMember().getUuid(), name);
+          activeNodesUuidByName.put(name, iEvent.getMember().getUuid());
+        }
+        OrientDBDistributed distributed = (OrientDBDistributed) serverInstance.getDatabases();
+
+        try {
+          distributed.nodeJoin(name, new ODistributedChannelBinaryProtocol(getLocalNodeName(), getRemoteServer(name)));
+        } catch (IOException e) {
+          e.printStackTrace();
         }
 
         dumpServersStatus();
@@ -979,7 +1046,9 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
         reloadRegisteredNodes((String) iEvent.getValue());
 
       } else if (key.startsWith(CONFIG_LOCKMANAGER)) {
-        getLockManagerRequester().setServer((String) iEvent.getValue());
+        String lockManager = (String) iEvent.getValue();
+        getLockManagerRequester().setServer(lockManager);
+        checkAndMakeCoordinator(lockManager);
       }
 
     } catch (HazelcastInstanceNotActiveException | RetryableHazelcastException e) {
@@ -1105,10 +1174,12 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
     if (state == LifecycleEvent.LifecycleState.MERGING)
       setNodeStatus(NODE_STATUS.MERGING);
     else if (state == LifecycleEvent.LifecycleState.MERGED) {
-      getLockManagerRequester().setServer((String) configurationMap.getHazelcastMap().get(CONFIG_LOCKMANAGER));
+      String lockManager = (String) configurationMap.getHazelcastMap().get(CONFIG_LOCKMANAGER);
+      getLockManagerRequester().setServer(lockManager);
+      checkAndMakeCoordinator(lockManager);
 
       ODistributedServerLog
-          .info(this, nodeName, null, DIRECTION.NONE, "Server merged the existent cluster, lockManager=%s, merging databases...",
+          .info(this, nodeName, null, DIRECTION.NONE, "Server merged the existent cluster, lock=%s, merging databases...",
               getLockManagerServer());
 
       configurationMap.clearLocalCache();
@@ -1135,7 +1206,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
           try {
             // WAIT (MAX 10 SECS) THE LOCK MANAGER IS ONLINE
             ODistributedServerLog.info(this, getLocalNodeName(), null, DIRECTION.NONE,
-                "Merging networks, waiting for the lockManager %s to be reachable...", getLockManagerServer());
+                "Merging networks, waiting for the lock %s to be reachable...", getLockManagerServer());
 
             for (int retry = 0; !getActiveServers().contains(getLockManagerServer()) && retry < 10; ++retry) {
               try {
@@ -1148,7 +1219,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
             final String cs = getLockManagerServer();
 
             ODistributedServerLog
-                .info(this, getLocalNodeName(), null, DIRECTION.NONE, "Merging networks, lockManager=%s (active=%s)...", cs,
+                .info(this, getLocalNodeName(), null, DIRECTION.NONE, "Merging networks, lock=%s (active=%s)...", cs,
                     getActiveServers().contains(getLockManagerServer()));
 
             for (final String databaseName : getMessageService().getDatabases()) {
@@ -1167,7 +1238,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
             }
           } finally {
             ODistributedServerLog
-                .warn(this, getLocalNodeName(), null, DIRECTION.NONE, "Network merged, lockManager=%s...", getLockManagerServer());
+                .warn(this, getLocalNodeName(), null, DIRECTION.NONE, "Network merged, lock=%s...", getLockManagerServer());
             setNodeStatus(NODE_STATUS.ONLINE);
           }
         }
@@ -1175,6 +1246,11 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
       t.setUncaughtExceptionHandler(new OUncaughtExceptionHandler());
       t.start();
     }
+  }
+
+  private void checkAndMakeCoordinator(String lockManager) {
+    OrientDBDistributed distributed = (OrientDBDistributed) serverInstance.getDatabases();
+    distributed.setCoordinator(lockManager, nodeName.equals(lockManager));
   }
 
   @Override
@@ -1513,7 +1589,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
 
     } catch (Exception e) {
       // IGNORE IT
-      ODistributedServerLog.debug(this, nodeName, nodeLeftName, DIRECTION.NONE, "Error on electing new lockManager", e);
+      ODistributedServerLog.debug(this, nodeName, nodeLeftName, DIRECTION.NONE, "Error on electing new lock", e);
     }
 
     if (nodeLeftName.equals(getLockManagerRequester().getServer())) {
@@ -1589,6 +1665,8 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
             "Removed node id=%s name=%s has not being recognized. Remove the node manually (registeredNodes=%s)", member,
             nodeLeftName, registeredNodes);
       }
+      OrientDBDistributed distributed = (OrientDBDistributed) serverInstance.getDatabases();
+      distributed.nodeLeave(nodeLeftName);
 
       for (String databaseName : getManagedDatabases()) {
         try {
@@ -1599,6 +1677,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
               "Cannot re-balance the cluster for database '%s' because the Lock Manager is not available (err=%s)", databaseName,
               e.getMessage());
         }
+
       }
 
       if (nodeLeftName.equalsIgnoreCase(nodeName))
@@ -1633,8 +1712,9 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
 
       final String originalLockManager = lockManagerServer;
 
-      ODistributedServerLog.debug(this, nodeName, originalLockManager, DIRECTION.OUT,
-          "lockManager '%s' is unreachable, electing a new lockManager...", originalLockManager);
+      ODistributedServerLog
+          .debug(this, nodeName, originalLockManager, DIRECTION.OUT, "lock '%s' is unreachable, electing a new lock...",
+              originalLockManager);
 
       int lockManagerServerId = -1;
       if (lockManagerServer != null && registeredNodeByName.containsKey(lockManagerServer))
@@ -1657,16 +1737,17 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
           // TODO: IMPROVE ELECTION BY CHECKING AL THE NODES AGREE ON IT
 
           ODistributedServerLog
-              .debug(this, nodeName, newServer, DIRECTION.OUT, "Trying to elected server '%s' as new lockManager (old=%s)...",
-                  newServer, originalLockManager);
+              .debug(this, nodeName, newServer, DIRECTION.OUT, "Trying to elected server '%s' as new lock (old=%s)...", newServer,
+                  originalLockManager);
 
           try {
             getLockManagerRequester().setServer(newServer);
+            checkAndMakeCoordinator(newServer);
 
             configurationMap.put(CONFIG_LOCKMANAGER, getLockManagerRequester().getServer());
 
             ODistributedServerLog
-                .info(this, nodeName, newServer, DIRECTION.OUT, "Elected server '%s' as new lockManager (old=%s)", newServer,
+                .info(this, nodeName, newServer, DIRECTION.OUT, "Elected server '%s' as new lock (old=%s)", newServer,
                     originalLockManager);
 
             break;
@@ -1674,8 +1755,8 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
           } catch (Exception e) {
             // NO SERVER RESPONDED, THE SERVER COULD BE ISOLATED, GO AHEAD WITH THE NEXT IN THE LIST
             ODistributedServerLog
-                .info(this, nodeName, newServer, DIRECTION.OUT, "Error on electing server '%s' as new lockManager (error: %s)",
-                    newServer, e);
+                .info(this, nodeName, newServer, DIRECTION.OUT, "Error on electing server '%s' as new lock (error: %s)", newServer,
+                    e);
           }
         }
       }
@@ -1724,13 +1805,16 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
 
       activeNodesNamesByUuid.put(member.getUuid(), joinedNodeName);
       activeNodesUuidByName.put(joinedNodeName, member.getUuid());
-
+      ORemoteServerController network = null;
       try {
-        getRemoteServer(joinedNodeName);
+        network = getRemoteServer(joinedNodeName);
       } catch (IOException e) {
         ODistributedServerLog
             .error(this, nodeName, joinedNodeName, DIRECTION.OUT, "Error on connecting to node %s", joinedNodeName);
       }
+      OrientDBDistributed distributed = (OrientDBDistributed) serverInstance.getDatabases();
+
+      distributed.nodeJoin(joinedNodeName, new ODistributedChannelBinaryProtocol(getLocalNodeName(), network));
 
       ODistributedServerLog.info(this, nodeName, getNodeName(member), DIRECTION.IN,
           "Added node configuration id=%s name=%s, now %d nodes are configured", member, getNodeName(member), activeNodes.size());
@@ -1740,10 +1824,11 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
         l.onNodeJoined(joinedNodeName);
 
       // FORCE THE ALIGNMENT FOR ALL THE ONLINE DATABASES AFTER THE JOIN ONLY IF AUTO-DEPLOY IS SET
-      for (String db : messageService.getDatabases())
-        if (getDatabaseConfiguration(db).isAutoDeploy() && getDatabaseStatus(joinedNodeName, db) == DB_STATUS.ONLINE)
+      for (String db : messageService.getDatabases()) {
+        if (getDatabaseConfiguration(db).isAutoDeploy() && getDatabaseStatus(joinedNodeName, db) == DB_STATUS.ONLINE) {
           setDatabaseStatus(joinedNodeName, db, DB_STATUS.NOT_AVAILABLE);
-
+        }
+      }
       dumpServersStatus();
     }
   }
@@ -1764,8 +1849,9 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
 
         if (lockManagerServer != null && lockManagerServer.equals(nodeName)) {
           // LAST LOCK MANAGER WAS CURRENT NODE? TRY TO FORCE A NEW ELECTION
-          OLogManager.instance().info(this, "Found lockManager as current node, even if it was offline. Forcing a new election...");
+          OLogManager.instance().info(this, "Found lock as current node, even if it was offline. Forcing a new election...");
           getLockManagerRequester().setServer(lockManagerServer);
+          checkAndMakeCoordinator(lockManagerServer);
           lockManagerServer = electNewLockManager();
           break;
         }
@@ -1782,6 +1868,7 @@ public class OHazelcastPlugin extends ODistributedAbstractPlugin
     }
 
     getLockManagerRequester().setServer(lockManagerServer);
+    checkAndMakeCoordinator(lockManagerServer);
 
     OLogManager.instance().info(this, "Distributed Lock Manager server is '%s'", lockManagerServer);
   }

@@ -114,6 +114,7 @@
         <module>tools</module>
         <module>tests</module>
         <module>distributed</module>
+        <module>distributed-v2</module>
         <module>graphdb</module>
         <module>lucene</module>
         <module>jdbc</module>
@@ -242,7 +243,8 @@
         <!--Override with the given url on external modules-->
         <!--<license.location>https://github.com/orientechnologies/orientdb/raw/develop/ODB-ASL-LICENSE.txt</license.location>-->
         <heapSize>2048m</heapSize>
-        <javaassist.version>3.22.0-GA</javaassist.version>
+        <javaassist.version>3.23.1-GA</javaassist.version>
+        <jaxb.api.version>2.3.0</jaxb.api.version>
     </properties>
 
     <build>

@@ -29,7 +29,12 @@ import com.orientechnologies.common.io.OIOException;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.util.OCallable;
 import com.orientechnologies.common.util.OPair;
-import com.orientechnologies.orient.core.command.*;
+import com.orientechnologies.orient.core.command.OCommandDistributedReplicateRequest;
+import com.orientechnologies.orient.core.command.OCommandExecutor;
+import com.orientechnologies.orient.core.command.OCommandManager;
+import com.orientechnologies.orient.core.command.OCommandOutputListener;
+import com.orientechnologies.orient.core.command.OCommandRequestText;
+import com.orientechnologies.orient.core.command.ODistributedCommand;
 import com.orientechnologies.orient.core.command.script.OCommandScript;
 import com.orientechnologies.orient.core.config.OContextConfiguration;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
@@ -43,7 +48,11 @@ import com.orientechnologies.orient.core.db.OScenarioThreadLocal.RUN_MODE;
 import com.orientechnologies.orient.core.db.record.OCurrentStorageComponentsFactory;
 import com.orientechnologies.orient.core.db.record.OPlaceholder;
 import com.orientechnologies.orient.core.db.record.ORecordOperation;
-import com.orientechnologies.orient.core.exception.*;
+import com.orientechnologies.orient.core.exception.OConcurrentModificationException;
+import com.orientechnologies.orient.core.exception.OConfigurationException;
+import com.orientechnologies.orient.core.exception.ODatabaseException;
+import com.orientechnologies.orient.core.exception.ORecordNotFoundException;
+import com.orientechnologies.orient.core.exception.OStorageException;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.id.ORecordId;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
@@ -55,24 +64,64 @@ import com.orientechnologies.orient.core.sql.OCommandExecutorSQLDelegate;
 import com.orientechnologies.orient.core.sql.OCommandExecutorSQLSelect;
 import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.core.sql.functions.OSQLFunctionRuntime;
-import com.orientechnologies.orient.core.storage.*;
+import com.orientechnologies.orient.core.storage.OAutoshardedStorage;
+import com.orientechnologies.orient.core.storage.OCluster;
+import com.orientechnologies.orient.core.storage.OPhysicalPosition;
+import com.orientechnologies.orient.core.storage.ORawBuffer;
+import com.orientechnologies.orient.core.storage.ORecordCallback;
+import com.orientechnologies.orient.core.storage.ORecordMetadata;
+import com.orientechnologies.orient.core.storage.OStorage;
+import com.orientechnologies.orient.core.storage.OStorageOperationResult;
+import com.orientechnologies.orient.core.storage.disk.OLocalPaginatedStorage;
 import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
 import com.orientechnologies.orient.core.storage.impl.local.OFreezableStorageComponent;
-import com.orientechnologies.orient.core.storage.impl.local.paginated.OLocalPaginatedStorage;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.wal.OLogSequenceNumber;
 import com.orientechnologies.orient.core.storage.ridbag.sbtree.OSBTreeCollectionManager;
 import com.orientechnologies.orient.core.tx.OTransactionInternal;
 import com.orientechnologies.orient.enterprise.channel.binary.ODistributedRedirectException;
 import com.orientechnologies.orient.server.OServer;
-import com.orientechnologies.orient.server.distributed.*;
+import com.orientechnologies.orient.server.distributed.OAsynchDistributedOperation;
+import com.orientechnologies.orient.server.distributed.ODistributedConfiguration;
+import com.orientechnologies.orient.server.distributed.ODistributedConfigurationChangedException;
+import com.orientechnologies.orient.server.distributed.ODistributedDatabase;
+import com.orientechnologies.orient.server.distributed.ODistributedException;
 import com.orientechnologies.orient.server.distributed.ODistributedRequest.EXECUTION_MODE;
+import com.orientechnologies.orient.server.distributed.ODistributedRequestId;
+import com.orientechnologies.orient.server.distributed.ODistributedResponse;
+import com.orientechnologies.orient.server.distributed.ODistributedServerLog;
+import com.orientechnologies.orient.server.distributed.ODistributedServerManager;
+import com.orientechnologies.orient.server.distributed.OModifiableDistributedConfiguration;
+import com.orientechnologies.orient.server.distributed.OWriteOperationNotPermittedException;
 import com.orientechnologies.orient.server.distributed.impl.metadata.OClassDistributed;
-import com.orientechnologies.orient.server.distributed.impl.task.*;
-import com.orientechnologies.orient.server.distributed.task.*;
+import com.orientechnologies.orient.server.distributed.impl.task.OBackgroundBackup;
+import com.orientechnologies.orient.server.distributed.impl.task.OCreateRecordTask;
+import com.orientechnologies.orient.server.distributed.impl.task.OReadRecordIfNotLatestTask;
+import com.orientechnologies.orient.server.distributed.impl.task.OReadRecordTask;
+import com.orientechnologies.orient.server.distributed.impl.task.OSQLCommandTask;
+import com.orientechnologies.orient.server.distributed.impl.task.OScriptTask;
+import com.orientechnologies.orient.server.distributed.task.OAbstractCommandTask;
+import com.orientechnologies.orient.server.distributed.task.OAbstractRemoteTask;
+import com.orientechnologies.orient.server.distributed.task.OAbstractReplicatedTask;
+import com.orientechnologies.orient.server.distributed.task.ODistributedOperationException;
+import com.orientechnologies.orient.server.distributed.task.ODistributedRecordLockedException;
+import com.orientechnologies.orient.server.distributed.task.ORemoteTask;
 import com.orientechnologies.orient.server.hazelcast.OHazelcastPlugin;
 
-import java.io.*;
-import java.util.*;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TimeZone;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -95,7 +144,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
   private ODistributedStorageEventListener    eventListener;
 
   private volatile ODistributedConfiguration distributedConfiguration;
-  private volatile File                      lastValidBackup = null;
+  private volatile OBackgroundBackup         lastValidBackup = null;
 
   public ODistributedStorage(final OServer iServer, final String dbName) {
     this.serverInstance = iServer;
@@ -684,7 +733,6 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
     return wrapped.getSBtreeCollectionManager();
   }
 
-
   @Override
   public OStorageOperationResult<Integer> recyclePosition(ORecordId iRecordId, byte[] iContent, int iVersion, byte iRecordType) {
     return wrapped.recyclePosition(iRecordId, iContent, iVersion, iRecordType);
@@ -768,8 +816,8 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
   }
 
   @Override
-  public String incrementalBackup(final String backupDirectory) {
-    return wrapped.incrementalBackup(backupDirectory);
+  public String incrementalBackup(final String backupDirectory, OCallable<Void, Void> started) {
+    return wrapped.incrementalBackup(backupDirectory, started);
   }
 
   @Override
@@ -803,8 +851,6 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
       // REMOVE distributed-config.json and distributed-sync.json files to allow removal of directory
       dropStorageFiles();
     }
-
-    serverInstance.getDatabases().forceDatabaseClose(getName());
 
   }
 
@@ -996,7 +1042,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
     throw new ODistributedException(
         "Error on creating cluster '" + iClusterName + "' on distributed nodes: local and remote ids assigned are different");
   }
-
+  
   public boolean dropCluster(final String iClusterName, final boolean iTruncate) {
     resetLastValidBackup();
     final AtomicBoolean clId = new AtomicBoolean();
@@ -1326,11 +1372,11 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
           "Cannot execute write operation (" + operation + ") on node '" + localNodeName + "' because is non a master");
   }
 
-  public File getLastValidBackup() {
+  public OBackgroundBackup getLastValidBackup() {
     return lastValidBackup;
   }
 
-  public void setLastValidBackup(final File lastValidBackup) {
+  public void setLastValidBackup(final OBackgroundBackup lastValidBackup) {
     this.lastValidBackup = lastValidBackup;
   }
 
@@ -1360,9 +1406,12 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
   }
 
   protected void dropStorageFiles() {
+    dropStorageFiles((OLocalPaginatedStorage) wrapped);
+  }
+
+  public static void dropStorageFiles(OLocalPaginatedStorage storage) {
     // REMOVE distributed-config.json and distributed-sync.json files to allow removal of directory
-    final File dCfg = new File(
-        ((OLocalPaginatedStorage) wrapped).getStoragePath() + "/" + getDistributedManager().FILE_DISTRIBUTED_DB_CONFIG);
+    final File dCfg = new File(storage.getStoragePath() + "/" + ODistributedServerManager.FILE_DISTRIBUTED_DB_CONFIG);
 
     try {
       if (dCfg.exists()) {
@@ -1373,8 +1422,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
         }
       }
 
-      final File dCfg2 = new File(
-          ((OLocalPaginatedStorage) wrapped).getStoragePath() + "/" + ODistributedDatabaseImpl.DISTRIBUTED_SYNC_JSON_FILENAME);
+      final File dCfg2 = new File(storage.getStoragePath() + "/" + ODistributedDatabaseImpl.DISTRIBUTED_SYNC_JSON_FILENAME);
       if (dCfg2.exists()) {
         for (int i = 0; i < 10; ++i) {
           if (dCfg2.delete())

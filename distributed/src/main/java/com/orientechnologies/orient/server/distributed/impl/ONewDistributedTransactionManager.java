@@ -27,16 +27,25 @@ import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.id.ORecordId;
 import com.orientechnologies.orient.core.record.ORecord;
 import com.orientechnologies.orient.core.storage.ORecordDuplicatedException;
+import com.orientechnologies.orient.core.storage.disk.OLocalPaginatedStorage;
 import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
-import com.orientechnologies.orient.core.storage.impl.local.paginated.OLocalPaginatedStorage;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.wal.OLogSequenceNumber;
 import com.orientechnologies.orient.core.tx.OTransaction;
 import com.orientechnologies.orient.core.tx.OTransactionInternal;
-import com.orientechnologies.orient.server.distributed.*;
+import com.orientechnologies.orient.server.distributed.ODistributedConfiguration;
+import com.orientechnologies.orient.server.distributed.ODistributedDatabase;
 import com.orientechnologies.orient.server.distributed.ODistributedRequest.EXECUTION_MODE;
+import com.orientechnologies.orient.server.distributed.ODistributedRequestId;
+import com.orientechnologies.orient.server.distributed.ODistributedServerLog;
+import com.orientechnologies.orient.server.distributed.ODistributedServerManager;
 import com.orientechnologies.orient.server.distributed.impl.task.OTransactionPhase1Task;
 import com.orientechnologies.orient.server.distributed.impl.task.OTransactionPhase2Task;
-import com.orientechnologies.orient.server.distributed.impl.task.transaction.*;
+import com.orientechnologies.orient.server.distributed.impl.task.transaction.OTransactionResultPayload;
+import com.orientechnologies.orient.server.distributed.impl.task.transaction.OTxConcurrentModification;
+import com.orientechnologies.orient.server.distributed.impl.task.transaction.OTxException;
+import com.orientechnologies.orient.server.distributed.impl.task.transaction.OTxLockTimeout;
+import com.orientechnologies.orient.server.distributed.impl.task.transaction.OTxSuccess;
+import com.orientechnologies.orient.server.distributed.impl.task.transaction.OTxUniqueIndex;
 import com.orientechnologies.orient.server.distributed.task.ODistributedOperationException;
 import com.orientechnologies.orient.server.distributed.task.ODistributedRecordLockedException;
 
@@ -102,6 +111,8 @@ public class ONewDistributedTransactionManager {
     //TODO:check the lsn
     txTask.setLastLSN(getLsn());
 
+    final Set sentNodes = new HashSet(nodes);
+
     iTx.setStatus(OTransaction.TXSTATUS.COMMITTING);
 
     // SYNCHRONOUS CALL: REPLICATE IT
@@ -114,7 +125,7 @@ public class ONewDistributedTransactionManager {
               return responseManager;
             }));
 
-    handleResponse(requestId, responseManager, involvedClusters, nodes, database, iTx);
+    handleResponse(requestId, responseManager, involvedClusters, sentNodes, database, iTx);
 
     // OK, DISTRIBUTED COMMIT SUCCEED
     return;
@@ -170,7 +181,8 @@ public class ONewDistributedTransactionManager {
       }
       case OTxLockTimeout.ID:
         sendPhase2Task(involvedClusters, nodes, new OTransactionPhase2Task(requestId, false, involvedClustersIds, getLsn()));
-        throw new ODistributedRecordLockedException("DeadLock", new ORecordId(-1, -1), requestId, database.getConfiguration().getValueAsInteger(OGlobalConfiguration.DISTRIBUTED_ATOMIC_LOCK_TIMEOUT));
+        throw new ODistributedRecordLockedException("DeadLock", new ORecordId(-1, -1), requestId,
+            database.getConfiguration().getValueAsInteger(OGlobalConfiguration.DISTRIBUTED_ATOMIC_LOCK_TIMEOUT));
       }
 
       for (OTransactionResultPayload result : responseManager.getAllResponses()) {
@@ -187,7 +199,8 @@ public class ONewDistributedTransactionManager {
         switch (result.getResponseType()) {
         case OTxLockTimeout.ID:
           sendPhase2Task(involvedClusters, nodes, new OTransactionPhase2Task(requestId, false, involvedClustersIds, getLsn()));
-          throw new ODistributedRecordLockedException("DeadLock", new ORecordId(-1, -1), requestId, database.getConfiguration().getValueAsInteger(OGlobalConfiguration.DISTRIBUTED_ATOMIC_LOCK_TIMEOUT));
+          throw new ODistributedRecordLockedException("DeadLock", new ORecordId(-1, -1), requestId,
+              database.getConfiguration().getValueAsInteger(OGlobalConfiguration.DISTRIBUTED_ATOMIC_LOCK_TIMEOUT));
         case OTxSuccess.ID:
           messages.add("success");
           break;
