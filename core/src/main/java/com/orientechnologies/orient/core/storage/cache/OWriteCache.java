@@ -26,12 +26,10 @@ import com.orientechnologies.orient.core.storage.cache.local.OBackgroundExceptio
 import com.orientechnologies.orient.core.storage.impl.local.OLowDiskSpaceListener;
 import com.orientechnologies.orient.core.storage.impl.local.OPageIsBrokenListener;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.wal.OLogSequenceNumber;
-import com.orientechnologies.orient.core.storage.impl.local.statistic.OPerformanceStatisticManager;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
 
 public interface OWriteCache {
   /**
@@ -91,9 +89,12 @@ public interface OWriteCache {
 
   boolean exists(long fileId);
 
-  CountDownLatch store(long fileId, long pageIndex, OCachePointer dataPointer);
+  void store(long fileId, long pageIndex, OCachePointer dataPointer);
 
-  OCachePointer[] load(long fileId, long startPageIndex, int pageCount, boolean addNewPages, OModifiableBoolean cacheHit,
+  void checkCacheOverflow() throws InterruptedException;
+
+  OCachePointer[] load(long fileId, long startPageIndex, int pageCount, boolean addNewPages, boolean initNewPage,
+      OModifiableBoolean cacheHit,
       boolean verifyChecksums) throws IOException;
 
   void flush(long fileId);
@@ -212,9 +213,7 @@ public interface OWriteCache {
    */
   long externalFileId(int fileId);
 
-  OLogSequenceNumber getMinimalNotFlushedLSN();
+  Long getMinimalNotFlushedSegment();
 
-  void updateDirtyPagesTable(OCachePointer pointer);
-
-  OPerformanceStatisticManager getPerformanceStatisticManager();
+  void updateDirtyPagesTable(OCachePointer pointer, OLogSequenceNumber startLSN);
 }

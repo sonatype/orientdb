@@ -242,12 +242,13 @@
         <!--Override with the given url on external modules-->
         <!--<license.location>https://github.com/orientechnologies/orientdb/raw/develop/ODB-ASL-LICENSE.txt</license.location>-->
         <heapSize>2048m</heapSize>
-        <javaassist.version>3.22.0-GA</javaassist.version>
+        <javaassist.version>3.23.1-GA</javaassist.version>
+        <jaxb.api.version>2.3.0</jaxb.api.version>
 
         <!--
         SONATYPE: used by our patched orientdb.properties to record+log the upstream version
         -->
-        <upstream.version>3.0.7-SNAPSHOT</upstream.version>
+        <upstream.version>3.0.14-SNAPSHOT</upstream.version>
     </properties>
 
     <build>

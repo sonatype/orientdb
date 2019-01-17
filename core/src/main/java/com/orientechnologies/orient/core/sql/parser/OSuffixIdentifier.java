@@ -2,6 +2,7 @@
 /* JavaCCOptions:MULTI=true,NODE_USES_PARSER=false,VISITOR=true,TRACK_TOKENS=true,NODE_PREFIX=O,NODE_EXTENDS=,NODE_FACTORY=,SUPPORT_CLASS_VISIBILITY_PUBLIC=true */
 package com.orientechnologies.orient.core.sql.parser;
 
+import com.orientechnologies.common.util.OResettable;
 import com.orientechnologies.orient.core.collate.OCollate;
 import com.orientechnologies.orient.core.command.OCommandContext;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
@@ -21,7 +22,7 @@ public class OSuffixIdentifier extends SimpleNode {
 
   protected OIdentifier      identifier;
   protected ORecordAttribute recordAttribute;
-  protected boolean star = false;
+  protected boolean          star = false;
 
   public OSuffixIdentifier(int id) {
     super(id);
@@ -62,7 +63,10 @@ public class OSuffixIdentifier extends SimpleNode {
     }
     if (identifier != null) {
       String varName = identifier.getStringValue();
-      if (ctx != null && ctx.getVariable(varName) != null) {
+      if (ctx != null && varName.equalsIgnoreCase("$parent")) {
+        return ctx.getParent();
+      }
+      if (varName.startsWith("$") && ctx != null && ctx.getVariable(varName) != null) {
         return ctx.getVariable(varName);
       }
 
@@ -73,13 +77,25 @@ public class OSuffixIdentifier extends SimpleNode {
             return meta.get(varName);
           }
         }
-        return ((OElement) iCurrentRecord.getRecord()).getProperty(varName);
+        OElement rec = iCurrentRecord.getRecord();
+        if (rec == null) {
+          return null;
+        }
+        Object result = rec.getProperty(varName);
+        if (result == null && ctx != null) {
+          result = ctx.getVariable(varName);
+        }
+        return result;
       }
       return null;
     }
-    if (recordAttribute != null) {
-      return ((OElement) iCurrentRecord.getRecord()).getProperty(recordAttribute.name);
+    if (recordAttribute != null && iCurrentRecord != null) {
+      OElement rec = iCurrentRecord instanceof OElement ? (OElement) iCurrentRecord : iCurrentRecord.getRecord();
+      if (rec != null) {
+        return recordAttribute.evaluate(rec, ctx);
+      }
     }
+
     return null;
   }
 
@@ -92,8 +108,12 @@ public class OSuffixIdentifier extends SimpleNode {
       if (ctx != null && varName.equalsIgnoreCase("$parent")) {
         return ctx.getParent();
       }
-      if (ctx != null && ctx.getVariable(varName) != null) {
-        return ctx.getVariable(varName);
+      if (ctx != null && varName.startsWith("$") && ctx.getVariable(varName) != null) {
+        Object result = ctx.getVariable(varName);
+        if (result instanceof OResettable) {
+          ((OResettable) result).reset();
+        }
+        return result;
       }
       if (iCurrentRecord != null) {
         if (iCurrentRecord.hasProperty(varName)) {

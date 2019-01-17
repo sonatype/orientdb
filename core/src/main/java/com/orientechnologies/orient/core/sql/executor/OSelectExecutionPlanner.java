@@ -56,9 +56,9 @@ public class OSelectExecutionPlanner {
 
   }
 
-  public OInternalExecutionPlan createExecutionPlan(OCommandContext ctx, boolean enableProfiling) {
+  public OInternalExecutionPlan createExecutionPlan(OCommandContext ctx, boolean enableProfiling, boolean useCache) {
     ODatabaseDocumentInternal db = (ODatabaseDocumentInternal) ctx.getDatabase();
-    if (!enableProfiling && statement.executinPlanCanBeCached()) {
+    if (useCache && !enableProfiling && statement.executinPlanCanBeCached()) {
       OExecutionPlan plan = OExecutionPlanCache.get(statement.getOriginalStatement(), ctx, db);
       if (plan != null) {
         return (OInternalExecutionPlan) plan;
@@ -102,7 +102,7 @@ public class OSelectExecutionPlanner {
 
     handleProjectionsBlock(result, info, ctx, enableProfiling);
 
-    if (!enableProfiling && statement.executinPlanCanBeCached() && result.canBeCached()
+    if (useCache && !enableProfiling && statement.executinPlanCanBeCached() && result.canBeCached()
         && OExecutionPlanCache.getLastInvalidation(db) < planningStart) {
       OExecutionPlanCache.put(statement.getOriginalStatement(), result, (ODatabaseDocumentInternal) ctx.getDatabase());
     }
@@ -119,7 +119,7 @@ public class OSelectExecutionPlanner {
       boolean enableProfiling) {
     handleProjectionsBeforeOrderBy(result, info, ctx, enableProfiling);
 
-    if (info.expand || info.unwind != null) {
+    if (info.expand || info.unwind != null || info.groupBy != null) {
 
       handleProjections(result, info, ctx, enableProfiling);
       handleExpand(result, info, ctx, enableProfiling);
@@ -133,7 +133,7 @@ public class OSelectExecutionPlanner {
       }
     } else {
       handleOrderBy(result, info, ctx, enableProfiling);
-      if (info.distinct) {
+      if (info.distinct || info.groupBy != null) {
         handleProjections(result, info, ctx, enableProfiling);
         handleDistinct(result, info, ctx, enableProfiling);
         if (info.skip != null) {
@@ -539,7 +539,7 @@ public class OSelectExecutionPlanner {
   private boolean isMinimalQuery(QueryPlanningInfo info) {
     if (info.projectionAfterOrderBy != null || info.globalLetClause != null || info.perRecordLetClause != null
         || info.whereClause != null || info.flattenedWhereClause != null || info.groupBy != null || info.orderBy != null
-        || info.unwind != null || info.skip != null || info.limit != null) {
+        || info.unwind != null || info.skip != null) {
       return false;
     }
     return true;
@@ -558,13 +558,18 @@ public class OSelectExecutionPlanner {
     return true;
   }
 
-  private boolean isCount(OProjection aggregateProjection, OProjection projection) {
-    if (aggregateProjection == null || projection == null || aggregateProjection.getItems().size() != 1
-        || projection.getItems().size() != 1) {
+  private static boolean isCountOnly(QueryPlanningInfo info) {
+    if (info.aggregateProjection == null || info.projection == null || info.aggregateProjection.getItems().size() != 1
+        || info.projection.getItems().size() != 1) {
       return false;
     }
-    OProjectionItem item = aggregateProjection.getItems().get(0);
-    return item.getExpression().isCount();
+    OProjectionItem item = info.aggregateProjection.getItems().get(0);
+    OExpression exp = item.getExpression();
+    if (exp.getMathExpression() != null && exp.getMathExpression() instanceof OBaseExpression) {
+      OBaseExpression base = (OBaseExpression) exp.getMathExpression();
+      return base.isCount() && base.getModifier() == null;
+    }
+    return false;
   }
 
   public static void handleUnwind(OSelectExecutionPlan result, QueryPlanningInfo info, OCommandContext ctx,
@@ -576,7 +581,9 @@ public class OSelectExecutionPlanner {
 
   private static void handleDistinct(OSelectExecutionPlan result, QueryPlanningInfo info, OCommandContext ctx,
       boolean profilingEnabled) {
-    result.chain(new DistinctExecutionStep(ctx, profilingEnabled));
+    if (info.distinct) {
+      result.chain(new DistinctExecutionStep(ctx, profilingEnabled));
+    }
   }
 
   private static void handleProjectionsBeforeOrderBy(OSelectExecutionPlan result, QueryPlanningInfo info, OCommandContext ctx,
@@ -594,7 +601,7 @@ public class OSelectExecutionPlanner {
       }
       if (info.aggregateProjection != null) {
         result.chain(new AggregateProjectionCalculationStep(info.aggregateProjection, info.groupBy, ctx, profilingEnabled));
-        if (isCountStar(info) && info.groupBy == null) {
+        if (isCountOnly(info) && info.groupBy == null) {
           result.chain(new GuaranteeEmptyCountStep(info.aggregateProjection.getItems().get(0), ctx, profilingEnabled));
         }
 
@@ -757,6 +764,7 @@ public class OSelectExecutionPlanner {
           OIdentifier newAlias = new OIdentifier("_$$$ORDER_BY_ALIAS$$$_" + (nextAliasCount++));
           newProj.setAlias(newAlias);
           item.setAlias(newAlias.getStringValue());
+          item.setModifier(null);
           result.add(newProj);
         }
       }
@@ -862,7 +870,7 @@ public class OSelectExecutionPlanner {
       if (!found) {
         OProjectionItem newItem = new OProjectionItem(-1);
         newItem.setExpression(exp);
-        OIdentifier groupByAlias = new OIdentifier("_$$$GROUP_BY_ALIAS$$$_" + i);
+        OIdentifier groupByAlias = new OIdentifier("_$$$GROUP_BY_ALIAS$$$_" + (i++));
         newItem.setAlias(groupByAlias);
         if (info.preAggregateProjection == null) {
           info.preAggregateProjection = new OProjection(-1);
@@ -1363,9 +1371,13 @@ public class OSelectExecutionPlanner {
   }
 
   private void handleLet(OSelectExecutionPlan plan, QueryPlanningInfo info, OCommandContext ctx, boolean profilingEnabled) {
+    // this could be invoked multiple times
+    // so it can be optimized
+    // checking whether the execution plan already contains some LET steps
+    // and in case skip
     if (info.perRecordLetClause != null) {
       List<OLetItem> items = info.perRecordLetClause.getItems();
-      if (info.distributedPlanCreated) {
+      if (plan.steps.size() > 0 || info.distributedPlanCreated) {
         for (OLetItem item : items) {
           if (item.getExpression() != null) {
             plan.chain(new LetExpressionStep(item.getVarName(), item.getExpression(), ctx, profilingEnabled));
@@ -1508,6 +1520,9 @@ public class OSelectExecutionPlanner {
             subPlan.chain(new DistinctExecutionStep(ctx, profilingEnabled));
           }
           if (!block.getSubBlocks().isEmpty()) {
+            if ((info.perRecordLetClause != null && refersToLet(block.getSubBlocks()))) {
+              handleLet(subPlan, info, ctx, profilingEnabled);
+            }
             subPlan.chain(new FilterStep(createWhereFrom(block), ctx, profilingEnabled));
           }
           resultSubPlans.add(subPlan);
@@ -1517,6 +1532,9 @@ public class OSelectExecutionPlanner {
           OSelectExecutionPlan subPlan = new OSelectExecutionPlan(ctx);
           subPlan.chain(step);
           if (!block.getSubBlocks().isEmpty()) {
+            if ((info.perRecordLetClause != null && refersToLet(block.getSubBlocks()))) {
+              handleLet(subPlan, info, ctx, profilingEnabled);
+            }
             subPlan.chain(new FilterStep(createWhereFrom(block), ctx, profilingEnabled));
           }
           resultSubPlans.add(subPlan);
@@ -1563,6 +1581,9 @@ public class OSelectExecutionPlanner {
           plan.chain(step);
           plan.chain(new FilterByClustersStep(filterClusters, ctx, profilingEnabled));
           if (!block.getSubBlocks().isEmpty()) {
+            if ((info.perRecordLetClause != null && refersToLet(block.getSubBlocks()))) {
+              handleLet(plan, info, ctx, profilingEnabled);
+            }
             plan.chain(new FilterStep(createWhereFrom(block), ctx, profilingEnabled));
           }
         } else {
@@ -1590,6 +1611,18 @@ public class OSelectExecutionPlanner {
     } else {
       return false;
     }
+  }
+
+  private boolean refersToLet(List<OBooleanExpression> subBlocks) {
+    if (subBlocks == null) {
+      return false;
+    }
+    for (OBooleanExpression exp : subBlocks) {
+      if (exp.toString().startsWith("$")) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private List<OBinaryCondition> filterIndexedFunctionsWithoutIndex(List<OBinaryCondition> indexedFunctionConditions,
@@ -1636,6 +1669,9 @@ public class OSelectExecutionPlanner {
       String orderType = null;
       for (int i = 0; i < info.orderBy.getItems().size(); i++) {
         OOrderByItem orderItem = info.orderBy.getItems().get(i);
+        if (orderItem.getCollate() != null) {
+          return false;
+        }
         String indexField = indexFields.get(i);
         if (i == 0) {
           orderType = orderItem.getType();
@@ -1808,6 +1844,16 @@ public class OSelectExecutionPlanner {
         info.orderApplied = true;
       }
       if (desc.remainingCondition != null && !desc.remainingCondition.isEmpty()) {
+        if ((info.perRecordLetClause != null && refersToLet(Collections.singletonList(desc.remainingCondition)))) {
+          OSelectExecutionPlan stubPlan = new OSelectExecutionPlan(ctx);
+          boolean prevCreatedDist = info.distributedPlanCreated;
+          info.distributedPlanCreated = true; //little hack, check this!!!
+          handleLet(stubPlan, info, ctx, profilingEnabled);
+          for (OExecutionStep step : stubPlan.getSteps()) {
+            result.add((OExecutionStepInternal) step);
+          }
+          info.distributedPlanCreated = prevCreatedDist;
+        }
         result.add(new FilterStep(createWhereFrom(desc.remainingCondition), ctx, profilingEnabled));
       }
     } else {
@@ -1818,6 +1864,10 @@ public class OSelectExecutionPlanner {
   }
 
   private boolean fullySorted(OOrderBy orderBy, OAndBlock conditions, OIndex idx) {
+    if (orderBy.getItems().stream().anyMatch(x -> x.getCollate() != null)) {
+      return false;
+    }
+
     if (!idx.supportsOrderedIterations())
       return false;
 

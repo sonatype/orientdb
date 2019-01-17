@@ -5,6 +5,7 @@ package com.orientechnologies.orient.core.sql.parser;
 import com.orientechnologies.orient.core.command.OCommandContext;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.record.impl.ODocumentHelper;
 import com.orientechnologies.orient.core.sql.executor.OResult;
 import com.orientechnologies.orient.core.sql.executor.OResultInternal;
 
@@ -69,6 +70,36 @@ public class OJson extends SimpleNode {
     return doc;
   }
 
+  private ODocument toDocument(OResult source, OCommandContext ctx, String className){
+    ODocument retDoc = new ODocument(className);
+    for (OJsonItem item : items) {
+      String name = item.getLeftValue();
+      if (name == null || ODocumentHelper.getReservedAttributes().contains(name.toLowerCase(Locale.ENGLISH))) {
+        continue;
+      }
+      Object value = item.right.execute(source, ctx);
+      retDoc.field(name, value);
+    }
+    return retDoc;
+  }
+
+  /**
+   * choosing return type is based on existence of @class and @type field in JSON
+   * @param source
+   * @param ctx
+   * @return
+   */
+  public Object toObjectDetermineType(OResult source, OCommandContext ctx){
+    String className = getClassNameForDocument(ctx);
+    String type =  getTypeForDocument(ctx);
+    if (className != null || (type != null && "d".equalsIgnoreCase(type))) {
+      return toDocument(source, ctx, className);
+    }
+    else{
+      return toMap(source, ctx);
+    }
+  }
+
   public Map<String, Object> toMap(OIdentifiable source, OCommandContext ctx) {
     Map<String, Object> doc = new HashMap<String, Object>();
     for (OJsonItem item : items) {
@@ -101,6 +132,16 @@ public class OJson extends SimpleNode {
     for (OJsonItem item : items) {
       String left = item.getLeftValue();
       if (left != null && left.toLowerCase(Locale.ENGLISH).equals("@class")) {
+        return "" + item.right.execute((OResult) null, ctx);
+      }
+    }
+    return null;
+  }
+
+  private String getTypeForDocument(OCommandContext ctx) {
+    for (OJsonItem item : items) {
+      String left = item.getLeftValue();
+      if (left != null && left.toLowerCase(Locale.ENGLISH).equals("@type")) {
         return "" + item.right.execute((OResult) null, ctx);
       }
     }

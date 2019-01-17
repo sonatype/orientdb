@@ -58,8 +58,12 @@ public class OMemoryAndLocalPaginatedEnginesInitializer {
   }
 
   private void configureDefaults() {
-    if (!OGlobalConfiguration.DISK_CACHE_SIZE.isChanged())
+    if (!OGlobalConfiguration.DISK_CACHE_SIZE.isChanged()) {
       configureDefaultDiskCacheSize();
+    } else {
+      final long diskCacheInMB = OGlobalConfiguration.DISK_CACHE_SIZE.getValueAsInteger();
+      OLogManager.instance().infoNoDb(null, "OrientDB config DISKCACHE=%,dMB", diskCacheInMB);
+    }
 
     if (!OGlobalConfiguration.WAL_RESTORE_BATCH_SIZE.isChanged())
       configureDefaultWalRestoreBatchSize();
@@ -154,7 +158,7 @@ public class OMemoryAndLocalPaginatedEnginesInitializer {
         return memoryLimit;
       }
 
-      return (int) ((memoryLimit * (100.0 - percent)) / 100.0);
+      return (long) (memoryLimit * ((100.0 - percent) / 100.0));
     } else if (lastChar == 'b') {
       final String bytesValue = memoryLeft.substring(0, memoryLeft.length() - 1);
       final long bytes;

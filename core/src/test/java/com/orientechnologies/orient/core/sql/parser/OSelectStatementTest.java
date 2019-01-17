@@ -12,7 +12,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 public class OSelectStatementTest {
 
@@ -789,6 +792,15 @@ public class OSelectStatementTest {
     checkRightSyntax("select from V WHERE foo containsany ['foo', 'bar']");
     checkRightSyntax("select from V WHERE foo CONTAINSANY ['foo', 'bar']");
     checkWrongSyntax("select from V WHERE foo CONTAINSANY ");
+  }
+
+  @Test
+  public void testOrderByCollate() {
+    checkRightSyntax("select from V order by foo asc collate ci");
+    checkRightSyntax("select from V order by foo asc collate ci, bar desc collate ci");
+    checkRightSyntax("select from V order by foo collate ci, bar collate ci");
+    checkWrongSyntax("select from V order by foo collate ");
+    checkWrongSyntax("select from V order by foo asc collate ");
   }
 
   protected OrientSql getParserFor(String string) {

@@ -1129,6 +1129,9 @@ OStatement StatementInternal():
                 |
                 LOOKAHEAD(HaSyncClusterStatement())
                 result = HaSyncClusterStatement()
+                |
+                LOOKAHEAD(HaSetStatement())
+                result = HaSetStatement()
             )
         )
         |
@@ -1818,7 +1821,13 @@ OInsertBody InsertBody():
                 )*
             )
             |
-            ( <CONTENT> jjtThis.content = Json() )
+            ( <CONTENT>
+                (
+                    jjtThis.content = Json()
+                    |
+                    jjtThis.contentInputParam = InputParameter()
+                )
+            )
          )
     )
     { return jjtThis; }
@@ -3205,6 +3214,9 @@ OBooleanExpression MatchesCondition():
     (
     	jjtThis.expression = Expression() <MATCHES>
     	(
+    	    LOOKAHEAD(Expression())
+    	    ( jjtThis.rightExpression = Expression() )
+    	    |
     	    ( jjtThis.right = String() )
     	    |
     	    ( token = <CHARACTER_LITERAL> {jjtThis.right = token.image;} )
@@ -3247,6 +3259,7 @@ OOrderBy OrderBy():
                 )
             )
             [ <DESC> { lastItem.type = OOrderByItem.DESC; }| <ASC>  { lastItem.type = OOrderByItem.ASC; }]
+            [ <COLLATE> lastItem.collate = Expression() ]
         )
         |
         (
@@ -3268,6 +3281,7 @@ OOrderBy OrderBy():
                 )
             )
             [ <DESC> { lastItem.type = OOrderByItem.DESC; }| <ASC>  { lastItem.type = OOrderByItem.ASC; }]
+            [ <COLLATE> lastItem.collate = Expression() ]
             <RPAREN>
         )
 	)
@@ -3292,6 +3306,7 @@ OOrderBy OrderBy():
                     )
                 )
                 [ <DESC> { lastItem.type = OOrderByItem.DESC; }| <ASC>  { lastItem.type = OOrderByItem.ASC; }]
+                [ <COLLATE> lastItem.collate = Expression() ]
             )
             |
             (
@@ -3313,6 +3328,7 @@ OOrderBy OrderBy():
                     )
                 )
                 [ <DESC> { lastItem.type = OOrderByItem.DESC; }| <ASC>  { lastItem.type = OOrderByItem.ASC; }]
+                [ <COLLATE> lastItem.collate = Expression() ]
                 <RPAREN>
             )
         )
@@ -5020,6 +5036,21 @@ OHaSyncClusterStatement HaSyncClusterStatement():
                 "-merge" {jjtThis.modeMerge = true;}
             )
         ]
+    )
+    { return jjtThis; }
+}
+
+OHaSetStatement HaSetStatement():
+{
+ Token token;
+}
+{
+    (
+        <HA> <SET>
+        jjtThis.operation = Identifier()
+        jjtThis.key = Expression()
+        <EQ>
+        jjtThis.value = Expression()
     )
     { return jjtThis; }
 }

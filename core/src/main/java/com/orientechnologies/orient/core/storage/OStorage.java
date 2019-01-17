@@ -20,6 +20,7 @@
 package com.orientechnologies.orient.core.storage;
 
 import com.orientechnologies.common.concur.resource.OSharedContainer;
+import com.orientechnologies.common.util.OCallable;
 import com.orientechnologies.orient.core.command.OCommandRequestText;
 import com.orientechnologies.orient.core.config.OContextConfiguration;
 import com.orientechnologies.orient.core.config.OStorageConfiguration;
@@ -44,7 +45,7 @@ import java.util.concurrent.Callable;
  * This is the gateway interface between the Database side and the storage. Provided implementations are: Local, Remote and Memory.
  *
  * @author Luca Garulli (l.garulli--(at)--orientdb.com)
- * @see com.orientechnologies.orient.core.storage.impl.memory.ODirectMemoryStorage
+ * @see com.orientechnologies.orient.core.storage.memory.ODirectMemoryStorage
  */
 
 public interface OStorage extends OBackupable, OSharedContainer {
@@ -238,7 +239,7 @@ public interface OStorage extends OBackupable, OSharedContainer {
   /**
    * @return Backup file name
    */
-  String incrementalBackup(String backupDirectory);
+  String incrementalBackup(String backupDirectory, OCallable<Void, Void> started) throws UnsupportedOperationException;
 
   void restoreFromIncrementalBackup(String filePath);
 

@@ -12,8 +12,8 @@ public class OInsertBody extends SimpleNode {
   protected List<List<OExpression>>    valueExpressions;
   protected List<OInsertSetExpression> setExpressions;
 
-  protected OJson            content;
-
+  protected OJson           content;
+  protected OInputParameter contentInputParam;
 
   public OInsertBody(int id) {
     super(id);
@@ -81,6 +81,9 @@ public class OInsertBody extends SimpleNode {
     if (content != null) {
       builder.append("CONTENT ");
       content.toString(params, builder);
+    } else if (contentInputParam != null) {
+      builder.append("CONTENT ");
+      contentInputParam.toString(params, builder);
     }
 
   }
@@ -94,10 +97,12 @@ public class OInsertBody extends SimpleNode {
             .collect(Collectors.toList());
     result.setExpressions = setExpressions == null ? null : setExpressions.stream().map(x -> x.copy()).collect(Collectors.toList());
     result.content = content == null ? null : content.copy();
+    result.contentInputParam = contentInputParam == null ? null : contentInputParam.copy();
     return result;
   }
 
-  @Override public boolean equals(Object o) {
+  @Override
+  public boolean equals(Object o) {
     if (this == o)
       return true;
     if (o == null || getClass() != o.getClass())
@@ -113,15 +118,16 @@ public class OInsertBody extends SimpleNode {
       return false;
     if (content != null ? !content.equals(that.content) : that.content != null)
       return false;
-
-    return true;
+    return contentInputParam != null ? contentInputParam.equals(that.contentInputParam) : that.contentInputParam == null;
   }
 
-  @Override public int hashCode() {
+  @Override
+  public int hashCode() {
     int result = identifierList != null ? identifierList.hashCode() : 0;
     result = 31 * result + (valueExpressions != null ? valueExpressions.hashCode() : 0);
     result = 31 * result + (setExpressions != null ? setExpressions.hashCode() : 0);
     result = 31 * result + (content != null ? content.hashCode() : 0);
+    result = 31 * result + (contentInputParam != null ? contentInputParam.hashCode() : 0);
     return result;
   }
 
@@ -139,6 +145,35 @@ public class OInsertBody extends SimpleNode {
 
   public OJson getContent() {
     return content;
+  }
+
+  public OInputParameter getContentInputParam() {
+    return contentInputParam;
+  }
+
+  public boolean isCacheable() {
+
+    if (this.valueExpressions != null) {
+      for (List<OExpression> valueExpression : valueExpressions) {
+        for (OExpression oExpression : valueExpression) {
+          if (!oExpression.isCacheable()) {
+            return false;
+          }
+        }
+      }
+    }
+    if (setExpressions != null) {
+      for (OInsertSetExpression setExpression : setExpressions) {
+        if (!setExpression.isCacheable()) {
+          return false;
+        }
+      }
+    }
+
+    if (content != null && !content.isCacheable()) {
+      return false;
+    }
+    return true;
   }
 }
 /* JavaCC - OriginalChecksum=7d2079a41a1fc63a812cb679e729b23a (do not edit this line) */

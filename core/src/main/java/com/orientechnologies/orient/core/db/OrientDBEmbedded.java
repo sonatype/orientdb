@@ -24,6 +24,8 @@ import com.orientechnologies.common.io.OIOUtils;
 import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.command.OCommandOutputListener;
+import com.orientechnologies.orient.core.config.OContextConfiguration;
+import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentEmbedded;
 import com.orientechnologies.orient.core.engine.OEngine;
 import com.orientechnologies.orient.core.engine.OMemoryAndLocalPaginatedEnginesInitializer;
@@ -32,14 +34,23 @@ import com.orientechnologies.orient.core.serialization.serializer.record.ORecord
 import com.orientechnologies.orient.core.serialization.serializer.record.ORecordSerializerFactory;
 import com.orientechnologies.orient.core.sql.parser.OStatement;
 import com.orientechnologies.orient.core.storage.OStorage;
+import com.orientechnologies.orient.core.storage.disk.OLocalPaginatedStorage;
 import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
-import com.orientechnologies.orient.core.storage.impl.local.paginated.OLocalPaginatedStorage;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.FileStore;
+import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
@@ -47,15 +58,17 @@ import java.util.stream.Collectors;
  * Created by tglman on 08/04/16.
  */
 public class OrientDBEmbedded implements OrientDBInternal {
-  protected final Map<String, OAbstractPaginatedStorage> storages = new HashMap<>();
-  protected final Set<ODatabasePoolInternal>             pools    = new HashSet<>();
-  protected final OrientDBConfig configurations;
-  protected final String         basePath;
-  protected final OEngine        memory;
-  protected final OEngine        disk;
-  protected final Orient         orient;
-  private volatile boolean                          open    = true;
-  private volatile OEmbeddedDatabaseInstanceFactory factory = new ODefaultEmbeddedDatabaseInstanceFactory();
+  protected final  Map<String, OAbstractPaginatedStorage> storages = new HashMap<>();
+  protected final  Set<ODatabasePoolInternal>             pools    = new HashSet<>();
+  protected final  OrientDBConfig                         configurations;
+  protected final  String                                 basePath;
+  protected final  OEngine                                memory;
+  protected final  OEngine                                disk;
+  protected final  Orient                                 orient;
+  private volatile boolean                                open     = true;
+  private volatile OEmbeddedDatabaseInstanceFactory       factory  = new ODefaultEmbeddedDatabaseInstanceFactory();
+
+  protected final long maxWALSegmentSize;
 
   public OrientDBEmbedded(String directoryPath, OrientDBConfig configurations, Orient orient) {
     super();
@@ -64,15 +77,122 @@ public class OrientDBEmbedded implements OrientDBInternal {
     memory = orient.getEngine("memory");
     disk = orient.getEngine("plocal");
     directoryPath = directoryPath.trim();
-    if (directoryPath.length() != 0)
-      this.basePath = new java.io.File(directoryPath).getAbsolutePath();
-    else
+    if (directoryPath.length() != 0) {
+      final File dirFile = new File(directoryPath);
+      if (!dirFile.exists()) {
+        OLogManager.instance().infoNoDb(this, "Directory " + dirFile + " does not exist, try to create it.");
+
+        if (!dirFile.mkdirs()) {
+          OLogManager.instance().errorNoDb(this, "Can not create directory " + dirFile, null);
+        }
+      }
+      this.basePath = dirFile.getAbsolutePath();
+    } else {
       this.basePath = null;
+    }
+
     this.configurations = configurations != null ? configurations : OrientDBConfig.defaultConfig();
+
+    if (basePath == null) {
+      maxWALSegmentSize = -1;
+    } else {
+      try {
+        maxWALSegmentSize = calculateInitialMaxWALSegSize(configurations);
+
+        if (maxWALSegmentSize <= 0) {
+          throw new ODatabaseException("Invalid configuration settings. Can not set maximum size of WAL segment");
+        }
+
+        OLogManager.instance().infoNoDb(this, "WAL maximum segment size is set to %,d MB", maxWALSegmentSize / 1024 / 1024);
+      } catch (IOException e) {
+        throw OException.wrapException(new ODatabaseException("Cannot initialize OrientDB engine"), e);
+      }
+    }
 
     OMemoryAndLocalPaginatedEnginesInitializer.INSTANCE.initialize();
 
     orient.addOrientDB(this);
+  }
+
+  private long calculateInitialMaxWALSegSize(OrientDBConfig configurations) throws IOException {
+    String walPath;
+
+    if (configurations != null) {
+      final OContextConfiguration config = configurations.getConfigurations();
+
+      if (config != null) {
+        walPath = config.getValueAsString(OGlobalConfiguration.WAL_LOCATION);
+      } else {
+        walPath = OGlobalConfiguration.WAL_LOCATION.getValueAsString();
+      }
+    } else {
+      walPath = OGlobalConfiguration.WAL_LOCATION.getValueAsString();
+    }
+
+    if (walPath == null) {
+      walPath = basePath;
+    }
+
+    final FileStore fileStore = Files.getFileStore(Paths.get(walPath));
+    final long freeSpace = fileStore.getUsableSpace();
+
+    final long filesSize = Files.walk(Paths.get(walPath)).mapToLong(p -> p.toFile().isFile() ? p.toFile().length() : 0).sum();
+    long maxSegSize;
+
+    if (configurations != null) {
+      final OContextConfiguration config = configurations.getConfigurations();
+      if (config != null) {
+        maxSegSize = config.getValueAsLong(OGlobalConfiguration.WAL_MAX_SEGMENT_SIZE) * 1024 * 1024;
+      } else {
+        maxSegSize = OGlobalConfiguration.WAL_MAX_SEGMENT_SIZE.getValueAsLong() * 1024 * 1024;
+      }
+    } else {
+      maxSegSize = OGlobalConfiguration.WAL_MAX_SEGMENT_SIZE.getValueAsLong() * 1024 * 1024;
+    }
+
+    if (maxSegSize <= 0) {
+      int sizePercent;
+      if (configurations != null) {
+        final OContextConfiguration config = configurations.getConfigurations();
+
+        if (config != null) {
+          sizePercent = config.getValueAsInteger(OGlobalConfiguration.WAL_MAX_SEGMENT_SIZE_PERCENT);
+        } else {
+          sizePercent = OGlobalConfiguration.WAL_MAX_SEGMENT_SIZE_PERCENT.getValueAsInteger();
+        }
+      } else {
+        sizePercent = OGlobalConfiguration.WAL_MAX_SEGMENT_SIZE_PERCENT.getValueAsInteger();
+      }
+
+      if (sizePercent <= 0) {
+        throw new ODatabaseException("Invalid configuration settings. Can not set maximum size of WAL segment");
+      }
+
+      maxSegSize = (freeSpace + filesSize) / 100 * sizePercent;
+    }
+
+    final long minSegSizeLimit = (long) (freeSpace * 0.25);
+
+    long minSegSize = 0;
+    if (configurations != null) {
+      OContextConfiguration config = configurations.getConfigurations();
+      if (config != null) {
+        minSegSize = config.getValueAsLong(OGlobalConfiguration.WAL_MIN_SEG_SIZE) * 1024 * 1024;
+      }
+    }
+
+    if (minSegSize <= 0) {
+      minSegSize = OGlobalConfiguration.WAL_MIN_SEG_SIZE.getValueAsLong() * 1024 * 1024;
+    }
+
+    if (minSegSize > minSegSizeLimit) {
+      minSegSize = minSegSizeLimit;
+    }
+
+    if (minSegSize > 0 && maxSegSize < minSegSize) {
+      maxSegSize = minSegSize;
+    }
+    return maxSegSize;
   }
 
   @Override
@@ -170,7 +290,7 @@ public class OrientDBEmbedded implements OrientDBInternal {
   protected OAbstractPaginatedStorage getOrInitStorage(String name) {
     OAbstractPaginatedStorage storage = storages.get(name);
     if (storage == null) {
-      storage = (OAbstractPaginatedStorage) disk.createStorage(buildName(name), new HashMap<>());
+      storage = (OAbstractPaginatedStorage) disk.createStorage(buildName(name), new HashMap<>(), maxWALSegmentSize);
       if (storage.exists())
         storages.put(name, storage);
     }
@@ -201,9 +321,9 @@ public class OrientDBEmbedded implements OrientDBInternal {
           config = solveConfig(config);
           OAbstractPaginatedStorage storage;
           if (type == ODatabaseType.MEMORY) {
-            storage = (OAbstractPaginatedStorage) memory.createStorage(name, new HashMap<>());
+            storage = (OAbstractPaginatedStorage) memory.createStorage(name, new HashMap<>(), maxWALSegmentSize);
           } else {
-            storage = (OAbstractPaginatedStorage) disk.createStorage(buildName(name), new HashMap<>());
+            storage = (OAbstractPaginatedStorage) disk.createStorage(buildName(name), new HashMap<>(), maxWALSegmentSize);
           }
           storages.put(name, storage);
           embedded = internalCreate(config, storage);
@@ -214,17 +334,17 @@ public class OrientDBEmbedded implements OrientDBInternal {
         throw new ODatabaseException("Cannot create new database '" + name + "' because it already exists");
     }
     embedded.callOnCreateListeners();
+    ODatabaseRecordThreadLocal.instance().remove();
   }
 
   public void restore(String name, String user, String password, ODatabaseType type, String path, OrientDBConfig config) {
     final ODatabaseDocumentEmbedded embedded;
+    OAbstractPaginatedStorage storage;
     synchronized (this) {
       if (!exists(name, null, null)) {
         try {
-          OAbstractPaginatedStorage storage;
-          storage = (OAbstractPaginatedStorage) disk.createStorage(buildName(name), new HashMap<>());
+          storage = (OAbstractPaginatedStorage) disk.createStorage(buildName(name), new HashMap<>(), maxWALSegmentSize);
           embedded = internalCreate(config, storage);
-          storage.restoreFromIncrementalBackup(path);
           storages.put(name, storage);
         } catch (Exception e) {
           throw OException.wrapException(new ODatabaseException("Cannot restore database '" + name + "'"), e);
@@ -232,15 +352,20 @@ public class OrientDBEmbedded implements OrientDBInternal {
       } else
         throw new ODatabaseException("Cannot create new storage '" + name + "' because it already exists");
     }
+    storage.restoreFromIncrementalBackup(path);
     embedded.callOnCreateListeners();
+    ODatabaseRecordThreadLocal.instance().remove();
   }
 
-  public synchronized void restore(String name, InputStream in, Map<String, Object> options, Callable<Object> callable,
+  public void restore(String name, InputStream in, Map<String, Object> options, Callable<Object> callable,
       OCommandOutputListener iListener) {
     try {
-      OAbstractPaginatedStorage storage = getOrInitStorage(name);
+      OAbstractPaginatedStorage storage;
+      synchronized (this) {
+        storage = getOrInitStorage(name);
+        storages.put(name, storage);
+      }
       storage.restore(in, options, callable, iListener);
-      storages.put(name, storage);
     } catch (Exception e) {
       throw OException.wrapException(new ODatabaseException("Cannot create database '" + name + "'"), e);
     }
@@ -404,15 +529,17 @@ public class OrientDBEmbedded implements OrientDBInternal {
     ODatabaseDocumentEmbedded embedded = null;
     synchronized (this) {
       boolean exists = OLocalPaginatedStorage.exists(Paths.get(path));
-      OAbstractPaginatedStorage storage = (OAbstractPaginatedStorage) disk.createStorage(path, new HashMap<>());
+      OAbstractPaginatedStorage storage = (OAbstractPaginatedStorage) disk.createStorage(path, new HashMap<>(), maxWALSegmentSize);
       // TODO: Add Creation settings and parameters
       if (!exists) {
         embedded = internalCreate(getConfigurations(), storage);
       }
       storages.put(name, storage);
     }
-    if (embedded != null)
+    if (embedded != null) {
       embedded.callOnCreateListeners();
+      ODatabaseRecordThreadLocal.instance().remove();
+    }
   }
 
   public synchronized void removeShutdownHook() {

@@ -19,6 +19,7 @@
  */
 package com.orientechnologies.orient.core.record.impl;
 
+import com.orientechnologies.orient.core.db.ODatabaseDocumentInternal;
 import com.orientechnologies.orient.core.db.ODatabaseRecordThreadLocal;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocument;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
@@ -36,6 +37,7 @@ import com.orientechnologies.orient.core.serialization.OSerializableStream;
 import com.orientechnologies.orient.core.serialization.serializer.OStringSerializerHelper;
 import com.orientechnologies.orient.core.storage.OStorage;
 
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
@@ -72,7 +74,7 @@ public class OEdgeDelegate implements OEdge {
     if (doc == null)
       return null;
 
-    Object result = doc.getProperty(DIRECITON_OUT);
+    Object result = doc.getProperty(DIRECTION_OUT);
     if (!(result instanceof OElement)) {
       return null;
     }
@@ -93,7 +95,7 @@ public class OEdgeDelegate implements OEdge {
     if (doc == null)
       return null;
 
-    Object result = doc.getProperty(DIRECITON_IN);
+    Object result = doc.getProperty(DIRECTION_IN);
     if (!(result instanceof OElement)) {
       return null;
     }
@@ -114,7 +116,7 @@ public class OEdgeDelegate implements OEdge {
     if (element != null) {
       return element.getPropertyNames();
     }
-    return null;
+    return Collections.EMPTY_SET;
   }
 
   public OEdge delete() {
@@ -169,7 +171,8 @@ public class OEdgeDelegate implements OEdge {
     OVertex to = getTo();
     OVertexDelegate.detachOutgointEdge(from, this);
     OVertexDelegate.detachIncomingEdge(to, this);
-    this.element = db.newEdge(from, to, lightweightEdgeType).getRecord();
+    this.element = ((ODatabaseDocumentInternal) db)
+        .newRegularEdge(lightweightEdgeType == null ? "E" : lightweightEdgeType.getName(), from, to).getRecord();
     this.lightweightEdgeType = null;
     this.vOut = null;
     this.vIn = null;
@@ -502,8 +505,8 @@ public class OEdgeDelegate implements OEdge {
     if (element != null) {
       return element.toJSON();
     } else {
-      return "{'out':'" + vOut.getIdentity() + "', 'in':'" + vIn.getIdentity() + "', '@class':'" + OStringSerializerHelper
-          .encode(lightweightEdgeType.getName()) + "'}";
+      return "{\"out\":\"" + vOut.getIdentity() + "\", \"in\":\"" + vIn.getIdentity() + "\", \"@class\":\""
+          + OStringSerializerHelper.encode(lightweightEdgeType.getName()) + "\"}";
     }
   }
 
@@ -512,8 +515,8 @@ public class OEdgeDelegate implements OEdge {
     if (element != null) {
       return element.toJSON(iFormat);
     } else {
-      return "{'out':'" + vOut.getIdentity() + "', 'in':'" + vIn.getIdentity() + "', '@class':'" + OStringSerializerHelper
-          .encode(lightweightEdgeType.getName()) + "'}";
+      return "{\"out\":\"" + vOut.getIdentity() + "\", \"in\":\"" + vIn.getIdentity() + "\", \"@class\":\""
+          + OStringSerializerHelper.encode(lightweightEdgeType.getName()) + "\"}";
     }
   }
 

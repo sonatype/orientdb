@@ -34,11 +34,11 @@ import com.orientechnologies.orient.core.record.ORecord;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.query.OLegacyResultSet;
 import com.orientechnologies.orient.core.storage.OStorage;
-import com.orientechnologies.orient.core.storage.impl.local.paginated.OLocalPaginatedStorage;
+import com.orientechnologies.orient.core.storage.disk.OLocalPaginatedStorage;
+import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Paths;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
@@ -51,9 +51,9 @@ import java.util.Set;
  */
 public class OCommandCacheSoftRefs implements OCommandCache {
 
-  private String CONFIG_FILE = "command-cache.json";
+  private static String CONFIG_FILE = "command-cache.json";
 
-  ODocument configuration;
+  private ODocument configuration;
 
   public static class OCachedResult {
     Object      result;
@@ -77,13 +77,13 @@ public class OCommandCacheSoftRefs implements OCommandCache {
   private class OCommandCacheImplRefs extends OSoftRefsHashMap<String, OCachedResult> {
   }
 
-  private final String databaseName;
-  private final String fileConfigPath;
-  private Set<String> clusters = new HashSet<String>();
-  private volatile boolean enable;
-  private OCommandCacheImplRefs cache = new OCommandCacheImplRefs();
-  private int minExecutionTime;
-  private int maxResultsetSize;
+  private final    String                databaseName;
+  private final    String                fileConfigPath;
+  private          Set<String>           clusters = new HashSet<String>();
+  private volatile boolean               enable;
+  private          OCommandCacheImplRefs cache    = new OCommandCacheImplRefs();
+  private          int                   minExecutionTime;
+  private          int                   maxResultsetSize;
 
   private STRATEGY evictStrategy = STRATEGY.valueOf(OGlobalConfiguration.COMMAND_CACHE_EVICT_STRATEGY.getValueAsString());
 
@@ -430,6 +430,13 @@ public class OCommandCacheSoftRefs implements OCommandCache {
     synchronized (this) {
       return cache.entrySet();
     }
+  }
+
+  public static void clearFiles(OAbstractPaginatedStorage storage) {
+    String name = ((OLocalPaginatedStorage) storage).getStoragePath().resolve(CONFIG_FILE).toString();
+    File file = new File(name);
+    if (file.exists())
+      file.delete();
   }
 
 }
