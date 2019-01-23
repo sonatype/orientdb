@@ -1008,6 +1008,22 @@ public enum OGlobalConfiguration {
 
   CLOUD_BASE_URL("cloud.base.url", "The base URL of the cloud endpoint for requests", String.class, "cloud.orientdb.com"),
 
+  // PLUGIN
+  /**
+   * @since 3.0
+   */
+  @OApi(maturity = OApi.MATURITY.NEW) PLUGIN_DIRECTORY("plugin.directory",
+      "Directory containing plugins to be loaded inside OrientDB", String.class, null),
+
+  @OApi(maturity = OApi.MATURITY.NEW) PLUGIN_DYNAMIC("plugin.dynamic",
+      "Enables the plugin manager to dynamically load plugins", Boolean.class, true),
+
+  @OApi(maturity = OApi.MATURITY.NEW) PLUGIN_LOAD_AT_STARTUP("plugin.loadAtStartup",
+      "Scan the plugin directory at startup and load any plugins found there", Boolean.class, true),
+
+  @OApi(maturity = OApi.MATURITY.NEW) PLUGIN_HOT_RELOAD("plugin.hotReload",
+      "Periodically scan the plugin directory and apply any changes to plugins", Boolean.class, false),
+
   /**
    * Deprecated in v2.2.0
    */
