@@ -109,7 +109,7 @@ public interface OrientDBInternal extends AutoCloseable {
     OrientDBInternal factory;
 
     try {
-      String className = "com.orientechnologies.orient.core.db.OrientDBDistributed";
+      String className = "com.orientechnologies.orient.server.hazelcast.OrientDBDistributed";
       ClassLoader loader;
       if (configuration != null) {
         loader = configuration.getClassLoader();
