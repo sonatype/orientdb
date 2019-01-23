@@ -528,11 +528,9 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
           if (e instanceof ODistributedException && e.getCause() instanceof IOException) {
             // CONNECTION ERROR: REMOVE THE CONNECTION
             reason = e.getCause().getMessage();
-            manager.closeRemoteServer(node);
 
           } else if (e instanceof OSecurityAccessException) {
             // THE CONNECTION COULD BE STALE, CREATE A NEW ONE AND RETRY
-            manager.closeRemoteServer(node);
             try {
               final ORemoteServerController remoteServer = manager.getRemoteServer(node);
               remoteServer.sendRequest(iRequest);
@@ -810,47 +808,7 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
 
   @Override
   public void unlockResourcesOfServer(final ODatabaseDocumentInternal database, final String serverName) {
-    final int nodeLeftId = manager.getNodeIdByName(serverName);
-
-    final Set<ORecordId> rids2Repair = new HashSet<ORecordId>();
-
-    int rollbacks = 0;
-    final Iterator<ODistributedTxContext> pendingReqIterator = activeTxContexts.values().iterator();
-    while (pendingReqIterator.hasNext()) {
-      final ODistributedTxContext pReq = pendingReqIterator.next();
-      if (pReq != null && pReq.getReqId().getNodeId() == nodeLeftId) {
-
-        ODistributedServerLog.debug(this, manager.getLocalNodeName(), null, DIRECTION.NONE,
-            "Distributed transaction: rolling back transaction (req=%s)", pReq.getReqId());
-
-        try {
-          rids2Repair.addAll(pReq.rollback(database));
-          rollbacks++;
-        } catch (Exception t) {
-          // IGNORE IT
-          ODistributedServerLog.error(this, manager.getLocalNodeName(), null, DIRECTION.NONE,
-              "Distributed transaction: error on rolling back transaction (req=%s)", pReq.getReqId());
-        }
-        pReq.destroy();
-        pendingReqIterator.remove();
-      }
-    }
-
-    int recordLocks = 0;
-    for (Map.Entry<ORID, ODistributedDatabaseImpl.ODistributedLock> entry : lockManager.entrySet()) {
-      final ODistributedDatabaseImpl.ODistributedLock lock = entry.getValue();
-      if (lock != null && lock.reqId != null && lock.reqId.getNodeId() == nodeLeftId) {
-        OLogManager.instance().debug(this, "Unlocking record %s acquired with req=%s", entry.getKey(), lock.reqId);
-        recordLocks++;
-      }
-    }
-
-    ODistributedServerLog.info(this, localNodeName, null, DIRECTION.NONE,
-        "Distributed transaction: rolled back %d transactions and %d single locks in database '%s' owned by server '%s'", rollbacks,
-        recordLocks, databaseName, serverName);
-
-    // REPAIR RECORDS OF TRANSACTION.
-    getDatabaseRepairer().enqueueRepairRecords(rids2Repair);
+    throw new UnsupportedOperationException(" no valid anymore");
   }
 
   @Override

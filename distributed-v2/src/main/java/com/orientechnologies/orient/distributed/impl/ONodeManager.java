@@ -32,6 +32,8 @@ public abstract class ONodeManager {
     String group;
     int    term;
     int    role;
+    String connectionUsername;
+    String connectionPassword;
 
     //for ping
     int tcpPort;
@@ -47,6 +49,8 @@ public abstract class ONodeManager {
     int    masterTerm;
     String masterAddress;
     int    masterTcpPort;
+    String masterConnectionUsername;
+    String masterConnectionPassword;
     long   masterPing;
   }
 
@@ -55,11 +59,10 @@ public abstract class ONodeManager {
   protected final ODiscoveryListener discoveryListener;
   private         Thread             messageThread;
 
-  protected       Map<String, ODiscoveryListener.NodeData> knownServers;
-  protected final String                                   nodeName;
-  protected final String                                   group;
+  protected Map<String, ODiscoveryListener.NodeData> knownServers;
 
-  private String groupPassword;
+  protected final ONodeConfiguration config;
+
   private String encryptionAlgorithm = "AES";
 
   protected final OSchedulerInternal taskScheduler;
@@ -73,22 +76,21 @@ public abstract class ONodeManager {
 
   OLeaderElectionStateMachine leaderStatus;
 
-  public ONodeManager(OSchedulerInternal taskScheduler, String groupName, String nodeName, int quorum, int term,
-      ODiscoveryListener discoveryListener) {
-    if (groupName == null || groupName.length() == 0) {
+  public ONodeManager(ONodeConfiguration config, int term, OSchedulerInternal taskScheduler, ODiscoveryListener discoveryListener) {
+    this.config = config;
+    if (config.getGroupName() == null || config.getGroupName().length() == 0) {
       throw new IllegalArgumentException("Invalid group name");
     }
-    this.group = groupName;
-    if (nodeName == null || nodeName.length() == 0) {
+
+    if (config.getNodeName() == null || config.getNodeName().length() == 0) {
       throw new IllegalArgumentException("Invalid node name");
     }
     this.discoveryListener = discoveryListener;
-    this.nodeName = nodeName;
     knownServers = new HashMap<>();
     this.taskScheduler = taskScheduler;
     leaderStatus = new OLeaderElectionStateMachine();
-    leaderStatus.nodeName = nodeName;
-    leaderStatus.setQuorum(quorum);
+    leaderStatus.nodeName = config.getNodeName();
+    leaderStatus.setQuorum(config.getQuorum());
     leaderStatus.changeTerm(term);
   }
 
@@ -219,12 +221,15 @@ public abstract class ONodeManager {
     //nodeData
     Message message = new Message();
     message.type = Message.TYPE_PING;
-    message.nodeName = this.nodeName;
-    message.group = group;
+    message.nodeName = this.config.getNodeName();
+    message.group = this.config.getGroupName();
     message.term = leaderStatus.currentTerm;
     message.role =
         leaderStatus.status == OLeaderElectionStateMachine.Status.LEADER ? Message.ROLE_COORDINATOR : Message.ROLE_REPLICA;
 
+    message.connectionUsername = config.getConnectionUsername();
+    message.connectionPassword = config.getConnectionPassword();
+    message.tcpPort = config.getTcpPort();
     //masterData
     ODiscoveryListener.NodeData master = this.knownServers.values().stream().filter(x -> x.master).findFirst().orElse(null);
     if (master != null) {
@@ -232,6 +237,8 @@ public abstract class ONodeManager {
       message.masterTerm = master.term;
       message.masterAddress = master.address;
       message.masterTcpPort = master.port;
+      message.masterConnectionUsername = master.connectionUsername;
+      message.masterConnectionPassword = master.connectionPassword;
       message.masterPing = master.lastPingTimestamp;
     }
 
@@ -250,6 +257,8 @@ public abstract class ONodeManager {
         data.term = message.term;
         data.name = message.nodeName;
         data.address = fromAddr;
+        data.connectionUsername = message.connectionUsername;
+        data.connectionPassword = message.connectionPassword;
         data.port = message.tcpPort;
         knownServers.put(message.nodeName, data);
         discoveryListener.nodeJoined(data);
@@ -266,13 +275,13 @@ public abstract class ONodeManager {
           data.master = false;
         }
         leaderStatus.changeTerm(message.term);
-        if (this.nodeName.equals(message.masterName)) {
+        if (this.config.getNodeName().equals(message.masterName)) {
           leaderStatus.status = OLeaderElectionStateMachine.Status.LEADER;
         }
       } else if (data.term == message.term && message.role == Message.ROLE_COORDINATOR) {
         resetLeader();
         data.master = true;
-        if (!message.nodeName.equals(this.nodeName)) {
+        if (!message.nodeName.equals(this.config.getNodeName())) {
           leaderStatus.status = OLeaderElectionStateMachine.Status.FOLLOWER;
         }
       }
@@ -290,6 +299,8 @@ public abstract class ONodeManager {
           data.name = message.masterName;
           data.term = message.masterTerm;
           data.address = message.masterAddress;
+          data.connectionUsername = message.masterConnectionUsername;
+          data.connectionPassword = message.masterConnectionPassword;
           data.port = message.masterTcpPort;
           data.lastPingTimestamp = message.masterPing;
           data.master = true;
@@ -404,8 +415,8 @@ public abstract class ONodeManager {
   protected void sendStartElection(int currentTerm, String dbName, long lastLogId) {
 //    System.out.println("" + this.nodeName + " * START ELECTION term " + currentTerm + " node " + nodeName);
     Message message = new Message();
-    message.group = group;
-    message.nodeName = nodeName;
+    message.group = this.config.getGroupName();
+    message.nodeName = this.config.getNodeName();
     message.term = currentTerm;
     message.dbName = dbName;
     message.lastLogId = lastLogId;
@@ -421,7 +432,7 @@ public abstract class ONodeManager {
 
   private void processReceiveLeaderElected(Message message, String fromAddr) {
     if (message.term >= leaderStatus.currentTerm) {
-      if (!nodeName.equals(message.nodeName)) {
+      if (!this.config.getNodeName().equals(message.nodeName)) {
         leaderStatus.setStatus(OLeaderElectionStateMachine.Status.FOLLOWER);
       } else {
         leaderStatus.setStatus(OLeaderElectionStateMachine.Status.LEADER);
@@ -433,6 +444,8 @@ public abstract class ONodeManager {
       data.master = true;
       data.term = message.term;
       data.address = fromAddr;
+      data.connectionUsername = message.connectionUsername;
+      data.connectionPassword = message.connectionPassword;
       data.port = message.tcpPort;
       data.lastPingTimestamp = System.currentTimeMillis();
 
@@ -456,8 +469,8 @@ public abstract class ONodeManager {
 
   private void sendVote(int term, String toNode) {
     Message message = new Message();
-    message.group = group;
-    message.nodeName = nodeName;
+    message.group = this.config.getGroupName();
+    message.nodeName = this.config.getNodeName();
     message.term = term;
     message.voteForNode = toNode;
     message.type = Message.TYPE_VOTE_LEADER_ELECTION;
@@ -481,10 +494,10 @@ public abstract class ONodeManager {
       ODiscoveryListener.NodeData data = new ODiscoveryListener.NodeData();
       data.term = leaderStatus.currentTerm;
       data.master = true;
-      data.name = this.nodeName;
+      data.name = this.config.getNodeName();
       data.lastPingTimestamp = System.currentTimeMillis();
       discoveryListener.leaderElected(data);
-      knownServers.put(this.nodeName, data);
+      knownServers.put(this.config.getNodeName(), data);
       sendLeaderElected();
     }
   }
@@ -496,10 +509,10 @@ public abstract class ONodeManager {
   private void sendLeaderElected() {
 //    System.out.println("SEND LEADER ELECTED " + nodeName);
     Message message = new Message();
-    message.group = group;
-    message.nodeName = nodeName;
+    message.group = this.config.getGroupName();
+    message.nodeName = this.config.getNodeName();
     message.term = leaderStatus.currentTerm;
-    //message.tcpPort = //TODO
+    message.tcpPort = getConfig().getTcpPort();
     message.type = Message.TYPE_LEADER_ELECTED;
 
     try {
@@ -526,15 +539,19 @@ public abstract class ONodeManager {
     writeString(message.nodeName, buffer);
     writeInt(message.term, buffer);
     writeInt(message.role, buffer);
+    writeInt(message.tcpPort, buffer);
+    writeString(message.connectionUsername, buffer);
+    writeString(message.connectionPassword, buffer);
 
     switch (message.type) {
     case Message.TYPE_PING:
-      writeInt(message.tcpPort, buffer);
       writeString(message.masterName, buffer);
       writeInt(message.masterTerm, buffer);
       writeString(message.masterAddress, buffer);
       writeInt(message.masterTcpPort, buffer);
       writeLong(message.masterPing, buffer);
+      writeString(message.masterConnectionUsername, buffer);
+      writeString(message.masterConnectionPassword, buffer);
       break;
     case Message.TYPE_VOTE_LEADER_ELECTION:
       writeString(message.voteForNode, buffer);
@@ -555,15 +572,19 @@ public abstract class ONodeManager {
     message.nodeName = readString(stream);
     message.term = readInt(stream);
     message.role = readInt(stream);
+    message.tcpPort = readInt(stream);
+    message.connectionUsername = readString(stream);
+    message.connectionPassword = readString(stream);
 
     switch (message.type) {
     case Message.TYPE_PING:
-      message.tcpPort = readInt(stream);
       message.masterName = readString(stream);
       message.masterTerm = readInt(stream);
       message.masterAddress = readString(stream);
       message.masterTcpPort = readInt(stream);
       message.masterPing = readLong(stream);
+      message.masterConnectionUsername = readString(stream);
+      message.masterConnectionPassword = readString(stream);
 
     case Message.TYPE_VOTE_LEADER_ELECTION:
       message.voteForNode = readString(stream);
@@ -624,13 +645,13 @@ public abstract class ONodeManager {
   /* =============== ENCRYPTION ================= */
 
   private byte[] encrypt(byte[] data) throws Exception {
-    if (groupPassword == null) {
+    if (config.getGroupPassword() == null) {
       return data;
     }
     Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
     byte[] iv = cipher.getParameters().getParameterSpec(IvParameterSpec.class).getIV();
     IvParameterSpec ivSpec = new IvParameterSpec(iv);
-    SecretKeySpec keySpec = new SecretKeySpec(paddedPassword(groupPassword), "AES");
+    SecretKeySpec keySpec = new SecretKeySpec(paddedPassword(config.getGroupPassword()), "AES");
     cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec);
 
     ByteArrayOutputStream stream = new ByteArrayOutputStream();
@@ -644,7 +665,7 @@ public abstract class ONodeManager {
   }
 
   private byte[] decrypt(byte[] data) throws Exception {
-    if (groupPassword == null) {
+    if (config.getGroupPassword() == null) {
       return data;
     }
     ByteArrayInputStream stream = new ByteArrayInputStream(data);
@@ -652,7 +673,7 @@ public abstract class ONodeManager {
     byte[] ivData = new byte[ivLength];
     stream.read(ivData);
     IvParameterSpec ivSpec = new IvParameterSpec(ivData);
-    SecretKeySpec skeySpec = new SecretKeySpec(paddedPassword(groupPassword), "AES");
+    SecretKeySpec skeySpec = new SecretKeySpec(paddedPassword(config.getGroupPassword()), "AES");
 
     Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
     cipher.init(Cipher.DECRYPT_MODE, skeySpec, ivSpec);
@@ -682,27 +703,11 @@ public abstract class ONodeManager {
 
   /* =============== GETTERS/SETTERS ================= */
 
-  public String getGroup() {
-    return group;
-  }
-
-  public String getGroupPassword() {
-    return groupPassword;
-  }
-
-  public void setGroupPassword(String groupPassword) {
-    this.groupPassword = groupPassword;
-  }
-
-  public String getEncryptionAlgorithm() {
-    return encryptionAlgorithm;
-  }
-
-  public void setEncryptionAlgorithm(String encryptionAlgorithm) {
-    this.encryptionAlgorithm = encryptionAlgorithm;
-  }
-
   public ODiscoveryListener getDiscoveryListener() {
     return discoveryListener;
+  }
+
+  public ONodeConfiguration getConfig() {
+    return config;
   }
 }

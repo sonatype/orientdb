@@ -13,11 +13,67 @@ import com.orientechnologies.orient.core.id.ORecordId;
 import com.orientechnologies.orient.core.index.OIndex;
 import com.orientechnologies.orient.core.index.OIndexDefinition;
 import com.orientechnologies.orient.core.metadata.OMetadataInternal;
-import com.orientechnologies.orient.core.metadata.schema.*;
+import com.orientechnologies.orient.core.metadata.schema.OClass;
+import com.orientechnologies.orient.core.metadata.schema.OProperty;
+import com.orientechnologies.orient.core.metadata.schema.OSchema;
+import com.orientechnologies.orient.core.metadata.schema.OType;
+import com.orientechnologies.orient.core.metadata.schema.OView;
 import com.orientechnologies.orient.core.sql.OCommandExecutorSQLAbstract;
-import com.orientechnologies.orient.core.sql.parser.*;
+import com.orientechnologies.orient.core.sql.parser.AggregateProjectionSplit;
+import com.orientechnologies.orient.core.sql.parser.OAndBlock;
+import com.orientechnologies.orient.core.sql.parser.OBaseExpression;
+import com.orientechnologies.orient.core.sql.parser.OBinaryCompareOperator;
+import com.orientechnologies.orient.core.sql.parser.OBinaryCondition;
+import com.orientechnologies.orient.core.sql.parser.OBooleanExpression;
+import com.orientechnologies.orient.core.sql.parser.OCluster;
+import com.orientechnologies.orient.core.sql.parser.OContainsAnyCondition;
+import com.orientechnologies.orient.core.sql.parser.OContainsKeyOperator;
+import com.orientechnologies.orient.core.sql.parser.OContainsValueCondition;
+import com.orientechnologies.orient.core.sql.parser.OContainsValueOperator;
+import com.orientechnologies.orient.core.sql.parser.OEqualsCompareOperator;
+import com.orientechnologies.orient.core.sql.parser.OExecutionPlanCache;
+import com.orientechnologies.orient.core.sql.parser.OExpression;
+import com.orientechnologies.orient.core.sql.parser.OFromClause;
+import com.orientechnologies.orient.core.sql.parser.OFromItem;
+import com.orientechnologies.orient.core.sql.parser.OFunctionCall;
+import com.orientechnologies.orient.core.sql.parser.OGeOperator;
+import com.orientechnologies.orient.core.sql.parser.OGroupBy;
+import com.orientechnologies.orient.core.sql.parser.OGtOperator;
+import com.orientechnologies.orient.core.sql.parser.OIdentifier;
+import com.orientechnologies.orient.core.sql.parser.OInCondition;
+import com.orientechnologies.orient.core.sql.parser.OIndexIdentifier;
+import com.orientechnologies.orient.core.sql.parser.OInputParameter;
+import com.orientechnologies.orient.core.sql.parser.OInteger;
+import com.orientechnologies.orient.core.sql.parser.OLeOperator;
+import com.orientechnologies.orient.core.sql.parser.OLetClause;
+import com.orientechnologies.orient.core.sql.parser.OLetItem;
+import com.orientechnologies.orient.core.sql.parser.OLtOperator;
+import com.orientechnologies.orient.core.sql.parser.OMetadataIdentifier;
+import com.orientechnologies.orient.core.sql.parser.OOrBlock;
+import com.orientechnologies.orient.core.sql.parser.OOrderBy;
+import com.orientechnologies.orient.core.sql.parser.OOrderByItem;
+import com.orientechnologies.orient.core.sql.parser.OProjection;
+import com.orientechnologies.orient.core.sql.parser.OProjectionItem;
+import com.orientechnologies.orient.core.sql.parser.ORecordAttribute;
+import com.orientechnologies.orient.core.sql.parser.ORid;
+import com.orientechnologies.orient.core.sql.parser.OSelectStatement;
+import com.orientechnologies.orient.core.sql.parser.OStatement;
+import com.orientechnologies.orient.core.sql.parser.OWhereClause;
+import com.orientechnologies.orient.core.sql.parser.SubQueryCollector;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -485,8 +541,16 @@ public class OSelectExecutionPlanner {
   }
 
   private boolean handleHardwiredOptimizations(OSelectExecutionPlan result, OCommandContext ctx, boolean profilingEnabled) {
-    return handleHardwiredCountOnIndex(result, info, ctx, profilingEnabled) || handleHardwiredCountOnClass(result, info, ctx,
-        profilingEnabled);
+    if (handleHardwiredCountOnIndex(result, info, ctx, profilingEnabled)) {
+      return true;
+    }
+    if (handleHardwiredCountOnClass(result, info, ctx, profilingEnabled)) {
+      return true;
+    }
+    if (handleHardwiredCountOnClassUsingIndex(result, info, ctx, profilingEnabled)) {
+      return true;
+    }
+    return false;
   }
 
   private boolean handleHardwiredCountOnClass(OSelectExecutionPlan result, QueryPlanningInfo info, OCommandContext ctx,
@@ -509,6 +573,64 @@ public class OSelectExecutionPlanner {
     }
     result.chain(new CountFromClassStep(targetClass, info.projection.getAllAliases().iterator().next(), ctx, profilingEnabled));
     return true;
+  }
+
+  private boolean handleHardwiredCountOnClassUsingIndex(OSelectExecutionPlan result, QueryPlanningInfo info, OCommandContext ctx,
+      boolean profilingEnabled) {
+    OIdentifier targetClass = info.target == null ? null : info.target.getItem().getIdentifier();
+    if (targetClass == null) {
+      return false;
+    }
+    if (info.distinct || info.expand) {
+      return false;
+    }
+    if (info.preAggregateProjection != null) {
+      return false;
+    }
+    if (!isCountStar(info)) {
+      return false;
+    }
+    if (info.projectionAfterOrderBy != null || info.globalLetClause != null || info.perRecordLetClause != null
+        || info.groupBy != null || info.orderBy != null || info.unwind != null || info.skip != null) {
+      return false;
+    }
+    OClass clazz = ctx.getDatabase().getClass(targetClass.getStringValue());
+    if (clazz == null) {
+      return false;
+    }
+    if (info.flattenedWhereClause.size() > 1 || info.flattenedWhereClause.get(0).getSubBlocks().size() > 1) {
+      //for now it only handles a single equality condition, it can be extended
+      return false;
+    }
+    OBooleanExpression condition = info.flattenedWhereClause.get(0).getSubBlocks().get(0);
+    if (!(condition instanceof OBinaryCondition)) {
+      return false;
+    }
+    OBinaryCondition binaryCondition = (OBinaryCondition) condition;
+    if (!binaryCondition.getLeft().isBaseIdentifier()) {
+      return false;
+    }
+    if (!(binaryCondition.getOperator() instanceof OEqualsCompareOperator)) {
+      //this can be extended to use range operators too
+      return false;
+    }
+
+    for (OIndex<?> classIndex : clazz.getClassIndexes()) {
+      List<String> fields = classIndex.getDefinition().getFields();
+      if (fields.size() == 1 && fields.get(0).equals(binaryCondition.getLeft().getDefaultAlias().getStringValue())) {
+        OBinaryCondition indexCond = new OBinaryCondition(-1);
+        indexCond.setLeft(new OExpression(new OIdentifier("key")));
+        indexCond.setOperator(new OEqualsCompareOperator(-1));
+        indexCond.setRight(((OBinaryCondition) condition).getRight().copy());
+        result.chain(new FetchFromIndexStep(classIndex, indexCond, null, ctx, profilingEnabled));
+        result.chain(new AggregateProjectionCalculationStep(info.aggregateProjection, info.groupBy, ctx, profilingEnabled));
+        result.chain(new GuaranteeEmptyCountStep(info.aggregateProjection.getItems().get(0), ctx, profilingEnabled));
+        result.chain(new ProjectionCalculationStep(info.projection, ctx, profilingEnabled));
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private boolean handleHardwiredCountOnIndex(OSelectExecutionPlan result, QueryPlanningInfo info, OCommandContext ctx,
