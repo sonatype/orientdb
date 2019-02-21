@@ -37,6 +37,7 @@ import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.command.OCommandOutputListener;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.db.*;
+import com.orientechnologies.orient.core.db.config.ONodeConfiguration;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocument;
 import com.orientechnologies.orient.core.exception.OConfigurationException;
 import com.orientechnologies.orient.core.id.ORecordId;
@@ -52,7 +53,6 @@ import com.orientechnologies.orient.core.storage.disk.OLocalPaginatedStorage;
 import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.wal.OLogSequenceNumber;
 import com.orientechnologies.orient.distributed.impl.task.*;
-import com.orientechnologies.orient.distributed.sql.OCommandExecutorSQLHASyncCluster;
 import com.orientechnologies.orient.server.OServer;
 import com.orientechnologies.orient.server.OSystemDatabase;
 import com.orientechnologies.orient.server.config.OServerConfiguration;
@@ -147,38 +147,38 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
   @SuppressWarnings("unchecked")
   @Override
   public void config(OServer oServer, OServerParameterConfiguration[] iParams) {
-    serverInstance = oServer;
-    oServer.setVariable("ODistributedAbstractPlugin", this);
+//    serverInstance = oServer;
+//    oServer.setVariable("ODistributedAbstractPlugin", this);
+//
+//    for (OServerParameterConfiguration param : iParams) {
+//      if (param.name.equalsIgnoreCase("enabled")) {
+//        if (!Boolean.parseBoolean(OSystemVariableResolver.resolveSystemVariables(param.value))) {
+//          // DISABLE IT
+//          enabled = false;
+//          return;
+//        }
+//      } else if (param.name.equalsIgnoreCase("nodeName")) {
+//        nodeName = param.value;
+//        if (nodeName.contains("."))
+//          throw new OConfigurationException("Illegal node name '" + nodeName + "'. '.' is not allowed in node name");
+//      } else if (param.name.startsWith(PAR_DEF_DISTRIB_DB_CONFIG)) {
+//        setDefaultDatabaseConfigFile(param.value);
+//      }
+//    }
 
-    for (OServerParameterConfiguration param : iParams) {
-      if (param.name.equalsIgnoreCase("enabled")) {
-        if (!Boolean.parseBoolean(OSystemVariableResolver.resolveSystemVariables(param.value))) {
-          // DISABLE IT
-          enabled = false;
-          return;
-        }
-      } else if (param.name.equalsIgnoreCase("nodeName")) {
-        nodeName = param.value;
-        if (nodeName.contains("."))
-          throw new OConfigurationException("Illegal node name '" + nodeName + "'. '.' is not allowed in node name");
-      } else if (param.name.startsWith(PAR_DEF_DISTRIB_DB_CONFIG)) {
-        setDefaultDatabaseConfigFile(param.value);
-      }
-    }
-
-    lockManagerExecutor = new ODistributedLockManagerExecutor(this);
-
-    if (serverInstance.getUser("replicator") == null)
-      // DROP THE REPLICATOR USER. THIS USER WAS NEEDED BEFORE 2.2, BUT IT'S NOT REQUIRED ANYMORE
-      OLogManager.instance().config(this,
-          "Found 'replicator' user. Starting from OrientDB v2.2 this internal user is no needed anymore. Removing it...");
-    try {
-      serverInstance.dropUser("replicator");
-    } catch (IOException e) {
-      throw OException.wrapException(new OConfigurationException("Error on deleting 'replicator' user"), e);
-    }
-
-    //TODO check that the quorum is there!
+//    lockManagerExecutor = new ODistributedLockManagerExecutor(this);
+//
+//    if (serverInstance.getUser("replicator") == null)
+//      // DROP THE REPLICATOR USER. THIS USER WAS NEEDED BEFORE 2.2, BUT IT'S NOT REQUIRED ANYMORE
+//      OLogManager.instance().config(this,
+//          "Found 'replicator' user. Starting from OrientDB v2.2 this internal user is no needed anymore. Removing it...");
+//    try {
+//      serverInstance.dropUser("replicator");
+//    } catch (IOException e) {
+//      throw OException.wrapException(new OConfigurationException("Error on deleting 'replicator' user"), e);
+//    }
+//
+//    //TODO check that the quorum is there!
   }
 
   protected abstract ONodeConfiguration getNodeConfiguration();
@@ -1336,27 +1336,6 @@ public abstract class ODistributedAbstractPlugin extends OServerPluginAbstract
     } finally {
       db.activateOnCurrentThread();
       db.close();
-    }
-
-    // ASK FOR INDIVIDUAL CLUSTERS IN CASE OF SHARDING AND NO LOCAL COPY
-    final Set<String> localManagedClusters = cfg.getClustersOnServer(localNodeName);
-    final Set<String> sourceNodeClusters = cfg.getClustersOnServer(iNode);
-    localManagedClusters.removeAll(sourceNodeClusters);
-
-    final HashSet<String> toSynchClusters = new HashSet<String>();
-    for (String cl : localManagedClusters) {
-      // FILTER CLUSTER CHECKING IF ANY NODE IS ACTIVE
-      final List<String> servers = cfg.getServers(cl, localNodeName);
-      getAvailableNodes(servers, databaseName);
-
-      if (!servers.isEmpty())
-        toSynchClusters.add(cl);
-    }
-
-    // SYNC ALL THE CLUSTERS
-    for (String cl : toSynchClusters) {
-      // FILTER CLUSTER CHECKING IF ANY NODE IS ACTIVE
-      OCommandExecutorSQLHASyncCluster.replaceCluster(this, serverInstance, databaseName, cl);
     }
 
     try {

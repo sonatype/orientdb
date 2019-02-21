@@ -75,7 +75,6 @@ import com.orientechnologies.orient.core.storage.OBasicTransaction;
 import com.orientechnologies.orient.core.storage.ORawBuffer;
 import com.orientechnologies.orient.core.storage.ORecordCallback;
 import com.orientechnologies.orient.core.storage.OStorage;
-import com.orientechnologies.orient.core.storage.OStorage.LOCKING_STRATEGY;
 import com.orientechnologies.orient.core.storage.cluster.OOfflineClusterException;
 import com.orientechnologies.orient.core.storage.impl.local.OMicroTransaction;
 import com.orientechnologies.orient.core.tx.OTransaction;
@@ -242,9 +241,11 @@ public class ODatabaseDocumentRemote extends ODatabaseDocumentAbstract {
 
     } catch (OException e) {
       close();
+      ODatabaseRecordThreadLocal.instance().remove();
       throw e;
     } catch (Exception e) {
       close();
+      ODatabaseRecordThreadLocal.instance().remove();
       throw OException.wrapException(new ODatabaseException("Cannot open database url=" + getURL()), e);
     }
   }
@@ -673,7 +674,7 @@ public class ODatabaseDocumentRemote extends ODatabaseDocumentAbstract {
    */
   public <RET extends ORecord> RET executeReadRecord(final ORecordId rid, ORecord iRecord, final int recordVersion,
       final String fetchPlan, final boolean ignoreCache, final boolean iUpdateCache, final boolean loadTombstones,
-      final LOCKING_STRATEGY lockingStrategy, RecordReader recordReader) {
+      final OStorage.LOCKING_STRATEGY lockingStrategy, RecordReader recordReader) {
     checkOpenness();
     checkIfActive();
 
@@ -785,7 +786,7 @@ public class ODatabaseDocumentRemote extends ODatabaseDocumentAbstract {
   }
 
   @Override
-  public void internalLockRecord(OIdentifiable iRecord, LOCKING_STRATEGY lockingStrategy) {
+  public void internalLockRecord(OIdentifiable iRecord, OStorage.LOCKING_STRATEGY lockingStrategy) {
     checkAndSendTransaction();
     OStorageRemote remote = getStorage();
     // -1 value means default timeout

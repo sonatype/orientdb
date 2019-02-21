@@ -14,11 +14,11 @@ import com.orientechnologies.orient.core.exception.ODatabaseException;
 import com.orientechnologies.orient.core.storage.OStorage;
 import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
 import com.orientechnologies.orient.distributed.hazelcast.OCoordinatedExecutorMessageHandler;
-import com.orientechnologies.orient.distributed.hazelcast.OHazelcastPlugin;
 import com.orientechnologies.orient.distributed.impl.ODatabaseDocumentDistributed;
 import com.orientechnologies.orient.distributed.impl.ODatabaseDocumentDistributedPooled;
 import com.orientechnologies.orient.distributed.impl.ODistributedNetworkManager;
-import com.orientechnologies.orient.distributed.impl.ONodeConfiguration;
+import com.orientechnologies.orient.core.db.config.ONodeConfiguration;
+import com.orientechnologies.orient.distributed.impl.ONodeInternalConfiguration;
 import com.orientechnologies.orient.distributed.impl.coordinator.OCoordinateMessagesFactory;
 import com.orientechnologies.orient.distributed.impl.coordinator.ODistributedChannel;
 import com.orientechnologies.orient.distributed.impl.coordinator.ODistributedCoordinator;
@@ -37,10 +37,7 @@ import com.orientechnologies.orient.server.network.protocol.binary.ONetworkProto
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.SecureRandom;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.*;
 
 import static com.orientechnologies.orient.enterprise.channel.binary.OChannelBinaryProtocol.*;
@@ -51,25 +48,28 @@ import static java.util.concurrent.TimeUnit.MINUTES;
  */
 public class OrientDBDistributed extends OrientDBEmbedded implements OServerAware, OServerLifecycleListener {
 
+  private static final String DISTRIBUTED_USER = "distributed_replication";
+
   private          OServer                                   server;
-  private volatile OHazelcastPlugin                          plugin;
   private final    Map<String, ODistributedChannel>          members          = new HashMap<>();
   private volatile boolean                                   coordinator      = false;
   private volatile String                                    coordinatorName;
-  private final    OStructuralDistributedContext             structuralDistributedContext;
+  private          OStructuralDistributedContext             structuralDistributedContext;
   private          OCoordinatedExecutorMessageHandler        requestHandler;
   private          OCoordinateMessagesFactory                coordinateMessagesFactory;
   private          ODistributedNetworkManager                networkManager;
   private volatile boolean                                   distributedReady = false;
-  private          ConcurrentMap<String, ODistributedStatus> databasesStatus  = new ConcurrentHashMap<>();
+  private final    ConcurrentMap<String, ODistributedStatus> databasesStatus  = new ConcurrentHashMap<>();
   private          ONodeConfiguration                        nodeConfiguration;
 
   public OrientDBDistributed(String directoryPath, OrientDBConfig config, Orient instance) {
     super(directoryPath, config, instance);
-    structuralDistributedContext = new OStructuralDistributedContext(this);
+
     //This now si simple but should be replaced by a factory depending to the protocol version
     coordinateMessagesFactory = new OCoordinateMessagesFactory();
     requestHandler = new OCoordinatedExecutorMessageHandler(this);
+
+    this.nodeConfiguration = config.getNodeConfiguration();
 
   }
 
@@ -90,30 +90,33 @@ public class OrientDBDistributed extends OrientDBEmbedded implements OServerAwar
 
   @Override
   public void onAfterActivate() {
-    generateNodeConfig();
-    networkManager = new ODistributedNetworkManager(this, getNodeConfig());
+
+    checkPort();
+    structuralDistributedContext = new OStructuralDistributedContext(this);
+    networkManager = new ODistributedNetworkManager(this, getNodeConfig(), generateInternalConfiguration());
     networkManager.startup();
 
   }
 
-  private void generateNodeConfig() {
-    String nodeName = "_" + new Random().nextInt(100000000);//TODO load the name from config
-    OServerNetworkListener protocol = server.getListenerByProtocol(ONetworkProtocolBinary.class);
-    OServerUserConfiguration user = server.getUser("distributed_replication");
-    if (user == null) {
-      server.addTemporaryUser("distributed_replication", "" + new SecureRandom().nextLong(), "*");
-      user = server.getUser("distributed_replication");
+  public void checkPort() {
+
+    // Use the inbound port in case it's not provided
+    if (this.nodeConfiguration.getTcpPort() == null) {
+      OServerNetworkListener protocol = server.getListenerByProtocol(ONetworkProtocolBinary.class);
+      this.nodeConfiguration.setTcpPort(protocol.getInboundAddr().getPort());
     }
-    //TODO load from config file or cli
-    ONodeConfiguration config = new ONodeConfiguration();
-    config.setNodeName(nodeName);
-    config.setQuorum(2);
-    config.setConnectionUsername("distributed_replication");
-    config.setConnectionPassword(user.password);
-    config.setTcpPort(protocol.getInboundAddr().getPort());
-    config.setGroupName("default");
-    config.setGroupPassword("123456");
-    this.nodeConfiguration = config;
+
+  }
+
+  private ONodeInternalConfiguration generateInternalConfiguration() {
+
+    OServerUserConfiguration user = server.getUser(DISTRIBUTED_USER);
+    if (user == null) {
+      server.addTemporaryUser(DISTRIBUTED_USER, "" + new SecureRandom().nextLong(), "*");
+      user = server.getUser(DISTRIBUTED_USER);
+    }
+
+    return new ONodeInternalConfiguration(UUID.randomUUID(), DISTRIBUTED_USER, user.password);
   }
 
   @Override
@@ -121,38 +124,26 @@ public class OrientDBDistributed extends OrientDBEmbedded implements OServerAwar
     networkManager.shutdown();
   }
 
-  public synchronized OHazelcastPlugin getPlugin() {
-    if (plugin == null) {
-      if (server != null && server.isActive())
-        plugin = server.getPlugin("cluster");
-    }
-    return plugin;
-  }
-
   protected OSharedContext createSharedContext(OAbstractPaginatedStorage storage) {
-    if (OSystemDatabase.SYSTEM_DB_NAME.equals(storage.getName()) || getPlugin() == null || !getPlugin().isEnabled()) {
+    if (OSystemDatabase.SYSTEM_DB_NAME.equals(storage.getName())) {
       return new OSharedContextEmbedded(storage, this);
     }
     return new OSharedContextDistributed(storage, this);
   }
 
   protected ODatabaseDocumentEmbedded newSessionInstance(OAbstractPaginatedStorage storage) {
-    if (OSystemDatabase.SYSTEM_DB_NAME.equals(storage.getName()) || getPlugin() == null || !getPlugin().isEnabled()) {
+    if (OSystemDatabase.SYSTEM_DB_NAME.equals(storage.getName())) {
       return new ODatabaseDocumentEmbedded(storage);
     }
-    return new ODatabaseDocumentDistributed(storage, plugin);
+    return new ODatabaseDocumentDistributed(storage, getNodeNameFromConfig());
   }
 
   protected ODatabaseDocumentEmbedded newPooledSessionInstance(ODatabasePoolInternal pool, OAbstractPaginatedStorage storage) {
-    if (OSystemDatabase.SYSTEM_DB_NAME.equals(storage.getName()) || getPlugin() == null || !getPlugin().isEnabled()) {
+    if (OSystemDatabase.SYSTEM_DB_NAME.equals(storage.getName())) {
       return new ODatabaseDocumentEmbeddedPooled(pool, storage);
     }
-    return new ODatabaseDocumentDistributedPooled(pool, storage, plugin);
+    return new ODatabaseDocumentDistributedPooled(pool, storage, getNodeNameFromConfig());
 
-  }
-
-  public void setPlugin(OHazelcastPlugin plugin) {
-    this.plugin = plugin;
   }
 
   public OStorage fullSync(String dbName, String backupPath, OrientDBConfig config) {
@@ -232,7 +223,6 @@ public class OrientDBDistributed extends OrientDBEmbedded implements OServerAwar
         e.printStackTrace();
       }
       //This initialize the distributed configuration.
-      plugin.getDatabaseConfiguration(name);
       checkCoordinator(name);
     } else {
       super.create(name, user, password, type, config);
@@ -278,7 +268,7 @@ public class OrientDBDistributed extends OrientDBEmbedded implements OServerAwar
         ODistributedContext distributed = ((OSharedContextDistributed) shared).getDistributedContext();
         if (distributed.getCoordinator() == null) {
           if (coordinator) {
-            distributed.makeCoordinator(plugin.getLocalNodeName(), shared);
+            distributed.makeCoordinator(getNodeNameFromConfig(), shared);
             for (Map.Entry<String, ODistributedChannel> node : members.entrySet()) {
               ODistributedMember member = new ODistributedMember(node.getKey(), database, node.getValue());
               distributed.getCoordinator().join(member);
@@ -316,7 +306,7 @@ public class OrientDBDistributed extends OrientDBEmbedded implements OServerAwar
       if (coordinator) {
         ODistributedCoordinator c = distributed.getCoordinator();
         if (c == null) {
-          distributed.makeCoordinator(plugin.getLocalNodeName(), context);
+          distributed.makeCoordinator(getNodeNameFromConfig(), context);
           c = distributed.getCoordinator();
         }
         c.join(member);
@@ -515,7 +505,7 @@ public class OrientDBDistributed extends OrientDBEmbedded implements OServerAwar
     this.notifyAll();
   }
 
-  public void checkDatabaseReady(String database) {
+  public synchronized void checkDatabaseReady(String database) {
     checkReadyForHandleRequests();
     try {
       if (!ODistributedStatus.ONLINE.equals(databasesStatus.get(database))) {
@@ -534,5 +524,19 @@ public class OrientDBDistributed extends OrientDBEmbedded implements OServerAwar
     checkCoordinator(database);
     //TODO: double check this notify, it may unblock as well checkReadyForHandleRequests that is not what is expected
     this.notifyAll();
+  }
+
+  public OCoordinateMessagesFactory getCoordinateMessagesFactory() {
+    return coordinateMessagesFactory;
+  }
+
+  @Override
+  public void close() {
+    this.networkManager.shutdown();
+    super.close();
+  }
+
+  public OServer getServer() {
+    return server;
   }
 }
