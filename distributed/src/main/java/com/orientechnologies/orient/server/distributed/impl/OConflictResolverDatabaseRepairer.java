@@ -34,13 +34,37 @@ import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.storage.ORawBuffer;
 import com.orientechnologies.orient.core.storage.OStorage;
 import com.orientechnologies.orient.core.storage.OStorageOperationResult;
-import com.orientechnologies.orient.server.distributed.*;
+import com.orientechnologies.orient.server.distributed.ODistributedConfiguration;
+import com.orientechnologies.orient.server.distributed.ODistributedDatabase;
+import com.orientechnologies.orient.server.distributed.ODistributedDatabaseRepairer;
+import com.orientechnologies.orient.server.distributed.ODistributedRequest;
+import com.orientechnologies.orient.server.distributed.ODistributedRequestId;
+import com.orientechnologies.orient.server.distributed.ODistributedResponse;
+import com.orientechnologies.orient.server.distributed.ODistributedServerLog;
+import com.orientechnologies.orient.server.distributed.ODistributedServerManager;
+import com.orientechnologies.orient.server.distributed.ODistributedTxContext;
 import com.orientechnologies.orient.server.distributed.conflict.OAbstractDistributedConflictResolver;
 import com.orientechnologies.orient.server.distributed.conflict.ODistributedConflictResolver;
-import com.orientechnologies.orient.server.distributed.impl.task.*;
+import com.orientechnologies.orient.server.distributed.impl.task.OClusterRepairInfoTask;
+import com.orientechnologies.orient.server.distributed.impl.task.OCompleted2pcTask;
+import com.orientechnologies.orient.server.distributed.impl.task.OCreateRecordTask;
+import com.orientechnologies.orient.server.distributed.impl.task.OFixCreateRecordTask;
+import com.orientechnologies.orient.server.distributed.impl.task.OFixUpdateRecordTask;
+import com.orientechnologies.orient.server.distributed.impl.task.OReadRecordTask;
+import com.orientechnologies.orient.server.distributed.impl.task.ORepairClusterTask;
+import com.orientechnologies.orient.server.distributed.impl.task.ORepairRecordsTask;
+import com.orientechnologies.orient.server.distributed.impl.task.OTxTaskResult;
 
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -87,7 +111,7 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
           throw new OConfigurationException("Invalid configuration for conflict resolver: " + item);
 
         name = item.substring(0, pos);
-        config = new ODocument().fromJSON(item.substring(pos, item.length()));
+        config = new ODocument().fromJSON(item.substring(pos));
       } else {
         name = item;
         config = null;
@@ -96,8 +120,7 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
       final ODistributedConflictResolver cr = manager.getConflictResolverFactory().getImplementation(name);
       if (cr == null)
         throw new OConfigurationException(
-            "Cannot find '" + name + "' conflict resolver implementation. Available are: " + manager.getConflictResolverFactory()
-                .getRegisteredImplementationNames());
+            "Cannot find '" + name + "' conflict resolver implementation. Available are: " + manager.getConflictResolverFactory().getRegisteredImplementationNames());
 
       if (config != null)
         cr.configure(config);
@@ -105,31 +128,28 @@ public class OConflictResolverDatabaseRepairer implements ODistributedDatabaseRe
       conflictResolvers.add(cr);
     }
 
-    checkTask = new TimerTask() {
-      @Override
-      public void run() {
-
-        final long start = System.currentTimeMillis();
-        try {
-
-          check();
-
-        } catch (Exception t) {
-          OLogManager.instance().error(this, "Error on repairing distributed database", t);
-          // IGNORE THE EXCEPTION
-        } finally {
-          totalTimeProcessing.addAndGet(System.currentTimeMillis() - start);
-        }
-      }
-
-    };
-
     final long time = OGlobalConfiguration.DISTRIBUTED_CONFLICT_RESOLVER_REPAIRER_CHECK_EVERY.getValueAsLong();
     if (time > 0) {
-      Orient.instance().scheduleTask(checkTask, time, time);
+      checkTask = Orient.instance().scheduleTask(new Runnable() {
+        @Override
+        public void run() {
+          final long start = System.currentTimeMillis();
+          try {
+            check();
+          } catch (Exception t) {
+            OLogManager.instance().error(this, "Error on repairing distributed database", t);
+            // IGNORE THE EXCEPTION
+          } finally {
+            totalTimeProcessing.addAndGet(System.currentTimeMillis() - start);
+          }
+        }
+      }, time, time);
       active = true;
-    } else
+    } else {
+      checkTask = null;
       active = false;
+    }
+
   }
 
   @Override

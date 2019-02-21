@@ -39,8 +39,23 @@ import com.orientechnologies.orient.core.id.ORecordId;
 import com.orientechnologies.orient.core.storage.ORawBuffer;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.wal.OLogSequenceNumber;
 import com.orientechnologies.orient.server.OSystemDatabase;
-import com.orientechnologies.orient.server.distributed.*;
+import com.orientechnologies.orient.server.distributed.ODistributedConfiguration;
+import com.orientechnologies.orient.server.distributed.ODistributedDatabase;
+import com.orientechnologies.orient.server.distributed.ODistributedDatabaseRepairer;
+import com.orientechnologies.orient.server.distributed.ODistributedException;
+import com.orientechnologies.orient.server.distributed.ODistributedMomentum;
+import com.orientechnologies.orient.server.distributed.ODistributedRequest;
+import com.orientechnologies.orient.server.distributed.ODistributedRequestId;
+import com.orientechnologies.orient.server.distributed.ODistributedResponse;
+import com.orientechnologies.orient.server.distributed.ODistributedResponseManager;
+import com.orientechnologies.orient.server.distributed.ODistributedResponseManagerImpl;
+import com.orientechnologies.orient.server.distributed.ODistributedServerLog;
 import com.orientechnologies.orient.server.distributed.ODistributedServerLog.DIRECTION;
+import com.orientechnologies.orient.server.distributed.ODistributedServerManager;
+import com.orientechnologies.orient.server.distributed.ODistributedSyncConfiguration;
+import com.orientechnologies.orient.server.distributed.ODistributedTxContext;
+import com.orientechnologies.orient.server.distributed.OModifiableDistributedConfiguration;
+import com.orientechnologies.orient.server.distributed.ORemoteServerController;
 import com.orientechnologies.orient.server.distributed.impl.task.ODistributedLockTask;
 import com.orientechnologies.orient.server.distributed.impl.task.OUnreachableServerLocalTask;
 import com.orientechnologies.orient.server.distributed.impl.task.OWaitForTask;
@@ -52,11 +67,17 @@ import com.orientechnologies.orient.server.hazelcast.OHazelcastPlugin;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.*;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TimerTask;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -200,7 +221,7 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
   @Override
   public void waitForOnline() {
     try {
-      if(!databaseName.equalsIgnoreCase(OSystemDatabase.SYSTEM_DB_NAME))      
+      if (!databaseName.equalsIgnoreCase(OSystemDatabase.SYSTEM_DB_NAME))
         waitForOnline.await();
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
@@ -211,12 +232,9 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
   public void reEnqueue(final int senderNodeId, final long msgSequence, final String databaseName, final ORemoteTask payload,
       int retryCount) {
 
-    Orient.instance().scheduleTask(new TimerTask() {
-      @Override
-      public void run() {
-        processRequest(new ODistributedRequest(getManager(), senderNodeId, msgSequence, databaseName, payload), false);
-      }
-    }, 10 * retryCount, 0);
+    Orient.instance().scheduleTask(
+        () -> processRequest(new ODistributedRequest(getManager(), senderNodeId, msgSequence, databaseName, payload), false),
+        10 * retryCount, 0);
   }
 
   /**
@@ -287,76 +305,18 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
         // if (ODistributedServerLog.isDebugEnabled())
         ODistributedServerLog.debug(this, localNodeName, null, DIRECTION.NONE,
             "Request %s on database '%s' waiting for all the previous requests to be completed", request, databaseName);
-
+        CyclicBarrier started = new CyclicBarrier(involvedWorkerQueues.size());
+        CyclicBarrier finished = new CyclicBarrier(involvedWorkerQueues.size());
         // WAIT ALL THE INVOLVED QUEUES ARE FREE AND SYNCHRONIZED
-        final CountDownLatch syncLatch = new CountDownLatch(involvedWorkerQueues.size());
-        final ODistributedRequest syncRequest = new ODistributedRequest(null, request.getId().getNodeId(), -1, databaseName,
-            new OSynchronizedTaskWrapper(syncLatch));
         for (int queue : involvedWorkerQueues) {
           ODistributedWorker worker = workerThreads.get(queue);
+          OWaitPartitionsReadyTask waitRequest = new OWaitPartitionsReadyTask(started, task, finished);
+
+          final ODistributedRequest syncRequest = new ODistributedRequest(null, request.getId().getNodeId(),
+              request.getId().getMessageId(), databaseName, waitRequest);
           worker.processRequest(syncRequest);
         }
 
-        // Make infinite timeout everytime
-        long taskTimeout = 0;
-        try {
-          if (taskTimeout <= 0)
-            syncLatch.await();
-          else {
-            // WAIT FOR COMPLETION. THE TIMEOUT IS MANAGED IN SMALLER CYCLES TO PROPERLY RECOGNIZE WHEN THE DB IS REMOVED
-            final long start = System.currentTimeMillis();
-            final long cycleTimeout = Math.min(taskTimeout, 2000);
-
-            boolean locked = false;
-            do {
-              if (syncLatch.await(cycleTimeout, TimeUnit.MILLISECONDS)) {
-                // DONE
-                locked = true;
-                break;
-              }
-
-              if (this.workerThreads.size() == 0)
-                // DATABASE WAS SHUTDOWN
-                break;
-
-            } while (System.currentTimeMillis() - start < taskTimeout);
-
-            if (!locked) {
-              final String msg = String.format(
-                  "Cannot execute distributed request (%s) because all worker threads (%d) are busy (pending=%d timeout=%d)",
-                  request, workerThreads.size(), syncLatch.getCount(), taskTimeout);
-              ODistributedWorker.sendResponseBack(this, manager, request, new ODistributedOperationException(msg));
-              return;
-            }
-          }
-        } catch (InterruptedException e) {
-          // IGNORE
-          Thread.currentThread().interrupt();
-          final String msg = String
-              .format("Cannot execute distributed request (%s) because all worker threads (%d) are busy", request,
-                  workerThreads.size());
-          ODistributedWorker.sendResponseBack(this, manager, request, new ODistributedOperationException(msg));
-          return;
-        }
-
-        // PUT THE TASK TO EXECUTE ONLY IN THE FIRST QUEUE AND PUT WAIT-FOR TASKS IN THE OTHERS. WHEN THE REAL TASK IS EXECUTED,
-        // ALL THE OTHER TASKS WILL RETURN, SO THE QUEUES WILL BE BUSY DURING THE EXECUTION OF THE TASK. THIS AVOID CONCURRENT
-        // EXECUTION FOR THE SAME PARTITION
-        final CountDownLatch queueLatch = new CountDownLatch(1);
-
-        int i = 0;
-        for (int queue : involvedWorkerQueues) {
-          final ODistributedRequest req;
-          if (i++ == 0) {
-            // USE THE FIRST QUEUE TO PROCESS THE REQUEST
-            final String senderNodeName = manager.getNodeNameById(request.getId().getNodeId());
-            request.setTask(new OSynchronizedTaskWrapper(queueLatch, senderNodeName, task));
-            req = request;
-          } else
-            req = new ODistributedRequest(manager, request.getId().getNodeId(), -1, databaseName, new OWaitForTask(queueLatch));
-
-          workerThreads.get(queue).processRequest(req);
-        }
       }
     } else if (partitionKeys.length == 1 && partitionKeys[0] == -2) {
       // ANY PARTITION: USE THE FIRST EMPTY IF ANY, OTHERWISE THE FIRST IN THE LIST
@@ -860,19 +820,10 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
 
   @Override
   public ODistributedTxContext registerTxContext(final ODistributedRequestId reqId, ODistributedTxContext ctx) {
-    final ODistributedTxContext prevCtx = activeTxContexts.putIfAbsent(reqId, ctx);
-    if (prevCtx != null) {
-      // ALREADY EXISTENT
-      ODistributedServerLog.debug(this, localNodeName, null, DIRECTION.NONE,
-          "Distributed transaction: repeating request %s in database '%s' (thread=%d)", reqId, databaseName,
-          Thread.currentThread().getId());
-      ctx = prevCtx;
-    } else
-      // REGISTERED
-      ODistributedServerLog.debug(this, localNodeName, null, DIRECTION.NONE,
-          "Distributed transaction: registered request %s in database '%s' (thread=%d)", reqId, databaseName,
-          Thread.currentThread().getId());
-
+    final ODistributedTxContext prevCtx = activeTxContexts.put(reqId, ctx);
+    if (prevCtx != ctx && prevCtx != null) {
+      prevCtx.destroy();
+    }
     return ctx;
   }
 
@@ -1320,6 +1271,8 @@ public class ODistributedDatabaseImpl implements ODistributedDatabase {
         if (w != null)
           w.reset();
       }
+      recordLockManager.reset();
+      indexKeyLockManager.reset();
     }
 
     this.parsing.set(false);

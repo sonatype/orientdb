@@ -78,7 +78,7 @@ public interface OReadCache {
 
   void pinPage(OCacheEntry cacheEntry, OWriteCache writeCache);
 
-  OCacheEntry allocateNewPage(long fileId, OWriteCache writeCache, boolean verifyChecksums, OLogSequenceNumber startLSN)
+  OCacheEntry allocateNewPage(long fileId, OWriteCache writeCache, OLogSequenceNumber startLSN)
       throws IOException;
 
   long getUsedMemory();
@@ -113,4 +113,6 @@ public interface OReadCache {
    * @param writeCache Write cache which manages files cache state of which is going to be stored.
    */
   void storeCacheState(OWriteCache writeCache);
+
+  void changeMaximumAmountOfMemory(long calculateReadCacheMaxMemory);
 }

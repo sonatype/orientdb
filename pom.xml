@@ -248,7 +248,7 @@
         <!--
         SONATYPE: used by our patched orientdb.properties to record+log the upstream version
         -->
-        <upstream.version>3.0.14-SNAPSHOT</upstream.version>
+        <upstream.version>3.0.16-SNAPSHOT</upstream.version>
     </properties>
 
     <build>
@@ -305,6 +305,12 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-failsafe-plugin</artifactId>
                     <version>${surefire.version}</version>
+
+                    <configuration>
+                        <systemPropertyVariables>
+                            <security.userPasswordSaltIterations>1</security.userPasswordSaltIterations>
+                        </systemPropertyVariables>
+                    </configuration>
                 </plugin>
 
                 <plugin>
