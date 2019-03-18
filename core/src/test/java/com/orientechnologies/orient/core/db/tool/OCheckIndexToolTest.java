@@ -63,4 +63,39 @@ public class OCheckIndexToolTest {
     }
   }
 
+  @Test
+  public void testBugOnCollectionIndex() {
+
+    ODatabaseDocumentTx db = new ODatabaseDocumentTx("memory:OCheckIndexToolTestCollections");
+    db.create();
+
+    try {
+      db.command(new OCommandSQL("create class testclass")).execute();
+      db.command(new OCommandSQL("create property testclass.name string")).execute();
+      db.command(new OCommandSQL("create property testclass.tags linklist")).execute();
+      db.command(new OCommandSQL("alter property testclass.tags default '[]'")).execute();
+      db.command(new OCommandSQL("create index testclass_tags_idx on testclass (tags) NOTUNIQUE_HASH_INDEX")).execute();
+
+      db.command(new OCommandSQL("insert into testclass set name = 'a',tags = [#5:0] ")).execute();
+      db.command(new OCommandSQL("insert into testclass set name = 'b'")).execute();
+      db.command(new OCommandSQL("insert into testclass set name = 'c' ")).execute();
+
+      OCheckIndexTool tool = new OCheckIndexTool();
+
+      tool.setDatabase(db);
+      tool.setVerbose(true);
+      tool.setOutputListener(new OCommandOutputListener() {
+        @Override
+        public void onMessage(String iText) {
+          System.out.println(iText);
+        }
+      });
+
+      tool.run();
+      Assert.assertEquals(0, tool.getTotalErrors());
+
+    } finally {
+      db.close();
+    }
+  }
 }
