@@ -75,6 +75,7 @@ import com.orientechnologies.orient.core.storage.OStorageOperationResult;
 import com.orientechnologies.orient.core.storage.disk.OLocalPaginatedStorage;
 import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
 import com.orientechnologies.orient.core.storage.impl.local.OFreezableStorageComponent;
+import com.orientechnologies.orient.core.storage.impl.local.OSyncSource;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.wal.OLogSequenceNumber;
 import com.orientechnologies.orient.core.storage.ridbag.sbtree.OSBTreeCollectionManager;
 import com.orientechnologies.orient.core.tx.OTransactionInternal;
@@ -92,9 +93,6 @@ import com.orientechnologies.orient.server.distributed.ODistributedServerLog;
 import com.orientechnologies.orient.server.distributed.ODistributedServerManager;
 import com.orientechnologies.orient.server.distributed.OModifiableDistributedConfiguration;
 import com.orientechnologies.orient.server.distributed.OWriteOperationNotPermittedException;
-import com.orientechnologies.orient.server.distributed.impl.metadata.OClassDistributed;
-import com.orientechnologies.orient.server.distributed.impl.task.OBackgroundBackup;
-import com.orientechnologies.orient.server.distributed.impl.task.OCreateRecordTask;
 import com.orientechnologies.orient.server.distributed.impl.task.OReadRecordIfNotLatestTask;
 import com.orientechnologies.orient.server.distributed.impl.task.OReadRecordTask;
 import com.orientechnologies.orient.server.distributed.impl.task.OSQLCommandTask;
@@ -125,6 +123,7 @@ import java.util.TimeZone;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -144,7 +143,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
   private ODistributedStorageEventListener    eventListener;
 
   private volatile ODistributedConfiguration distributedConfiguration;
-  private volatile OBackgroundBackup         lastValidBackup = null;
+  private volatile OSyncSource               lastValidBackup = null;
 
   public ODistributedStorage(final OServer iServer, final String dbName) {
     this.serverInstance = iServer;
@@ -784,7 +783,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
 
   @Override
   public <T> T getResource(final String iName, final Callable<T> iCallback) {
-    return (T) wrapped.getResource(iName, iCallback);
+    return wrapped.getResource(iName, iCallback);
   }
 
   @Override
@@ -823,6 +822,21 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
   @Override
   public void restoreFromIncrementalBackup(final String filePath) {
     wrapped.restoreFromIncrementalBackup(filePath);
+  }
+
+  @Override
+  public boolean supportIncremental() {
+    return wrapped.supportIncremental();
+  }
+
+  @Override
+  public void fullIncrementalBackup(final OutputStream stream) throws UnsupportedOperationException {
+    wrapped.fullIncrementalBackup(stream);
+  }
+
+  @Override
+  public void restoreFullIncrementalBackup(final InputStream stream) throws UnsupportedOperationException {
+    wrapped.restoreFullIncrementalBackup(stream);
   }
 
   @Override
@@ -1296,11 +1310,10 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
 
   @Override
   public void release() {
-    final String localNode = dManager.getLocalNodeName();
-
-    if (prevStatus == ODistributedServerManager.DB_STATUS.ONLINE)
+    if (prevStatus == ODistributedServerManager.DB_STATUS.ONLINE) {
       // RESTORE PREVIOUS STATUS
-      dManager.setDatabaseStatus(localNode, getName(), ODistributedServerManager.DB_STATUS.ONLINE);
+      getLocalDistributedDatabase().setOnline();;
+    }
 
     getFreezableStorage().release();
   }
@@ -1327,9 +1340,10 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
     } catch (IOException e) {
       throw OException.wrapException(new OIOException("Error on executing backup"), e);
     } finally {
-      if (prevStatus == ODistributedServerManager.DB_STATUS.ONLINE)
+      if (prevStatus == ODistributedServerManager.DB_STATUS.ONLINE) {
         // RESTORE PREVIOUS STATUS
-        dManager.setDatabaseStatus(localNode, getName(), ODistributedServerManager.DB_STATUS.ONLINE);
+        dManager.getMessageService().getDatabase(getName()).setOnline();
+      }
     }
     // }
     // });
@@ -1372,11 +1386,11 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
           "Cannot execute write operation (" + operation + ") on node '" + localNodeName + "' because is non a master");
   }
 
-  public OBackgroundBackup getLastValidBackup() {
+  public OSyncSource getLastValidBackup() {
     return lastValidBackup;
   }
 
-  public void setLastValidBackup(final OBackgroundBackup lastValidBackup) {
+  public void setLastValidBackup(final OSyncSource lastValidBackup) {
     this.lastValidBackup = lastValidBackup;
   }
 
@@ -1396,13 +1410,21 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
 
   private OFreezableStorageComponent getFreezableStorage() {
     if (wrapped instanceof OFreezableStorageComponent)
-      return ((OFreezableStorageComponent) wrapped);
+      return wrapped;
     else
       throw new UnsupportedOperationException("Storage engine " + wrapped.getType() + " does not support freeze operation");
   }
 
   public void resetLastValidBackup() {
-    lastValidBackup = null;
+    if (lastValidBackup != null) {
+      lastValidBackup.invalidate();
+    }
+  }
+
+  public void clearLastValidBackup() {
+    if (lastValidBackup != null) {
+      lastValidBackup = null;
+    }
   }
 
   protected void dropStorageFiles() {
@@ -1448,7 +1470,7 @@ public class ODistributedStorage implements OStorage, OFreezableStorageComponent
       final byte[] buffer = new byte[(int) file.length()];
       f.read(buffer);
 
-      final ODocument doc = (ODocument) new ODocument().fromJSON(new String(buffer), "noMap");
+      final ODocument doc = new ODocument().fromJSON(new String(buffer), "noMap");
       doc.field("version", 1);
       return doc;
 

@@ -1,32 +1,30 @@
 /*
-  *
-  *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
-  *  *
-  *  *  Licensed under the Apache License, Version 2.0 (the "License");
-  *  *  you may not use this file except in compliance with the License.
-  *  *  You may obtain a copy of the License at
-  *  *
-  *  *       http://www.apache.org/licenses/LICENSE-2.0
-  *  *
-  *  *  Unless required by applicable law or agreed to in writing, software
-  *  *  distributed under the License is distributed on an "AS IS" BASIS,
-  *  *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  *  *  See the License for the specific language governing permissions and
-  *  *  limitations under the License.
-  *  *
-  *  * For more information: http://orientdb.com
-  *
-  */
+ *
+ *  *  Copyright 2010-2016 OrientDB LTD (http://orientdb.com)
+ *  *
+ *  *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  *  you may not use this file except in compliance with the License.
+ *  *  You may obtain a copy of the License at
+ *  *
+ *  *       http://www.apache.org/licenses/LICENSE-2.0
+ *  *
+ *  *  Unless required by applicable law or agreed to in writing, software
+ *  *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  *  See the License for the specific language governing permissions and
+ *  *  limitations under the License.
+ *  *
+ *  * For more information: http://orientdb.com
+ *
+ */
 package com.orientechnologies.orient.core.index;
 
 import com.orientechnologies.common.serialization.types.OBinarySerializer;
-import com.orientechnologies.orient.core.collate.ODefaultCollate;
 import com.orientechnologies.orient.core.db.record.ORecordElement;
 import com.orientechnologies.orient.core.exception.OConfigurationException;
 import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.serialization.serializer.binary.OBinarySerializerFactory;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -38,13 +36,12 @@ import java.util.List;
  *
  * @author Luca Garulli (l.garulli--(at)--orientdb.com)
  */
-@SuppressFBWarnings(value = "SE_TRANSIENT_FIELD_NOT_RESTORED")
 public class ORuntimeKeyIndexDefinition<T> extends OAbstractIndexDefinition {
-  private static final long              serialVersionUID = -8855918974071833818L;
-  private transient OBinarySerializer<T> serializer;
+  private static final long                 serialVersionUID = -8855918974071833818L;
+  private transient    OBinarySerializer<T> serializer;
 
   @SuppressWarnings("unchecked")
-  public ORuntimeKeyIndexDefinition(final byte iId, int version) {
+  public ORuntimeKeyIndexDefinition(final byte iId) {
     super();
 
     serializer = (OBinarySerializer<T>) OBinarySerializerFactory.getInstance().getObjectSerializer(iId);
@@ -115,15 +112,13 @@ public class ORuntimeKeyIndexDefinition<T> extends OAbstractIndexDefinition {
     super.serializeFromStream();
 
     final byte keySerializerId = ((Number) document.field("keySerializerId")).byteValue();
+    //noinspection unchecked
     serializer = (OBinarySerializer<T>) OBinarySerializerFactory.getInstance().getObjectSerializer(keySerializerId);
     if (serializer == null)
       throw new OConfigurationException("Runtime index definition cannot find binary serializer with id=" + keySerializerId
           + ". Assure to plug custom serializer into the server.");
 
-    String collateField = document.field("collate");
-    if (collateField == null)
-      collateField = ODefaultCollate.NAME;
-    setNullValuesIgnored(!Boolean.FALSE.equals(document.<Boolean> field("nullValuesIgnored")));
+    setNullValuesIgnored(!Boolean.FALSE.equals(document.<Boolean>field("nullValuesIgnored")));
   }
 
   public Object getDocumentValueToIndex(final ODocument iDocument) {
@@ -155,15 +150,9 @@ public class ORuntimeKeyIndexDefinition<T> extends OAbstractIndexDefinition {
 
   /**
    * {@inheritDoc}
-   *
-   * @param indexName
-   * @param indexType
    */
   public String toCreateIndexDDL(final String indexName, final String indexType, String engine) {
-    final StringBuilder ddl = new StringBuilder("create index `");
-    ddl.append(indexName).append("` ").append(indexType).append(' ');
-    ddl.append("runtime ").append(serializer.getId());
-    return ddl.toString();
+    return "create index `" + indexName + "` " + indexType + ' ' + "runtime " + serializer.getId();
   }
 
   public OBinarySerializer<T> getSerializer() {

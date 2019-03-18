@@ -41,6 +41,7 @@ import com.orientechnologies.orient.server.distributed.task.ODistributedDatabase
 import java.io.DataInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -68,7 +69,7 @@ public class OIncrementalServerSync {
    * <li>Binary presentation of the record, only if record is not deleted - length of content is provided in above entity</li>
    * </ol>
    */
-  public void importDelta(final OServer serverInstance, final String databaseName, final FileInputStream in, final String iNode)
+  public void importDelta(final OServer serverInstance, final String databaseName, final InputStream in, final String iNode)
       throws IOException {
     final String nodeName = serverInstance.getDistributedManager().getLocalNodeName();
 
@@ -92,7 +93,6 @@ public class OIncrementalServerSync {
 
           long lastLap = System.currentTimeMillis();
 
-          // final GZIPInputStream gzipInput = new GZIPInputStream(in);
           try {
 
             final DataInputStream input = new DataInputStream(in);
@@ -142,7 +142,7 @@ public class OIncrementalServerSync {
                   final int recordType = input.readByte();
                   final int recordSize = input.readInt();
                   final byte[] recordContent = new byte[recordSize];
-                  input.read(recordContent);
+                  input.readFully(recordContent);
 
                   switch (recordStatus) {
                   case REMOVED:
@@ -182,7 +182,8 @@ public class OIncrementalServerSync {
                     do {
                       newRecord = Orient.instance().getRecordFactoryManager()
                           .newInstance((byte) recordType, rid.getClusterId(), null);
-                      ORecordInternal.fill(newRecord, new ORecordId(rid.getClusterId(), -1), recordVersion, recordContent, true);
+                      ORecordInternal
+                          .fill(newRecord, new ORecordId(rid.getClusterId(), -1), recordVersion - 1, recordContent, true);
 
                       try {
                         newRecord.save();
