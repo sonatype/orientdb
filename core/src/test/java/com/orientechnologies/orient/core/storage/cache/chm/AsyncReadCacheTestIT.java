@@ -13,21 +13,12 @@ import com.orientechnologies.orient.core.storage.cache.local.OBackgroundExceptio
 import com.orientechnologies.orient.core.storage.impl.local.OLowDiskSpaceListener;
 import com.orientechnologies.orient.core.storage.impl.local.OPageIsBrokenListener;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.wal.OLogSequenceNumber;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Timer;
-import java.util.TimerTask;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class AsyncReadCacheTestIT {
@@ -191,7 +182,6 @@ public class AsyncReadCacheTestIT {
         final int pageIndex = random.nextInt(pageLimit);
 
         final OCacheEntry cacheEntry = readCache.loadForWrite(fileId, pageIndex, true, writeCache, 1, true, null);
-        cacheEntry.markDirty();
         readCache.releaseFromWrite(cacheEntry, writeCache);
         pageCounter++;
       }
@@ -259,7 +249,6 @@ public class AsyncReadCacheTestIT {
         final int pageIndex = random.nextInt();
         assert pageIndex < pageLimit;
         final OCacheEntry cacheEntry = readCache.loadForWrite(0, pageIndex, true, writeCache, 1, true, null);
-        cacheEntry.markDirty();
         readCache.releaseFromWrite(cacheEntry, writeCache);
         pageCounter++;
       }
@@ -570,7 +559,6 @@ public class AsyncReadCacheTestIT {
     }
   }
 
-  @SuppressFBWarnings("IS2_INCONSISTENT_SYNC")
   private static final class ZipfianGenerator {
     static final double ZIPFIAN_CONSTANT = 0.99;
 

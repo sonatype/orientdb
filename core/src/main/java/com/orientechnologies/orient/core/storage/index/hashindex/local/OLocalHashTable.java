@@ -11,13 +11,11 @@ import com.orientechnologies.orient.core.index.OIndexException;
 import com.orientechnologies.orient.core.index.engine.OBaseIndexEngine;
 import com.orientechnologies.orient.core.index.engine.OIndexEngine;
 import com.orientechnologies.orient.core.metadata.schema.OType;
-import com.orientechnologies.orient.core.serialization.serializer.binary.OBinarySerializerFactory;
 import com.orientechnologies.orient.core.storage.cache.OCacheEntry;
 import com.orientechnologies.orient.core.storage.impl.local.OAbstractPaginatedStorage;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.atomicoperations.OAtomicOperation;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.atomicoperations.OAtomicOperationsManager;
 import com.orientechnologies.orient.core.storage.impl.local.paginated.base.ODurableComponent;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -122,7 +120,6 @@ public class OLocalHashTable<K, V> extends ODurableComponent implements OHashTab
     this.nullBucketFileExtension = nullBucketFileExtension;
   }
 
-  @SuppressFBWarnings("DLS_DEAD_LOCAL_STORE")
   @Override
   public void create(final OBinarySerializer<K> keySerializer, final OBinarySerializer<V> valueSerializer, final OType[] keyTypes,
       final OEncryption encryption, final OHashFunction<K> keyHashFunction, final boolean nullKeyIsSupported) throws IOException {
@@ -164,89 +161,13 @@ public class OLocalHashTable<K, V> extends ODurableComponent implements OHashTab
         final String fileName = getFullName();
         fileId = addFile(atomicOperation, fileName);
 
-        setKeySerializer(keySerializer);
-        setValueSerializer(valueSerializer);
+        this.keySerializer = keySerializer;
+        this.valueSerializer = valueSerializer;
 
         initHashTreeState(atomicOperation);
 
         if (nullKeyIsSupported) {
           nullBucketFileId = addFile(atomicOperation, getName() + nullBucketFileExtension);
-        }
-      } finally {
-        releaseExclusiveLock();
-      }
-    } catch (final Exception e) {
-      rollback = true;
-      throw e;
-    } finally {
-      endAtomicOperation(rollback);
-    }
-  }
-
-  @Override
-  public OBinarySerializer<K> getKeySerializer() {
-    acquireSharedLock();
-    try {
-      return keySerializer;
-    } finally {
-      releaseSharedLock();
-    }
-  }
-
-  @Override
-  public void setKeySerializer(final OBinarySerializer<K> keySerializer) throws IOException {
-    boolean rollback = false;
-    final OAtomicOperation atomicOperation = startAtomicOperation(true);
-    try {
-      acquireExclusiveLock();
-      try {
-        this.keySerializer = keySerializer;
-        final OCacheEntry hashStateEntry = loadPageForWrite(atomicOperation, fileStateId, hashStateEntryIndex, true, true);
-        try {
-          final OHashIndexFileLevelMetadataPage metadataPage = new OHashIndexFileLevelMetadataPage(hashStateEntry, false);
-
-          metadataPage.setKeySerializerId(keySerializer.getId());
-        } finally {
-          releasePageFromWrite(atomicOperation, hashStateEntry);
-        }
-
-      } finally {
-        releaseExclusiveLock();
-      }
-    } catch (final Exception e) {
-      rollback = true;
-      throw e;
-    } finally {
-      endAtomicOperation(rollback);
-    }
-  }
-
-  @Override
-  public OBinarySerializer<V> getValueSerializer() {
-    acquireSharedLock();
-    try {
-      return valueSerializer;
-    } finally {
-      releaseSharedLock();
-    }
-  }
-
-  @Override
-  public void setValueSerializer(final OBinarySerializer<V> valueSerializer) throws IOException {
-    boolean rollback = false;
-    final OAtomicOperation atomicOperation = startAtomicOperation(true);
-    try {
-      acquireExclusiveLock();
-      try {
-        this.valueSerializer = valueSerializer;
-
-        final OCacheEntry hashStateEntry = loadPageForWrite(atomicOperation, fileStateId, hashStateEntryIndex, true, true);
-        try {
-          final OHashIndexFileLevelMetadataPage metadataPage = new OHashIndexFileLevelMetadataPage(hashStateEntry, false);
-
-          metadataPage.setValueSerializerId(valueSerializer.getId());
-        } finally {
-          releasePageFromWrite(atomicOperation, hashStateEntry);
         }
       } finally {
         releaseExclusiveLock();
@@ -550,7 +471,8 @@ public class OLocalHashTable<K, V> extends ODurableComponent implements OHashTab
 
   @Override
   public void load(final String name, final OType[] keyTypes, final boolean nullKeyIsSupported, final OEncryption encryption,
-      final OHashFunction<K> keyHashFunction) {
+      final OHashFunction<K> keyHashFunction, final OBinarySerializer<K> keySerializer,
+      final OBinarySerializer<V> valueSerializer) {
     acquireExclusiveLock();
     try {
       this.keyHashFunction = keyHashFunction;
@@ -567,24 +489,17 @@ public class OLocalHashTable<K, V> extends ODurableComponent implements OHashTab
       final OAtomicOperation atomicOperation = OAtomicOperationsManager.getCurrentOperation();
 
       fileStateId = openFile(atomicOperation, name + metadataConfigurationFileExtension);
-      final OCacheEntry hashStateEntry = loadPageForRead(atomicOperation, fileStateId, 0, true);
-      hashStateEntryIndex = hashStateEntry.getPageIndex();
+
+      this.keySerializer = keySerializer;
+      this.valueSerializer = valueSerializer;
 
       directory = new OHashTableDirectory(treeStateFileExtension, name, getFullName(), storage);
       directory.open(atomicOperation);
 
-      pinPage(atomicOperation, hashStateEntry);
+      final OCacheEntry hashStateEntry = loadPageForRead(atomicOperation, fileStateId, 0, true);
       try {
-        final OHashIndexFileLevelMetadataPage page = new OHashIndexFileLevelMetadataPage(hashStateEntry, false);
-
-        final OBinarySerializerFactory serializerFactory = OBinarySerializerFactory
-            .create(storage.getConfiguration().getBinaryFormatVersion());
-
-        //noinspection unchecked
-        keySerializer = (OBinarySerializer<K>) serializerFactory.getObjectSerializer(page.getKeySerializerId());
-        //noinspection unchecked
-        valueSerializer = (OBinarySerializer<V>) serializerFactory.getObjectSerializer(page.getValueSerializerId());
-
+        hashStateEntryIndex = hashStateEntry.getPageIndex();
+        pinPage(atomicOperation, hashStateEntry);
       } finally {
         releasePageFromRead(atomicOperation, hashStateEntry);
       }
@@ -1846,7 +1761,6 @@ public class OLocalHashTable<K, V> extends ODurableComponent implements OHashTab
     }
   }
 
-  @SuppressFBWarnings("DLS_DEAD_LOCAL_STORE")
   private void initHashTreeState(final OAtomicOperation atomicOperation) throws IOException {
     truncateFile(atomicOperation, fileId);
 

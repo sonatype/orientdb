@@ -84,11 +84,11 @@ public class OHashIndexFactory implements OIndexFactory {
     return ALGORITHMS;
   }
 
-  public OIndexInternal<?> createIndex(String name, OStorage storage, String indexType, String algorithm,
-      String valueContainerAlgorithm, ODocument metadata, int version) throws OConfigurationException {
+  public OIndexInternal<?> createIndex(final String name, final OStorage storage, final String indexType, final String algorithm,
+      String valueContainerAlgorithm, final ODocument metadata, int version) throws OConfigurationException {
 
     if (version < 0)
-      version = getLastVersion();
+      version = getLastVersion(algorithm);
 
     if (valueContainerAlgorithm == null)
       valueContainerAlgorithm = ODefaultIndexFactory.NONE_VALUE_CONTAINER;
@@ -112,22 +112,22 @@ public class OHashIndexFactory implements OIndexFactory {
   }
 
   @Override
-  public int getLastVersion() {
+  public int getLastVersion(final String algorithm) {
     return OHashTableIndexEngine.VERSION;
   }
 
   @Override
   public OBaseIndexEngine createIndexEngine(final String algoritm, final String name, final Boolean durableInNonTxMode,
-      final OStorage storage, final int version, int apiVersion, boolean multivalue, final Map<String, String> engineProperties) {
-    OIndexEngine indexEngine;
+      final OStorage storage, final int version, final int apiVersion, final boolean multivalue,
+      final Map<String, String> engineProperties) {
+    final OIndexEngine indexEngine;
 
     final String storageType = storage.getType();
     if (storageType.equals("memory") || storageType.equals("plocal"))
       indexEngine = new OHashTableIndexEngine(name, (OAbstractPaginatedStorage) storage, version);
     else if (storageType.equals("distributed"))
       // DISTRIBUTED CASE: HANDLE IT AS FOR LOCAL
-      indexEngine = new OHashTableIndexEngine(name, (OAbstractPaginatedStorage) storage.getUnderlying(),
-          version);
+      indexEngine = new OHashTableIndexEngine(name, (OAbstractPaginatedStorage) storage.getUnderlying(), version);
     else if (storageType.equals("remote"))
       indexEngine = new ORemoteIndexEngine(name);
     else

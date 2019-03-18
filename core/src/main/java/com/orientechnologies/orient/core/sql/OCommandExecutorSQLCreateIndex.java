@@ -20,7 +20,6 @@
 package com.orientechnologies.orient.core.sql;
 
 import com.orientechnologies.common.exception.OException;
-import com.orientechnologies.common.log.OLogManager;
 import com.orientechnologies.common.util.OPatternConst;
 import com.orientechnologies.orient.core.collate.OCollate;
 import com.orientechnologies.orient.core.command.OCommandDistributedReplicateRequest;
@@ -29,13 +28,26 @@ import com.orientechnologies.orient.core.command.OCommandRequestText;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocument;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
 import com.orientechnologies.orient.core.exception.ODatabaseException;
-import com.orientechnologies.orient.core.index.*;
+import com.orientechnologies.orient.core.index.OIndex;
+import com.orientechnologies.orient.core.index.OIndexDefinition;
+import com.orientechnologies.orient.core.index.OIndexDefinitionFactory;
+import com.orientechnologies.orient.core.index.OIndexException;
+import com.orientechnologies.orient.core.index.OIndexFactory;
+import com.orientechnologies.orient.core.index.OIndexes;
+import com.orientechnologies.orient.core.index.OPropertyMapIndexDefinition;
+import com.orientechnologies.orient.core.index.ORuntimeKeyIndexDefinition;
+import com.orientechnologies.orient.core.index.OSimpleKeyIndexDefinition;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
 import com.orientechnologies.orient.core.metadata.schema.OClassImpl;
 import com.orientechnologies.orient.core.metadata.schema.OType;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /**
  * SQL CREATE INDEX command: Create a new index against a property.
@@ -63,8 +75,8 @@ public class OCommandExecutorSQLCreateIndex extends OCommandExecutorSQLAbstract 
   private OType[]           keyTypes;
   private byte              serializerKeyId;
   private String            engine;
-  private ODocument metadataDoc = null;
-  private String[] collates;
+  private ODocument         metadataDoc = null;
+  private String[]          collates;
 
   public OCommandExecutorSQLCreateIndex parse(final OCommandRequest iRequest) {
     final OCommandRequestText textRequest = (OCommandRequestText) iRequest;
@@ -254,10 +266,10 @@ public class OCommandExecutorSQLCreateIndex extends OCommandExecutorSQLAbstract 
 
       if (keyTypes != null)
         idx = database.getMetadata().getIndexManager().createIndex(indexName, indexType.toString(),
-            new OSimpleKeyIndexDefinition(keyTypes, collatesList, factory.getLastVersion()), null, null, metadataDoc, engine);
+            new OSimpleKeyIndexDefinition(keyTypes, collatesList), null, null, metadataDoc, engine);
       else if (serializerKeyId != 0) {
         idx = database.getMetadata().getIndexManager()
-            .createIndex(indexName, indexType.toString(), new ORuntimeKeyIndexDefinition(serializerKeyId, factory.getLastVersion()),
+            .createIndex(indexName, indexType.toString(), new ORuntimeKeyIndexDefinition(serializerKeyId),
                 null, null, metadataDoc, engine);
       } else {
         throw new ODatabaseException("Impossible to create an index without specify the key type or the associated property");

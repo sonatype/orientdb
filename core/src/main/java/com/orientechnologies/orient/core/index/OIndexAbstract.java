@@ -50,7 +50,6 @@ import com.orientechnologies.orient.core.storage.ridbag.sbtree.OIndexRIDContaine
 import com.orientechnologies.orient.core.tx.OTransactionIndexChanges;
 import com.orientechnologies.orient.core.tx.OTransactionIndexChangesPerKey;
 
-import javax.annotation.Nonnull;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Collection;
@@ -155,7 +154,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T> {
         final String keyTypeStr = config.field(OIndexInternal.CONFIG_KEYTYPE);
         final OType keyType = OType.valueOf(keyTypeStr.toUpperCase(Locale.ENGLISH));
 
-        loadedIndexDefinition = new OSimpleKeyIndexDefinition(factory.getLastVersion(), keyType);
+        loadedIndexDefinition = new OSimpleKeyIndexDefinition(keyType);
 
         config.removeField(OIndexInternal.CONFIG_KEYTYPE);
       }
@@ -577,7 +576,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T> {
 
   @Override
   public void setType(OType type) {
-    indexDefinition = new OSimpleKeyIndexDefinition(version, type);
+    indexDefinition = new OSimpleKeyIndexDefinition(type);
     updateConfiguration();
   }
 
@@ -864,7 +863,7 @@ public abstract class OIndexAbstract<T> implements OIndexInternal<T> {
   }
 
   @Override
-  public int compareTo(@Nonnull OIndex<T> index) {
+  public int compareTo(OIndex<T> index) {
     acquireSharedLock();
     try {
       final String name = index.getName();

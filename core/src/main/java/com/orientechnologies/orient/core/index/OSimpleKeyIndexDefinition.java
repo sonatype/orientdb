@@ -33,10 +33,10 @@ import java.util.Collections;
 import java.util.List;
 
 public class OSimpleKeyIndexDefinition extends OAbstractIndexDefinition {
-  private static final long serialVersionUID = -1264300379465791244L;
-  private OType[] keyTypes;
+  private static final long    serialVersionUID = -1264300379465791244L;
+  private              OType[] keyTypes;
 
-  public OSimpleKeyIndexDefinition(int version, final OType... keyTypes) {
+  public OSimpleKeyIndexDefinition(final OType... keyTypes) {
     super();
 
     this.keyTypes = keyTypes;
@@ -45,7 +45,7 @@ public class OSimpleKeyIndexDefinition extends OAbstractIndexDefinition {
   public OSimpleKeyIndexDefinition() {
   }
 
-  public OSimpleKeyIndexDefinition(OType[] keyTypes2, List<OCollate> collatesList, int version) {
+  public OSimpleKeyIndexDefinition(OType[] keyTypes2, List<OCollate> collatesList) {
     super();
 
     this.keyTypes = Arrays.copyOf(keyTypes2, keyTypes2.length);
@@ -189,10 +189,7 @@ public class OSimpleKeyIndexDefinition extends OAbstractIndexDefinition {
       return false;
 
     final OSimpleKeyIndexDefinition that = (OSimpleKeyIndexDefinition) o;
-    if (!Arrays.equals(keyTypes, that.keyTypes))
-      return false;
-
-    return true;
+    return Arrays.equals(keyTypes, that.keyTypes);
   }
 
   @Override

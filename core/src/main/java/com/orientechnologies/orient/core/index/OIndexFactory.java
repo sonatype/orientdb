@@ -29,7 +29,7 @@ import java.util.Set;
 
 public interface OIndexFactory {
 
-  int getLastVersion();
+  int getLastVersion(final String algorithm);
 
   /**
    * @return List of supported indexes of this factory
@@ -43,7 +43,7 @@ public interface OIndexFactory {
 
   /**
    * Creates an index.
-   * 
+   *
    * @param name
    * @param storage TODO
    * @param indexType
