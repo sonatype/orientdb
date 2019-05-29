@@ -42,10 +42,13 @@ public class OBasicResultSet<T> implements OResultSet<T> {
   // Reference to temporary record for avoid garbace collection
   @SuppressWarnings({ "FieldCanBeLocal", "unused" })
   private List<ORecord> temporaryRecordCache;
+  private transient boolean softResults;
 
   public OBasicResultSet(String query) {
     this.query = query;
-    underlying = Collections.synchronizedList(OSoftQueryResultList.<T>createResultList(query));
+    List<T> resultList = OSoftQueryResultList.createResultList(query);
+    softResults = resultList instanceof OSoftQueryResultList<?>;
+    underlying = Collections.synchronizedList(resultList);
   }
 
   public OBasicResultSet<T> setCompleted() {
@@ -217,7 +220,7 @@ public class OBasicResultSet<T> implements OResultSet<T> {
 
   @Override
   public void writeExternal(final ObjectOutput out) throws IOException {
-    if (underlying instanceof OSoftQueryResultList) {
+    if (softResults) {
       List<Object> convertedUnderlying = new ArrayList<Object>();
       for (Object singleResult : underlying) {
         convertedUnderlying.add(singleResult);
@@ -226,6 +229,11 @@ public class OBasicResultSet<T> implements OResultSet<T> {
     } else {
       out.writeObject(underlying);
     }
+  }
+
+  @Deprecated // needed for deserialization of Externalizable
+  public OBasicResultSet() {
+    this.query = null; // dummy value to satisfy final field
   }
 
   @Override
